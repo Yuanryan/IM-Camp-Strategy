@@ -10,9 +10,10 @@ export const fetcher = (url: string) =>
     return r.json();
   });
 
-// 全場狀態輪詢（投影 / 各站別共用）
-export function useSnapshot(refreshMs = 2500) {
-  const { data, error, isLoading, mutate } = useSWR<Snapshot>("/api/snapshot", fetcher, {
+// 全場狀態輪詢（投影 / 各站別共用）。
+// endpoint 預設要登入的 /api/snapshot；免登入的投影頁傳入 /api/public/snapshot。
+export function useSnapshot(refreshMs = 2500, endpoint = "/api/snapshot") {
+  const { data, error, isLoading, mutate } = useSWR<Snapshot>(endpoint, fetcher, {
     refreshInterval: refreshMs,
   });
   return { snap: data, error, isLoading, mutate };

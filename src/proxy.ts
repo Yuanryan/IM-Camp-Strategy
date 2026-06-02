@@ -24,7 +24,6 @@ export const config = {
     "/mobile/:path*",
     "/shop/:path*",
     "/lottery/:path*",
-    "/projection/:path*",
     "/admin/:path*",
     "/team/:path*",
   ],

@@ -8,11 +8,9 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  // 執行時用 Supabase「Transaction pooler」(6543) + ?pgbouncer=true
-  url       = env("DATABASE_URL")
-  // 給 prisma db push / migrate 用：Supabase「Session pooler」或直連 (5432)
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  // 單一連線：用 Supabase「Session pooler」(5432, IPv4)，app 與 db push 都走它
+  url      = env("DATABASE_URL")
 }
 
 // 本機若想改用 SQLite 開發，把上面整段換成：

@@ -15,7 +15,7 @@ const REGION_ACCENT: Record<RegionCode, string> = {
 };
 
 export function ProjectionView() {
-  const { snap, error } = useSnapshot(2000);
+  const { snap, error } = useSnapshot(2000, "/api/public/snapshot");
 
   if (error) return <FullMsg text="連線錯誤，重試中…" />;
   if (!snap) return <FullMsg text="載入中…" />;
