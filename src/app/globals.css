@@ -1,10 +1,9 @@
 @import "tailwindcss";
 
+/* ── 迷霧城市・深色主題（Dark only）─────────────────────── */
 :root {
-  --background: #eef1f7;
-  --foreground: #1c1a2e;
-  --brand: #6d28d9;
-  --brand-2: #4f46e5;
+  --background: #020617; /* slate-950 */
+  --foreground: #e2e8f0; /* slate-200 */
 }
 
 @theme inline {
@@ -17,21 +16,74 @@
 html {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  color-scheme: dark;
 }
 
 body {
-  font-family: var(--font-geist-sans), "Microsoft JhengHei", "PingFang TC", Arial, sans-serif;
-  background:
-    radial-gradient(820px 480px at 18% -140px, rgba(124, 58, 237, 0.16), transparent 60%),
-    radial-gradient(720px 460px at 100% 0%, rgba(56, 189, 248, 0.14), transparent 55%),
-    linear-gradient(#f5f6fb, #eceef6);
-  background-attachment: fixed;
+  font-family: var(--font-geist-sans), "Noto Sans TC", "Microsoft JhengHei",
+    "PingFang TC", Arial, sans-serif;
   color: var(--foreground);
+  background:
+    radial-gradient(900px 520px at 12% -120px, rgba(99, 102, 241, 0.22), transparent 60%),
+    radial-gradient(820px 520px at 100% 0%, rgba(34, 211, 238, 0.12), transparent 55%),
+    radial-gradient(700px 600px at 50% 120%, rgba(217, 70, 239, 0.1), transparent 55%),
+    #020617;
+  background-attachment: fixed;
+  min-height: 100vh;
 }
 
-/* 全站一致的焦點外框（Tailwind 預設不設，純加分不會被覆蓋） */
+/* 數字：等寬、對齊、科技感 */
+.num {
+  font-family: var(--font-geist-mono), "Space Grotesk", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* 霓虹金（光幣 / 光源） */
+.neon-gold {
+  color: #facc15;
+  text-shadow:
+    0 0 8px rgba(250, 204, 21, 0.55),
+    0 0 18px rgba(250, 204, 21, 0.25);
+}
+.neon-emerald {
+  color: #34d399;
+  text-shadow: 0 0 10px rgba(52, 211, 153, 0.5);
+}
+.neon-rose {
+  color: #fb7185;
+  text-shadow: 0 0 10px rgba(244, 63, 94, 0.45);
+}
+
+/* 毛玻璃面板 */
+.glass {
+  background: rgba(15, 23, 42, 0.55); /* slate-900/55 */
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  backdrop-filter: blur(12px);
+}
+
+/* 暗色輸入框 / 下拉（取代各頁重複的 class） */
+.fld {
+  background: rgba(2, 6, 23, 0.6);
+  border: 1px solid rgba(100, 116, 139, 0.55);
+  border-radius: 0.65rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: #e2e8f0;
+}
+.fld::placeholder {
+  color: #64748b;
+}
+
+/* 灰底小標籤 / 次要按鈕 */
+.chip {
+  background: rgba(148, 163, 184, 0.12);
+  color: #cbd5e1;
+  border-radius: 0.5rem;
+}
+
 :focus-visible {
-  outline: 2px solid #8b5cf6;
+  outline: 2px solid rgba(167, 139, 250, 0.9);
   outline-offset: 2px;
   border-radius: 8px;
 }
@@ -45,14 +97,29 @@ button {
     background-color 0.15s ease,
     transform 0.08s ease;
 }
-
-/* 數字 / 字串輸入聚焦時的柔光 */
 input:focus,
 select:focus {
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25);
+  border-color: rgba(139, 92, 246, 0.7);
 }
 
-/* 隱藏數字輸入的上下箭頭，畫面更乾淨 */
+/* 事件橫幅呼吸燈 */
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.85;
+    box-shadow: 0 0 14px rgba(217, 70, 239, 0.25);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 26px rgba(217, 70, 239, 0.5);
+  }
+}
+.breathe {
+  animation: breathe 2.6s ease-in-out infinite;
+}
+
+/* 隱藏數字輸入箭頭 */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
   -webkit-appearance: none;
@@ -60,4 +127,9 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 input[type="number"] {
   -moz-appearance: textfield;
+}
+
+/* 暗色卷軸 */
+* {
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
 }

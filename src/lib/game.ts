@@ -9,6 +9,41 @@ export const REGIONS: { code: RegionCode; name: string; theme: string }[] = [
   { code: "HAVEN", name: "晨霧棲城", theme: "住宅 / 醫療 / 教育" },
 ];
 
+// 四區具象化配色（深色霓虹）：極光金=琥珀、靈序=賽博藍、影焰=工業紅、晨霧=翡翠
+export const REGION_UI: Record<
+  RegionCode,
+  { text: string; border: string; chipBg: string; panel: string; dot: string }
+> = {
+  AURORA: {
+    text: "text-amber-400",
+    border: "border-amber-500/40",
+    chipBg: "bg-amber-500/15 text-amber-300",
+    panel: "from-amber-500/15 to-transparent border-amber-500/30",
+    dot: "bg-amber-400 shadow-[0_0_6px_rgba(251,191,36,0.8)]",
+  },
+  SPECTRA: {
+    text: "text-cyan-400",
+    border: "border-cyan-500/40",
+    chipBg: "bg-cyan-500/15 text-cyan-300",
+    panel: "from-cyan-500/15 to-transparent border-cyan-500/30",
+    dot: "bg-cyan-400 shadow-[0_0_6px_rgba(34,211,238,0.8)]",
+  },
+  EMBER: {
+    text: "text-rose-500",
+    border: "border-rose-600/40",
+    chipBg: "bg-rose-500/15 text-rose-300",
+    panel: "from-rose-600/15 to-transparent border-rose-600/30",
+    dot: "bg-rose-500 shadow-[0_0_6px_rgba(244,63,94,0.8)]",
+  },
+  HAVEN: {
+    text: "text-emerald-400",
+    border: "border-emerald-500/40",
+    chipBg: "bg-emerald-500/15 text-emerald-300",
+    panel: "from-emerald-500/15 to-transparent border-emerald-500/30",
+    dot: "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]",
+  },
+};
+
 export const REGION_NAME: Record<RegionCode, string> = {
   AURORA: "極光金域",
   SPECTRA: "靈序研究",

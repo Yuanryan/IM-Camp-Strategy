@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { useSnapshot, postJson, ActionButton, TeamSelect, toast } from "@/components/client";
 import { Card } from "@/components/Shell";
+import { Num } from "@/components/ui";
 import { lotteryFee } from "@/lib/game";
 
 export function LotteryView() {
   const { snap, mutate } = useSnapshot(2500);
   const [team, setTeam] = useState<number | "">("");
 
-  if (!snap) return <p className="text-sm text-zinc-500">載入中…</p>;
+  if (!snap) return <p className="text-sm text-slate-400">載入中…</p>;
   const taken = new Map(snap.lottery.numbers.map((n) => [n.number, n.teamName]));
   const myCount = team === "" ? 0 : snap.lottery.numbers.filter((n) => n.teamId === team).length;
   const nextFee = lotteryFee(myCount);
@@ -29,13 +30,13 @@ export function LotteryView() {
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-4">
         <Card title="本期">
-          <div className="text-2xl font-black">第 {snap.lottery.period} 期</div>
+          <Num className="text-3xl font-black text-slate-100">第 {snap.lottery.period} 期</Num>
         </Card>
         <Card title="獎金池">
-          <div className="text-2xl font-black text-emerald-600">{snap.lottery.pool}</div>
+          <Num className="neon-emerald text-3xl font-black">{snap.lottery.pool}</Num>
         </Card>
         <Card title="開獎">
-          <ActionButton label="開獎抽號" className="bg-red-600 text-white hover:bg-red-500"
+          <ActionButton label="開獎抽號" className="bg-rose-600 text-white shadow-rose-500/30 hover:bg-rose-500"
             confirmText="確定開獎？"
             onAction={async () => {
               const r = await postJson("/api/lottery/draw", {});
@@ -50,8 +51,8 @@ export function LotteryView() {
         <div className="mb-3 flex items-center gap-3">
           <TeamSelect teams={snap.teams} value={team} onChange={setTeam} />
           {team !== "" && (
-            <span className="text-sm text-zinc-500">
-              已持 {myCount} 個，下個號碼費用 <b>{nextFee}</b>（光幣 {snap.teams.find((t) => t.id === team)?.coins}）
+            <span className="text-sm text-slate-400">
+              已持 {myCount} 個，下個號碼費用 <Num className="font-bold neon-gold">{nextFee}</Num>（光幣 <Num className="neon-gold">{snap.teams.find((t) => t.id === team)?.coins}</Num>）
             </span>
           )}
         </div>
@@ -61,17 +62,17 @@ export function LotteryView() {
             return (
               <button key={n} disabled={team === "" || !!owner}
                 onClick={() => register(n)} title={owner ?? ""}
-                className={`rounded-md py-2 text-sm font-bold tabular-nums transition ${
-                  owner ? "cursor-not-allowed bg-emerald-100 text-emerald-700"
-                    : team === "" ? "bg-zinc-100 text-zinc-400"
-                    : "bg-zinc-100 hover:bg-sky-600 hover:text-white"
+                className={`num rounded-md py-2 text-sm font-bold transition ${
+                  owner ? "cursor-not-allowed bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30"
+                    : team === "" ? "bg-white/5 text-slate-600"
+                    : "bg-white/10 text-slate-200 hover:bg-sky-500 hover:text-white"
                 }`}>
                 {n}
               </button>
             );
           })}
         </div>
-        <p className="mt-2 text-xs text-zinc-400">綠色 = 已被登記（滑過可看持有隊）。每隊第一個號碼免費，之後 50 × 2^(已持-1)。每次登記獎金池 +100，加購費也入池。</p>
+        <p className="mt-2 text-xs text-slate-500">綠色 = 已被登記（滑過可看持有隊）。每隊第一個號碼免費，之後 50 × 2^(已持-1)。每次登記獎金池 +100，加購費也入池。</p>
       </Card>
     </div>
   );

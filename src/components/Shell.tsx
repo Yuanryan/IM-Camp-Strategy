@@ -54,11 +54,11 @@ export function Card({
 }) {
   return (
     <section
-      className={`rounded-2xl border border-white/60 bg-white/85 p-4 shadow-sm ring-1 ring-black/5 backdrop-blur transition hover:shadow-md sm:p-5 ${className}`}
+      className={`glass rounded-2xl p-4 shadow-lg shadow-black/20 transition hover:border-white/25 sm:p-5 ${className}`}
     >
       {title && (
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-zinc-700">
-          <span className="h-4 w-1 rounded-full bg-gradient-to-b from-indigo-500 to-violet-500" />
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-200">
+          <span className="h-4 w-1 rounded-full bg-gradient-to-b from-indigo-400 to-fuchsia-500 shadow-[0_0_8px_rgba(167,139,250,0.7)]" />
           {title}
         </h2>
       )}

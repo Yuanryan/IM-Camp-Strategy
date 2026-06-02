@@ -62,7 +62,7 @@ export function ActionButton({
         }
       }}
       className={`rounded-xl px-3.5 py-2 text-sm font-semibold shadow-sm transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 ${
-        className || "bg-zinc-900 text-white hover:bg-zinc-700"
+        className || "bg-indigo-500 text-white shadow-indigo-500/30 hover:bg-indigo-400"
       }`}
     >
       {busy ? "處理中…" : label}
@@ -116,7 +116,7 @@ export function TeamSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value ? Number(e.target.value) : "")}
-      className="min-w-36 rounded-xl border border-zinc-300 bg-white px-3 py-2 text-sm font-medium shadow-sm"
+      className="fld min-w-36 font-medium"
     >
       <option value="">{placeholder}</option>
       {teams.map((t) => (
