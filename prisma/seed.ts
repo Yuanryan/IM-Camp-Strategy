@@ -1,0 +1,179 @@
+import { PrismaClient } from "../src/generated/prisma";
+import { randomBytes } from "node:crypto";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
+import QRCode from "qrcode";
+import {
+  PROPERTY_SEED,
+  FUNCTION_CARDS,
+  ROLE_LABEL,
+  type Role,
+} from "../src/lib/game";
+
+const prisma = new PrismaClient();
+
+// ─── 賽前設定（留空待填，請依實際情況修改）──────────────────────
+const TEAM_COUNT = 6; // TODO: 改成實際小隊數
+const STARTING_COINS = 0; // TODO: 各隊初始光幣
+const STARTING_CARD_POINTS = 0; // TODO: 各隊初始卡牌點數
+const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
+// 各角色站別數量
+const STATION_COUNTS: Record<Exclude<Role, "TEAM">, number> = {
+  HOST: 1,
+  EXCHANGE: 2,
+  MAP: 3,
+  MOBILE: 6,
+  CARDSHOP: 1,
+  LOTTERY: 1,
+  PROJECTION: 1,
+  ADMIN: 1,
+};
+// ──────────────────────────────────────────────────────────────
+
+const newToken = () => randomBytes(16).toString("hex");
+
+async function reset() {
+  // FK 安全順序清空（重新布置用）
+  await prisma.ledger.deleteMany();
+  await prisma.lotteryNumber.deleteMany();
+  await prisma.accessToken.deleteMany();
+  await prisma.property.deleteMany();
+  await prisma.team.deleteMany();
+  await prisma.question.deleteMany();
+  await prisma.functionCard.deleteMany();
+  await prisma.shopDisplay.deleteMany();
+  await prisma.gameState.deleteMany();
+}
+
+async function main() {
+  await reset();
+
+  // 不動產（四區域表）
+  await prisma.property.createMany({ data: PROPERTY_SEED });
+
+  // 全場狀態
+  await prisma.gameState.create({
+    data: { id: 1, phase: "SETUP", lotteryPeriod: 1, lotteryPool: 1000 },
+  });
+
+  // 功能卡庫存
+  for (const c of FUNCTION_CARDS) {
+    await prisma.functionCard.create({
+      data: { type: c.type, effect: c.effect, cost: c.cost, remaining: c.defaultStock },
+    });
+  }
+  // 商店初始展示 3 張（取前三種卡）
+  for (let slot = 0; slot < 3; slot++) {
+    await prisma.shopDisplay.create({
+      data: { slot, cardType: FUNCTION_CARDS[slot]?.type ?? null },
+    });
+  }
+
+  // 範例題庫（流動關主可在 admin 補完整題庫）
+  const sampleQuestions = [
+    { gameName: "猜歌", prompt: "（範例）播放一段旋律，請小隊搶答歌名", answer: "—" },
+    { gameName: "比手畫腳", prompt: "（範例）長頸鹿", answer: "長頸鹿", difficulty: "易" },
+    { gameName: "比手畫腳", prompt: "（範例）資產負債表", answer: "資產負債表", difficulty: "難" },
+    { gameName: "默契大考驗", prompt: "（範例）說出一種台大常見的早餐", answer: "—" },
+    { gameName: "口型猜答案", prompt: "（範例）資訊管理", answer: "資訊管理" },
+  ];
+  await prisma.question.createMany({ data: sampleQuestions });
+
+  // 小隊
+  const teams = [];
+  for (let i = 1; i <= TEAM_COUNT; i++) {
+    const t = await prisma.team.create({
+      data: {
+        name: `第 ${i} 隊`,
+        coins: STARTING_COINS,
+        cardPoints: STARTING_CARD_POINTS,
+      },
+    });
+    teams.push(t);
+  }
+
+  // 角色 / 站別 token
+  type TokenRow = { role: Role; label: string; token: string; url: string };
+  const rows: TokenRow[] = [];
+
+  for (const [role, count] of Object.entries(STATION_COUNTS) as [
+    Exclude<Role, "TEAM">,
+    number,
+  ][]) {
+    for (let i = 1; i <= count; i++) {
+      const label = count > 1 ? `${ROLE_LABEL[role]}-${i}` : ROLE_LABEL[role];
+      const token = newToken();
+      await prisma.accessToken.create({ data: { token, role, label } });
+      rows.push({ role, label, token, url: `${BASE_URL}/api/login?t=${token}` });
+    }
+  }
+  // 小隊 token
+  for (const t of teams) {
+    const token = newToken();
+    await prisma.accessToken.create({
+      data: { token, role: "TEAM", label: t.name, teamId: t.id },
+    });
+    rows.push({
+      role: "TEAM",
+      label: t.name,
+      token,
+      url: `${BASE_URL}/api/login?t=${token}`,
+    });
+  }
+
+  await writeQrSheet(rows);
+
+  console.log(`\n✅ Seed 完成`);
+  console.log(`  不動產：${PROPERTY_SEED.length} 筆`);
+  console.log(`  小隊：${TEAM_COUNT} 隊（初始光幣 ${STARTING_COINS}、卡牌點數 ${STARTING_CARD_POINTS}）`);
+  console.log(`  Token：${rows.length} 組`);
+  console.log(`  QR 對照頁：web/qr-codes.html（用瀏覽器開啟後列印發放）`);
+  console.log(`  Base URL：${BASE_URL}（如需改網址，設環境變數 BASE_URL 後重跑 seed）\n`);
+}
+
+async function writeQrSheet(
+  rows: { role: Role; label: string; token: string; url: string }[],
+) {
+  const cards = await Promise.all(
+    rows.map(async (r) => {
+      const dataUrl = await QRCode.toDataURL(r.url, { width: 220, margin: 1 });
+      return `
+      <div class="card">
+        <div class="role">${ROLE_LABEL[r.role]}</div>
+        <div class="label">${r.label}</div>
+        <img src="${dataUrl}" alt="QR" />
+        <div class="url">${r.url}</div>
+      </div>`;
+    }),
+  );
+
+  const html = `<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8" />
+<title>IM 大富翁 — 登入 QR 對照頁</title>
+<style>
+  body { font-family: "Microsoft JhengHei", Arial, sans-serif; margin: 24px; }
+  h1 { font-size: 20px; }
+  p.note { color:#666; font-size:13px; }
+  .grid { display:flex; flex-wrap:wrap; gap:16px; }
+  .card { width: 250px; border:1px solid #ddd; border-radius:12px; padding:14px; text-align:center; page-break-inside: avoid; }
+  .role { font-size:12px; color:#888; }
+  .label { font-size:18px; font-weight:bold; margin-bottom:8px; }
+  .url { font-size:9px; color:#aaa; word-break: break-all; margin-top:6px; }
+  @media print { .card { box-shadow:none; } }
+</style></head>
+<body>
+  <h1>IM 大富翁：迷霧資本戰 — 登入 QR 對照頁</h1>
+  <p class="note">每張卡對應一個站別 / 小隊。掃描或開啟連結即自動登入該角色（12 小時內免再登入）。請剪下發給對應人員。</p>
+  <div class="grid">${cards.join("")}</div>
+</body></html>`;
+
+  writeFileSync(join(process.cwd(), "qr-codes.html"), html, "utf-8");
+}
+
+main()
+  .then(() => prisma.$disconnect())
+  .catch(async (e) => {
+    console.error(e);
+    await prisma.$disconnect();
+    process.exit(1);
+  });

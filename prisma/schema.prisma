@@ -1,0 +1,113 @@
+// IM 大富翁：迷霧資本戰 — 策略系統 資料模型
+// 用 SQLite 開發；正式可改 provider 為 postgresql。
+// JSON 一律以 String 欄位存放（JSON.parse/stringify），避免 provider 差異。
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // 執行時用 Supabase「Transaction pooler」(6543) + ?pgbouncer=true
+  url       = env("DATABASE_URL")
+  // 給 prisma db push / migrate 用：Supabase「Session pooler」或直連 (5432)
+  directUrl = env("DIRECT_URL")
+}
+
+// 本機若想改用 SQLite 開發，把上面整段換成：
+// datasource db { provider = "sqlite"  url = env("DATABASE_URL") }
+// 並把 .env 的 DATABASE_URL 設為 "file:./dev.db"
+
+// 登入用：每個站別 / 小隊一條不可猜 token
+model AccessToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  role      String // HOST EXCHANGE MAP MOBILE CARDSHOP LOTTERY PROJECTION ADMIN TEAM
+  label     String // 顯示用：例如「交易所-1」「第3隊」
+  teamId    Int?
+  team      Team?    @relation(fields: [teamId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Team {
+  id             Int             @id @default(autoincrement())
+  name           String
+  coins          Int             @default(0) // 光幣
+  cardPoints     Int             @default(0) // 卡牌點數
+  properties     Property[]
+  lotteryNumbers LotteryNumber[]
+  ledgers        Ledger[]
+  tokens         AccessToken[]
+  createdAt      DateTime        @default(now())
+}
+
+model Property {
+  id          Int    @id @default(autoincrement())
+  name        String @unique
+  region      String // AURORA SPECTRA EMBER HAVEN
+  type        String // 金融 商業 投資 ... （事件類型加成用）
+  basePrice   Int // 採「四區域不動產表」初始價
+  level       Int    @default(0) // 0=已購未升級 .. 3
+  ownerTeamId Int? // null = 尚未售出
+  owner       Team?  @relation(fields: [ownerTeamId], references: [id])
+}
+
+model LotteryNumber {
+  id     Int  @id @default(autoincrement())
+  period Int // 大樂透期別
+  number Int // 1..50
+  teamId Int
+  team   Team @relation(fields: [teamId], references: [id])
+
+  @@unique([period, number]) // 同期同號不可重複
+}
+
+// 全場單例狀態（id 固定為 1）
+model GameState {
+  id            Int      @id @default(1)
+  phase         String   @default("SETUP") // SETUP RUNNING SETTLED
+  activeEvents  String   @default("") // CSV，例如 "1,2"
+  event4Penalty String? // 事件四「前次漲最多區域」由主持人選定
+  lotteryPeriod Int      @default(1)
+  lotteryPool   Int      @default(1000)
+  settledAt     DateTime?
+  updatedAt     DateTime @updatedAt
+}
+
+// 卡牌商店庫存
+model FunctionCard {
+  id        Int    @id @default(autoincrement())
+  type      String @unique
+  effect    String @default("")
+  cost      Int    @default(0) // 購買所需卡牌點數（企畫書未定，可於 admin 調整）
+  remaining Int
+}
+
+// 商店展示的 3 張（slot 0..2）
+model ShopDisplay {
+  slot     Int     @id
+  cardType String?
+}
+
+// 流動關主題庫
+model Question {
+  id         Int     @id @default(autoincrement())
+  gameName   String
+  prompt     String
+  answer     String?
+  difficulty String?
+}
+
+// 稽核總帳：每筆數值變動都記錄，可反向沖銷
+model Ledger {
+  id        Int      @id @default(autoincrement())
+  teamId    Int?
+  team      Team?    @relation(fields: [teamId], references: [id])
+  kind      String // coins cardPoints property lottery wheel system settlement
+  delta     Int      @default(0)
+  note      String?
+  byToken   String? // 登記站別 label
+  reversed  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}

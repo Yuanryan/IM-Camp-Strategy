@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #eef1f7;
+  --foreground: #1c1a2e;
+  --brand: #6d28d9;
+  --brand-2: #4f46e5;
 }
 
 @theme inline {
@@ -12,15 +14,50 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
-  background: var(--background);
+  font-family: var(--font-geist-sans), "Microsoft JhengHei", "PingFang TC", Arial, sans-serif;
+  background:
+    radial-gradient(820px 480px at 18% -140px, rgba(124, 58, 237, 0.16), transparent 60%),
+    radial-gradient(720px 460px at 100% 0%, rgba(56, 189, 248, 0.14), transparent 55%),
+    linear-gradient(#f5f6fb, #eceef6);
+  background-attachment: fixed;
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* 全站一致的焦點外框（Tailwind 預設不設，純加分不會被覆蓋） */
+:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+select,
+input,
+button {
+  transition:
+    box-shadow 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.08s ease;
+}
+
+/* 數字 / 字串輸入聚焦時的柔光 */
+input:focus,
+select:focus {
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18);
+}
+
+/* 隱藏數字輸入的上下箭頭，畫面更乾淨 */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
 }

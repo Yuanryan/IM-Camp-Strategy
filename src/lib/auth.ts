@@ -1,0 +1,58 @@
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
+import { prisma } from "./db";
+import { ROLE_HOME, type Role } from "./game";
+
+export const SESSION_COOKIE = "session";
+
+export type Session = {
+  tokenId: number;
+  token: string;
+  role: Role;
+  label: string;
+  teamId: number | null;
+};
+
+// 從 cookie 讀出目前登入身分（無則回 null）
+export async function getSession(): Promise<Session | null> {
+  const store = await cookies();
+  const token = store.get(SESSION_COOKIE)?.value;
+  if (!token) return null;
+  const row = await prisma.accessToken.findUnique({ where: { token } });
+  if (!row) return null;
+  return {
+    tokenId: row.id,
+    token: row.token,
+    role: row.role as Role,
+    label: row.label,
+    teamId: row.teamId,
+  };
+}
+
+// 在頁面 / route handler 中強制要求特定角色。
+// 未登入 → 導向登入提示；角色不符 → 導回自己的首頁。
+export async function requireRole(...roles: Role[]): Promise<Session> {
+  const session = await getSession();
+  if (!session) redirect("/");
+  if (roles.length && !roles.includes(session.role)) {
+    redirect(ROLE_HOME[session.role]);
+  }
+  return session;
+}
+
+// 給 route handler 用：回傳 session 或丟出 401/403（不做 redirect）
+export class AuthError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+export async function requireRoleApi(...roles: Role[]): Promise<Session> {
+  const session = await getSession();
+  if (!session) throw new AuthError(401, "未登入");
+  // ADMIN 永遠可通過（總覽 / 調平衡）
+  if (session.role !== "ADMIN" && roles.length && !roles.includes(session.role)) {
+    throw new AuthError(403, "權限不足");
+  }
+  return session;
+}
