@@ -19,10 +19,10 @@ export function HostView() {
   return (
     <div className="space-y-4">
       <Card title="遊戲階段">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {Object.entries(PHASES).map(([p, label]) => (
             <ActionButton key={p} label={label}
-              className={snap.phase === p ? "bg-indigo-500 text-white" : "chip"}
+              className={snap.phase === p ? "bg-cyan-500 text-slate-950" : "chip"}
               onAction={async () => { await postJson("/api/host/phase", { phase: p }); await mutate(); return `階段：${label}`; }} />
           ))}
         </div>
@@ -34,7 +34,7 @@ export function HostView() {
             const ev = EVENTS[i];
             const on = active.has(i);
             return (
-              <div key={i} className={`rounded-xl border p-3 transition ${on ? "border-fuchsia-500/40 bg-fuchsia-500/10" : "border-white/10 bg-white/5"}`}>
+              <div key={i} className={`rounded-xl border p-3 transition ${on ? "border-cyan-400/40 bg-cyan-400/10" : "border-white/10 bg-white/5"}`}>
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="font-bold">{ev.name} {on && <span className="ml-1 text-xs text-emerald-300">● 進行中</span>}</div>
@@ -64,7 +64,7 @@ export function HostView() {
       </Card>
 
       <Card title="結算">
-        <ActionButton label="進行最終結算（鎖定並排名）" className="bg-indigo-500 text-white hover:bg-indigo-400"
+        <ActionButton label="進行最終結算（鎖定並排名）" className="bg-cyan-500 text-slate-950 hover:bg-cyan-400"
           confirmText="確定結算？將鎖定為已結算狀態。"
           onAction={async () => { const r = await postJson("/api/host/settle", {}); setRanking(r.ranking); await mutate(); return "已結算"; }} />
         {ranking && (

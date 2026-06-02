@@ -9,31 +9,43 @@ import { lotteryFee } from "@/lib/game";
 export function LotteryView() {
   const { snap, mutate } = useSnapshot(2500);
   const [team, setTeam] = useState<number | "">("");
+  const [pending, setPending] = useState<number | null>(null);
+  const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [highlight, setHighlight] = useState<number | null>(null);
 
   if (!snap) return <p className="text-sm text-slate-400">載入中…</p>;
   const taken = new Map(snap.lottery.numbers.map((n) => [n.number, n.teamName]));
-  const myCount = team === "" ? 0 : snap.lottery.numbers.filter((n) => n.teamId === team).length;
+  const ownerMap = new Map(snap.lottery.numbers.map((n) => [n.number, n.teamId]));
+  const mine = new Set(team === "" ? [] : snap.lottery.numbers.filter((n) => n.teamId === team).map((n) => n.number));
+  const myCount = mine.size;
   const nextFee = lotteryFee(myCount);
 
   const register = async (number: number) => {
-    if (team === "") return;
+    if (team === "" || pending !== null) return;
+    setPending(number);
     try {
       const r = await postJson("/api/lottery/register", { teamId: team, number });
       await mutate();
-      toast(`登記 ${number} 號（費用 ${r.fee}）`, "ok");
+      const msg = `已登記 ${number} 號（費用 ${r.fee}）`;
+      setResult({ ok: true, msg });
+      toast(msg, "ok");
     } catch (e) {
-      toast(e instanceof Error ? e.message : "失敗", "err");
+      const m = e instanceof Error ? e.message : "登記失敗";
+      setResult({ ok: false, msg: `${number} 號：${m}` });
+      toast(m, "err");
+    } finally {
+      setPending(null);
     }
   };
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
         <Card title="本期">
-          <Num className="text-3xl font-black text-slate-100">第 {snap.lottery.period} 期</Num>
+          <Num className="text-xl font-black text-slate-100 sm:text-3xl">第 {snap.lottery.period} 期</Num>
         </Card>
         <Card title="獎金池">
-          <Num className="neon-emerald text-3xl font-black">{snap.lottery.pool}</Num>
+          <Num className="neon-emerald text-xl font-black sm:text-3xl">{snap.lottery.pool}</Num>
         </Card>
         <Card title="開獎">
           <ActionButton label="開獎抽號" className="bg-rose-600 text-white shadow-rose-500/30 hover:bg-rose-500"
@@ -48,7 +60,7 @@ export function LotteryView() {
       </div>
 
       <Card title="登記號碼">
-        <div className="mb-3 flex items-center gap-3">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
           <TeamSelect teams={snap.teams} value={team} onChange={setTeam} />
           {team !== "" && (
             <span className="text-sm text-slate-400">
@@ -56,23 +68,76 @@ export function LotteryView() {
             </span>
           )}
         </div>
-        <div className="grid grid-cols-10 gap-1.5">
+        {result && (
+          <div className={`mb-3 rounded-lg px-3 py-2 text-sm font-medium ring-1 ${
+            result.ok
+              ? "bg-emerald-500/15 text-emerald-200 ring-emerald-400/30"
+              : "bg-rose-500/15 text-rose-200 ring-rose-400/30"
+          }`}>
+            {result.ok ? "✓ " : "✕ "}{result.msg}
+          </div>
+        )}
+        <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-10">
           {Array.from({ length: 50 }, (_, i) => i + 1).map((n) => {
             const owner = taken.get(n);
+            const busy = pending === n;
             return (
-              <button key={n} disabled={team === "" || !!owner}
-                onClick={() => register(n)} title={owner ?? ""}
-                className={`num rounded-md py-2 text-sm font-bold transition ${
-                  owner ? "cursor-not-allowed bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30"
+              <button key={n}
+                disabled={busy || (!owner && (team === "" || pending !== null))}
+                onClick={() => {
+                  if (owner) {
+                    const id = ownerMap.get(n) ?? null;
+                    setHighlight(id);
+                    if (id != null) document.getElementById(`lt-${id}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  } else {
+                    register(n);
+                  }
+                }}
+                title={owner ?? ""}
+                className={`num rounded-md py-2 text-sm font-bold transition active:scale-95 ${
+                  busy ? "animate-pulse bg-sky-500 text-white ring-2 ring-sky-300"
+                    : mine.has(n) ? "bg-amber-400/25 text-amber-200 ring-1 ring-amber-300/40 hover:ring-amber-300/70"
+                    : owner ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-400/30 hover:ring-emerald-400/70"
                     : team === "" ? "bg-white/5 text-slate-600"
-                    : "bg-white/10 text-slate-200 hover:bg-sky-500 hover:text-white"
+                    : "bg-white/10 text-slate-200 hover:bg-sky-500 hover:text-white disabled:opacity-50"
                 }`}>
-                {n}
+                {busy ? "…" : n}
               </button>
             );
           })}
         </div>
-        <p className="mt-2 text-xs text-slate-500">綠色 = 已被登記（滑過可看持有隊）。每隊第一個號碼免費，之後 50 × 2^(已持-1)。每次登記獎金池 +100，加購費也入池。</p>
+        <p className="mt-2 text-xs text-slate-500">金色＝你的號碼，綠色＝他隊已登記。每隊第一個號碼免費，之後 50 × 2^(已持-1)。每次登記獎金池 +100，加購費也入池。</p>
+
+        {snap.lottery.numbers.length > 0 && (
+          <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
+            <div className="text-xs font-semibold text-slate-400">各隊持有號碼</div>
+            {snap.teams
+              .map((t) => ({
+                team: t,
+                nums: snap.lottery.numbers
+                  .filter((n) => n.teamId === t.id)
+                  .map((n) => n.number)
+                  .sort((a, b) => a - b),
+              }))
+              .filter((row) => row.nums.length > 0)
+              .map(({ team: t, nums }) => (
+                <div key={t.id} id={`lt-${t.id}`}
+                  className={`flex flex-wrap items-center gap-1.5 rounded-lg px-2 py-1 transition-all ${
+                    highlight === t.id ? "bg-cyan-400/10 ring-1 ring-cyan-400/50 shadow-[0_0_18px_rgba(34,211,238,0.3)]" : ""
+                  }`}>
+                  <span className="text-sm font-medium text-slate-200">{t.name}</span>
+                  <span className="text-xs text-slate-500">（{nums.length}）</span>
+                  <span className="flex flex-wrap gap-1">
+                    {nums.map((x) => (
+                      <span key={x} className="num rounded bg-white/10 px-1.5 py-0.5 text-xs font-bold text-slate-200 ring-1 ring-white/10">
+                        {x}
+                      </span>
+                    ))}
+                  </span>
+                </div>
+              ))}
+          </div>
+        )}
       </Card>
     </div>
   );

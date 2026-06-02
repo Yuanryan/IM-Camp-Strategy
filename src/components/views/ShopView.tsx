@@ -27,7 +27,7 @@ export function ShopView() {
       </Card>
 
       <Card title="展示中（3 張，售出後自動補）">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {data.displays.map((d) => (
             <div key={d.slot} className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
               <div className="text-base font-bold text-cyan-200">{d.cardType ?? "（空）"}</div>
@@ -57,7 +57,7 @@ export function ShopView() {
       </Card>
 
       <Card title="庫存總覽">
-        <ul className="grid grid-cols-2 gap-x-6 text-sm">
+        <ul className="grid grid-cols-1 gap-x-6 text-sm sm:grid-cols-2">
           {data.cards.map((c) => (
             <li key={c.type} className="flex justify-between border-b border-white/10 py-1">
               <span>{c.type}</span>

@@ -52,10 +52,10 @@ function Timer() {
       <div className="flex items-center gap-4">
         <Num className={`text-5xl font-black ${running && sec <= 10 ? "neon-rose" : "text-slate-100"}`}>{mm}:{ss}</Num>
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => { setSec(60); setRunning(true); }} className="chip px-3 py-1.5 text-sm">1 分鐘</button>
-          <button onClick={() => { setSec(180); setRunning(true); }} className="chip px-3 py-1.5 text-sm">3 分鐘</button>
-          <button onClick={() => setRunning((r) => !r)} className="rounded-lg bg-indigo-500 px-3 py-1.5 text-sm font-medium text-white">{running ? "暫停" : "繼續"}</button>
-          <button onClick={() => { setSec(0); setRunning(false); }} className="chip px-3 py-1.5 text-sm">歸零</button>
+          <button onClick={() => { setSec(60); setRunning(true); }} className="chip px-4 py-2 text-sm">1 分鐘</button>
+          <button onClick={() => { setSec(180); setRunning(true); }} className="chip px-4 py-2 text-sm">3 分鐘</button>
+          <button onClick={() => setRunning((r) => !r)} className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950">{running ? "暫停" : "繼續"}</button>
+          <button onClick={() => { setSec(0); setRunning(false); }} className="chip px-4 py-2 text-sm">歸零</button>
         </div>
       </div>
     </Card>
@@ -77,7 +77,7 @@ function Questions() {
       <div className="mb-3 flex flex-wrap gap-2">
         {data.games.map((g) => (
           <button key={g} onClick={() => { setGame(g); setIdx(0); setShow(false); }}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${game === g ? "bg-indigo-500 text-white" : "chip"}`}>{g}</button>
+            className={`rounded-lg px-4 py-2 text-sm font-medium ${game === g ? "bg-cyan-500 text-slate-950" : "chip"}`}>{g}</button>
         ))}
       </div>
       {game && (
@@ -88,9 +88,9 @@ function Questions() {
             {show && q.answer && <div className="text-emerald-300">答案：{q.answer}</div>}
             <div className="mt-3 flex gap-2">
               <button onClick={() => { setIdx(Math.floor(Math.random() * pool.length)); setShow(false); }}
-                className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm text-white">抽一題</button>
-              <button onClick={() => setShow((s) => !s)} className="chip px-3 py-1.5 text-sm">{show ? "隱藏答案" : "看答案"}</button>
-              <button onClick={() => { setIdx((i) => (i + 1) % pool.length); setShow(false); }} className="chip px-3 py-1.5 text-sm">下一題</button>
+                className="rounded-lg bg-sky-600 px-4 py-2 text-sm text-white">抽一題</button>
+              <button onClick={() => setShow((s) => !s)} className="chip px-4 py-2 text-sm">{show ? "隱藏答案" : "看答案"}</button>
+              <button onClick={() => { setIdx((i) => (i + 1) % pool.length); setShow(false); }} className="chip px-4 py-2 text-sm">下一題</button>
             </div>
           </div>
         )

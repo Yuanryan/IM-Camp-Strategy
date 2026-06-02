@@ -22,11 +22,11 @@ export function ProjectionView() {
       {/* 標題列 */}
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-600 text-2xl shadow-lg shadow-fuchsia-500/40">
+          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500 to-yellow-400 text-2xl shadow-lg shadow-cyan-500/40">
             🏮
           </span>
           <div>
-            <h1 className="bg-gradient-to-r from-indigo-200 via-violet-200 to-fuchsia-200 bg-clip-text text-3xl font-black tracking-tight text-transparent">
+            <h1 className="bg-gradient-to-r from-cyan-200 via-cyan-100 to-yellow-200 bg-clip-text text-3xl font-black tracking-tight text-transparent">
               IM 大富翁：迷霧資本戰
             </h1>
             <div className="text-xs text-slate-500">IM Monopoly · Misty Capital War</div>

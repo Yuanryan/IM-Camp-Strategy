@@ -23,16 +23,16 @@ export default async function Home({
   return (
     <main className="relative flex flex-1 flex-col items-center justify-center overflow-hidden p-6">
       {/* 背景光暈 */}
-      <div className="pointer-events-none absolute -top-32 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-violet-500/25 blur-3xl" />
-      <div className="pointer-events-none absolute bottom-0 right-10 h-72 w-72 rounded-full bg-sky-400/20 blur-3xl" />
+      <div className="pointer-events-none absolute -top-32 left-1/2 h-96 w-96 -translate-x-1/2 rounded-full bg-cyan-500/25 blur-3xl" />
+      <div className="pointer-events-none absolute bottom-0 right-10 h-72 w-72 rounded-full bg-yellow-400/15 blur-3xl" />
 
-      <div className="glass relative w-full max-w-md rounded-3xl p-8 shadow-2xl shadow-violet-900/30">
+      <div className="glass relative w-full max-w-md rounded-3xl p-8 shadow-2xl shadow-cyan-900/30">
         <div className="mb-5 flex items-center gap-3">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-600 text-2xl shadow-lg shadow-fuchsia-500/40">
+          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500 to-yellow-400 text-2xl shadow-lg shadow-cyan-500/40">
             🏮
           </span>
           <div>
-            <h1 className="bg-gradient-to-r from-indigo-300 via-violet-200 to-fuchsia-300 bg-clip-text text-2xl font-black text-transparent">
+            <h1 className="bg-gradient-to-r from-cyan-300 via-cyan-200 to-yellow-300 bg-clip-text text-2xl font-black text-transparent">
               IM 大富翁
             </h1>
             <p className="text-sm font-medium text-slate-400">迷霧資本戰・即時系統</p>

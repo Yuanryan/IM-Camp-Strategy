@@ -5,7 +5,7 @@ import { useSnapshot, postJson, ActionButton, TeamSelect, toast } from "@/compon
 import { RewardButtons, giveReward } from "@/components/RewardPanel";
 import { Card } from "@/components/Shell";
 import { Num, EventBanner } from "@/components/ui";
-import { MAP_REWARD_PRESETS } from "@/lib/game";
+import { MAP_REWARD_PRESETS, REGIONS, REGION_UI } from "@/lib/game";
 
 export function MapView() {
   const { snap, mutate } = useSnapshot(2500);
@@ -14,6 +14,7 @@ export function MapView() {
   const [points, setPoints] = useState(0);
   const [note, setNote] = useState("");
   const [stake, setStake] = useState(100);
+  const [tollRegion, setTollRegion] = useState("AURORA");
 
   if (!snap) return <p className="text-sm text-slate-400">載入中…</p>;
   const teams = snap.teams;
@@ -35,6 +36,30 @@ export function MapView() {
       <Card title="格子快捷（光幣 / 卡牌點數）">
         <RewardButtons teamId={team} presets={MAP_REWARD_PRESETS} onDone={mutate} />
         <p className="mt-2 text-xs text-slate-500">事件一加倍格請自行輸入兩倍金額；光靈折抵在交易所購買時輸入。</p>
+      </Card>
+
+      <Card title="收過路費">
+        <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 py-1.5">
+          {REGIONS.map((r) => (
+            <button key={r.code} onClick={() => setTollRegion(r.code)}
+              className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition ${
+                tollRegion === r.code ? `bg-white/10 ${REGION_UI[r.code].text} ring-1 ${REGION_UI[r.code].border}` : "chip"
+              }`}>
+              {r.name}
+            </button>
+          ))}
+        </div>
+        <ActionButton label="向選定小隊收過路費" className="bg-sky-600 text-white hover:bg-sky-500"
+          disabled={team === ""}
+          onAction={async () => {
+            if (team === "") return "請先選付款小隊";
+            const prop = snap.properties.find((p) => p.region === tollRegion);
+            if (!prop) return "該區尚無資本據點";
+            const r = await postJson("/api/exchange/toll", { propertyId: prop.id, payerTeamId: team });
+            await mutate();
+            return `${cur?.name} 已付過路費 ${r.toll}`;
+          }} />
+        <p className="mt-2 text-xs text-slate-500">選好付款小隊與其踩到的區域；系統依該區獨佔隊伍現值自動計算（×10%、四捨五入至 50）。踩到自己獨佔區或該區無獨佔則免收。</p>
       </Card>
 
       <Card title="自訂加減">

@@ -29,103 +29,99 @@ export function ExchangeView() {
     <div className="space-y-4">
       <EventBanner events={snap.activeEvents} />
 
-      {/* 作用對象 */}
-      <Card title="作用對象（購買 / 過戶目標隊、過路費付款隊）">
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
-            <div className="mb-1 text-xs text-slate-400">小隊</div>
+      {/* 作用對象 — 釘選，捲動不動產時仍看得到目前選定小隊 */}
+      <div className="sticky top-14 z-10 -mx-4 border-y border-white/10 bg-slate-950/80 px-4 py-3 backdrop-blur-md sm:mx-0 sm:rounded-2xl sm:border">
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
+          <div className="col-span-2 sm:col-auto">
+            <div className="mb-1 text-xs text-slate-400">作用小隊（購買 / 過戶目標）</div>
             <TeamSelect teams={teams} value={team} onChange={setTeam} />
           </div>
           <label className="text-xs text-slate-400">
-            <div className="mb-1">購買/升級折抵（光靈）</div>
-            <input type="number" value={discount} min={0}
-              onChange={(e) => setDiscount(Number(e.target.value) || 0)} className="fld w-28" />
+            <div className="mb-1">折抵（光靈）</div>
+            <input type="number" inputMode="numeric" value={discount} min={0}
+              onChange={(e) => setDiscount(Number(e.target.value) || 0)} className="fld w-full sm:w-28" />
           </label>
           <label className="text-xs text-slate-400">
-            <div className="mb-1">過戶價金（買方付賣方）</div>
-            <input type="number" value={price} min={0}
-              onChange={(e) => setPrice(Number(e.target.value) || 0)} className="fld w-28" />
+            <div className="mb-1">過戶價金</div>
+            <input type="number" inputMode="numeric" value={price} min={0}
+              onChange={(e) => setPrice(Number(e.target.value) || 0)} className="fld w-full sm:w-28" />
           </label>
         </div>
-        {team !== "" && (
-          <p className="mt-2 text-xs text-slate-400">
-            目前作用：{teams.find((t) => t.id === team)?.name}（光幣 <Num className="neon-gold">{teams.find((t) => t.id === team)?.coins}</Num>）
-          </p>
-        )}
-      </Card>
+        <p className="mt-2 text-xs">
+          {team === "" ? (
+            <span className="text-amber-300/90">⚠ 尚未選擇作用小隊 — 購買 / 過戶前請先選隊</span>
+          ) : (
+            <span className="text-slate-300">
+              目前作用：<b className="text-cyan-300">{teams.find((t) => t.id === team)?.name}</b>
+              （光幣 <Num className="neon-gold">{teams.find((t) => t.id === team)?.coins}</Num>）
+            </span>
+          )}
+        </p>
+      </div>
 
       {/* 不動產列表 */}
       <Card>
-        <div className="mb-3 flex flex-wrap gap-2">
+        <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 py-1.5">
           {REGIONS.map((r) => (
             <button key={r.code} onClick={() => setRegion(r.code)}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition ${
                 region === r.code ? `bg-white/10 ${REGION_UI[r.code].text} ring-1 ${REGION_UI[r.code].border}` : "chip"
               }`}>
               {r.name}
             </button>
           ))}
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs text-slate-500">
-              <tr>
-                <th className="py-1">不動產</th><th>類型</th><th>初始價</th><th>現價</th>
-                <th>持有 / 等級</th><th className="text-right">操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/10">
-              {props.map((p) => {
-                const fee = upgradeFee(p.basePrice, p.level);
-                const buyPrice = Math.max(0, p.basePrice - discount);
-                return (
-                  <tr key={p.id}>
-                    <td className="py-2 font-medium">{p.name}</td>
-                    <td className="text-slate-400">{p.type}</td>
-                    <td><Num className="text-slate-400">{p.basePrice}</Num></td>
-                    <td><PriceTag current={p.currentValue} base={p.basePrice} /></td>
-                    <td>
-                      {p.ownerName ? (
-                        <span className="flex items-center gap-1.5">{p.ownerName}<LevelDots level={p.level} /><span className="chip px-1.5 text-xs">{LEVEL_TAG[p.level]}</span></span>
-                      ) : (
-                        <span className="text-slate-500">未售出</span>
-                      )}
-                    </td>
-                    <td className="text-right">
-                      <div className="flex justify-end gap-1">
-                        {!p.ownerTeamId && (
-                          <ActionButton label={`購買 ${buyPrice}`} className="bg-emerald-600 text-white hover:bg-emerald-500"
-                            disabled={team === ""}
-                            onAction={() => team === "" ? Promise.resolve("請先選小隊") :
-                              act(() => postJson("/api/exchange/buy", { propertyId: p.id, teamId: team, discount }), `已購買 ${p.name}`)} />
-                        )}
-                        {p.ownerTeamId && fee != null && (
-                          <ActionButton label={`升級 ${Math.max(0, fee - discount)}`} className="bg-amber-500 text-white hover:bg-amber-400"
-                            onAction={() => act(() => postJson("/api/exchange/upgrade", { propertyId: p.id, discount }), `已升級 ${p.name}`)} />
-                        )}
-                        {p.ownerTeamId && (
-                          <ActionButton label="過戶" className="chip hover:bg-white/20"
-                            disabled={team === ""}
-                            onAction={() => team === "" ? Promise.resolve("請先選目標隊") :
-                              act(() => postJson("/api/exchange/transfer", { propertyId: p.id, toTeamId: team, price }), `已過戶 ${p.name}`)} />
-                        )}
-                        {p.ownerTeamId && (
-                          <ActionButton label="收過路費" className="bg-sky-600 text-white hover:bg-sky-500"
-                            disabled={team === ""}
-                            onAction={() => team === "" ? Promise.resolve("請先選付款隊") :
-                              act(() => postJson("/api/exchange/toll", { propertyId: p.id, payerTeamId: team }), "已收過路費")} />
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          {props.map((p) => {
+            const fee = upgradeFee(p.basePrice, p.level);
+            const buyPrice = Math.max(0, p.basePrice - discount);
+            return (
+              <div key={p.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="font-bold">{p.name}</div>
+                    <div className="text-xs text-slate-500">{p.type}</div>
+                  </div>
+                  <div className="text-right leading-tight">
+                    <PriceTag current={p.currentValue} base={p.basePrice} />
+                    <div className="text-[11px] text-slate-500">初始 <Num>{p.basePrice}</Num></div>
+                  </div>
+                </div>
+
+                <div className="mt-2 flex items-center gap-1.5 text-sm">
+                  {p.ownerName ? (
+                    <>
+                      <span className="text-slate-300">{p.ownerName}</span>
+                      <LevelDots level={p.level} />
+                      <span className="chip px-1.5 text-xs">{LEVEL_TAG[p.level]}</span>
+                    </>
+                  ) : (
+                    <span className="text-slate-500">未售出</span>
+                  )}
+                </div>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {!p.ownerTeamId && (
+                    <ActionButton label={`購買 ${buyPrice}`} className="min-w-[6rem] flex-1 bg-emerald-600 text-white hover:bg-emerald-500"
+                      disabled={team === ""}
+                      onAction={() => team === "" ? Promise.resolve("請先選小隊") :
+                        act(() => postJson("/api/exchange/buy", { propertyId: p.id, teamId: team, discount }), `已購買 ${p.name}`)} />
+                  )}
+                  {p.ownerTeamId && fee != null && (
+                    <ActionButton label={`升級 ${Math.max(0, fee - discount)}`} className="min-w-[6rem] flex-1 bg-amber-500 text-white hover:bg-amber-400"
+                      onAction={() => act(() => postJson("/api/exchange/upgrade", { propertyId: p.id, discount }), `已升級 ${p.name}`)} />
+                  )}
+                  {p.ownerTeamId && (
+                    <ActionButton label="過戶" className="min-w-[6rem] flex-1 chip hover:bg-white/20"
+                      disabled={team === ""}
+                      onAction={() => team === "" ? Promise.resolve("請先選目標隊") :
+                        act(() => postJson("/api/exchange/transfer", { propertyId: p.id, toTeamId: team, price }), `已過戶 ${p.name}`)} />
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <p className="mt-2 text-xs text-slate-500">
-          收過路費：選好「付款隊」後，點該隊踩到的資本據點，系統會依該區獨佔隊伍與現值自動算金額。
-        </p>
       </Card>
 
       <LedgerCard />

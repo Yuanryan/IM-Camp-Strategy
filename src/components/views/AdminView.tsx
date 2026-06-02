@@ -57,8 +57,8 @@ function TeamRow({ team, onChange }: { team: Snapshot["teams"][number]; onChange
   return (
     <div className="flex flex-wrap items-end gap-2 border-b border-white/10 pb-2">
       <input value={name} onChange={(e) => setName(e.target.value)} className="fld w-28" />
-      <label className="text-xs text-slate-400">光幣<input type="number" value={coins} onChange={(e) => setCoins(Number(e.target.value) || 0)} className="fld ml-1 w-24" /></label>
-      <label className="text-xs text-slate-400">點數<input type="number" value={points} onChange={(e) => setPoints(Number(e.target.value) || 0)} className="fld ml-1 w-20" /></label>
+      <label className="text-xs text-slate-400">光幣<input type="number" inputMode="numeric" value={coins} onChange={(e) => setCoins(Number(e.target.value) || 0)} className="fld ml-1 w-24" /></label>
+      <label className="text-xs text-slate-400">點數<input type="number" inputMode="numeric" value={points} onChange={(e) => setPoints(Number(e.target.value) || 0)} className="fld ml-1 w-20" /></label>
       <span className="text-xs text-slate-400">淨資產 <Num>{team.netWorth}</Num></span>
       <ActionButton label="儲存"
         onAction={async () => { await postJson("/api/admin/team", { teamId: team.id, name, coins, cardPoints: points }); onChange(); return "已儲存"; }} />
@@ -123,8 +123,8 @@ function CardRow({ card, onChange }: { card: { type: string; cost: number; remai
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm">
       <span className="w-28 font-medium">{card.type}</span>
-      <label className="text-xs text-slate-400">點數<input type="number" value={cost} onChange={(e) => setCost(Number(e.target.value) || 0)} className="fld ml-1 w-20" /></label>
-      <label className="text-xs text-slate-400">庫存<input type="number" value={remaining} onChange={(e) => setRemaining(Number(e.target.value) || 0)} className="fld ml-1 w-20" /></label>
+      <label className="text-xs text-slate-400">點數<input type="number" inputMode="numeric" value={cost} onChange={(e) => setCost(Number(e.target.value) || 0)} className="fld ml-1 w-20" /></label>
+      <label className="text-xs text-slate-400">庫存<input type="number" inputMode="numeric" value={remaining} onChange={(e) => setRemaining(Number(e.target.value) || 0)} className="fld ml-1 w-20" /></label>
       <ActionButton label="儲存" className="chip hover:bg-white/20"
         onAction={async () => { await postJson("/api/admin/card", { type: card.type, cost, remaining }); onChange(); return "已儲存"; }} />
     </div>

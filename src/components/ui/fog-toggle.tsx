@@ -11,7 +11,7 @@ export function FogToggle() {
       type="button"
       onClick={toggle}
       aria-pressed={enabled}
-      title={enabled ? "凍結背景霧氣（省電，畫面保留）" : "恢復背景霧氣流動"}
+      title={enabled ? "凍結背景霧氣（省電）" : "恢復背景霧氣流動"}
       className={`flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs transition-all ${
         enabled
           ? "border-cyan-400/30 bg-cyan-400/10 text-cyan-300 hover:bg-cyan-400/20"

@@ -74,8 +74,11 @@ body {
   background: rgba(2, 6, 23, 0.6);
   border: 1px solid rgba(100, 116, 139, 0.55);
   border-radius: 0.65rem;
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
+  padding: 0.55rem 0.8rem;
+  /* 16px：避免 iOS Safari 聚焦時自動放大頁面 */
+  font-size: 1rem;
+  /* 44px：符合觸控點擊區建議（平板/手機） */
+  min-height: 2.75rem;
   color: #e2e8f0;
 }
 .fld::placeholder {
@@ -103,6 +106,16 @@ button {
     border-color 0.15s ease,
     background-color 0.15s ease,
     transform 0.08s ease;
+}
+
+/* 觸控：移除點擊 300ms 延遲與雙擊縮放，互動更跟手 */
+button,
+a,
+select,
+input,
+label,
+[role="button"] {
+  touch-action: manipulation;
 }
 input:focus,
 select:focus {
