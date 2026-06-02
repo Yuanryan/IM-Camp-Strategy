@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { RadioTower } from "lucide-react";
 import { EVENTS } from "@/lib/game";
 
 // 等寬霓虹數字
@@ -55,9 +56,12 @@ export function PriceTag({
 export function EventBanner({ events }: { events: number[] }) {
   if (!events.length) return null;
   return (
-    <div className="breathe rounded-xl border border-fuchsia-500/40 bg-fuchsia-500/10 px-4 py-2 text-sm font-semibold text-fuchsia-200">
-      <span className="mr-2">📡 市場事件進行中</span>
-      {events.map((i) => EVENTS[i]?.name).filter(Boolean).join("　|　")}
+    <div className="breathe flex items-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-200">
+      <RadioTower className="h-4 w-4 shrink-0 text-cyan-400" />
+      <span className="mr-1 shrink-0 tracking-wide">市場事件進行中</span>
+      <span className="text-cyan-300/90">
+        {events.map((i) => EVENTS[i]?.name).filter(Boolean).join("　|　")}
+      </span>
     </div>
   );
 }

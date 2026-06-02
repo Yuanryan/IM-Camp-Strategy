@@ -23,10 +23,11 @@ body {
   font-family: var(--font-geist-sans), "Noto Sans TC", "Microsoft JhengHei",
     "PingFang TC", Arial, sans-serif;
   color: var(--foreground);
+  /* Deep slate-950 base with cyan / yellow neon ambience */
   background:
-    radial-gradient(900px 520px at 12% -120px, rgba(99, 102, 241, 0.22), transparent 60%),
-    radial-gradient(820px 520px at 100% 0%, rgba(34, 211, 238, 0.12), transparent 55%),
-    radial-gradient(700px 600px at 50% 120%, rgba(217, 70, 239, 0.1), transparent 55%),
+    radial-gradient(900px 520px at 10% -140px, rgba(34, 211, 238, 0.16), transparent 60%),
+    radial-gradient(820px 520px at 100% 0%, rgba(250, 204, 21, 0.08), transparent 55%),
+    radial-gradient(720px 600px at 50% 125%, rgba(34, 211, 238, 0.07), transparent 55%),
     #020617;
   background-attachment: fixed;
   min-height: 100vh;
@@ -39,27 +40,36 @@ body {
   letter-spacing: -0.01em;
 }
 
-/* 霓虹金（光幣 / 光源） */
+/* 霓虹金（光幣 / 光源）— Neon Yellow primary accent */
 .neon-gold {
   color: #facc15;
   text-shadow:
     0 0 8px rgba(250, 204, 21, 0.55),
     0 0 18px rgba(250, 204, 21, 0.25);
 }
+/* 霓虹青 — Neon Cyan primary accent */
+.neon-cyan {
+  color: #22d3ee;
+  text-shadow:
+    0 0 8px rgba(34, 211, 238, 0.55),
+    0 0 18px rgba(34, 211, 238, 0.25);
+}
 .neon-emerald {
   color: #34d399;
   text-shadow: 0 0 10px rgba(52, 211, 153, 0.5);
 }
+/* 霓虹玫瑰 — Danger / Debuff */
 .neon-rose {
   color: #fb7185;
   text-shadow: 0 0 10px rgba(244, 63, 94, 0.45);
 }
 
-/* 毛玻璃面板 */
+/* 毛玻璃面板 — bg-white/5 + blur + border-white/10 + subtle inner shadow */
 .glass {
-  background: rgba(15, 23, 42, 0.55); /* slate-900/55 */
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(12px);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
 }
 
 /* 暗色輸入框 / 下拉（取代各頁重複的 class） */
@@ -83,7 +93,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid rgba(167, 139, 250, 0.9);
+  outline: 2px solid rgba(34, 211, 238, 0.9);
   outline-offset: 2px;
   border-radius: 8px;
 }
@@ -99,8 +109,8 @@ button {
 }
 input:focus,
 select:focus {
-  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25);
-  border-color: rgba(139, 92, 246, 0.7);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.22);
+  border-color: rgba(34, 211, 238, 0.7);
 }
 
 /* 事件橫幅呼吸燈 */
@@ -108,11 +118,11 @@ select:focus {
   0%,
   100% {
     opacity: 0.85;
-    box-shadow: 0 0 14px rgba(217, 70, 239, 0.25);
+    box-shadow: 0 0 14px rgba(34, 211, 238, 0.22);
   }
   50% {
     opacity: 1;
-    box-shadow: 0 0 26px rgba(217, 70, 239, 0.5);
+    box-shadow: 0 0 26px rgba(34, 211, 238, 0.45);
   }
 }
 .breathe {
