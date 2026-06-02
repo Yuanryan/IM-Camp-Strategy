@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import MistBackground from "@/components/ui/realistic-fog-background";
+import { FogProvider } from "@/components/ui/fog-context";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,7 +30,10 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col text-slate-100">
-        {children}
+        <FogProvider>
+          <MistBackground />
+          {children}
+        </FogProvider>
       </body>
     </html>
   );

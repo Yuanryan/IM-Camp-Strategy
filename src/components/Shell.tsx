@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { LogOut, Sparkles } from "lucide-react";
 import { ROLE_LABEL, type Role } from "@/lib/game";
+import { FogToggle } from "@/components/ui/fog-toggle";
 
 // 各角色頁面共用外框（透明毛玻璃標題列 + 登出）
 export function Shell({
@@ -15,7 +16,7 @@ export function Shell({
   children: ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen flex-col bg-slate-950">
+    <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/60 backdrop-blur-md">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
@@ -34,12 +35,15 @@ export function Shell({
               {title && <span className="text-xs text-slate-500">{label}</span>}
             </div>
           </div>
-          <form action="/api/logout" method="post">
-            <button className="flex items-center gap-1.5 rounded-lg border border-white/5 px-2.5 py-1.5 text-xs text-slate-400 transition-all hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-400">
-              <LogOut className="h-3.5 w-3.5" />
-              登出
-            </button>
-          </form>
+          <div className="flex items-center gap-2">
+            <FogToggle />
+            <form action="/api/logout" method="post">
+              <button className="flex items-center gap-1.5 rounded-lg border border-white/5 px-2.5 py-1.5 text-xs text-slate-400 transition-all hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-400">
+                <LogOut className="h-3.5 w-3.5" />
+                登出
+              </button>
+            </form>
+          </div>
         </div>
       </header>
       <main className="mx-auto w-full max-w-5xl flex-1 p-4 sm:p-6">{children}</main>

@@ -17,19 +17,16 @@ html {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
   color-scheme: dark;
+  /* Fallback base behind the WebGL fog canvas (shown if WebGL is unavailable) */
+  background-color: #020617; /* slate-950 */
 }
 
 body {
   font-family: var(--font-geist-sans), "Noto Sans TC", "Microsoft JhengHei",
     "PingFang TC", Arial, sans-serif;
   color: var(--foreground);
-  /* Deep slate-950 base with cyan / yellow neon ambience */
-  background:
-    radial-gradient(900px 520px at 10% -140px, rgba(34, 211, 238, 0.16), transparent 60%),
-    radial-gradient(820px 520px at 100% 0%, rgba(250, 204, 21, 0.08), transparent 55%),
-    radial-gradient(720px 600px at 50% 125%, rgba(34, 211, 238, 0.07), transparent 55%),
-    #020617;
-  background-attachment: fixed;
+  /* Transparent so the fixed -z-10 fog canvas (mounted in layout) shows through */
+  background: transparent;
   min-height: 100vh;
 }
 
