@@ -6,6 +6,10 @@ import { SESSION_COOKIE } from "@/lib/auth";
 // 這裡只做「樂觀檢查」：受保護路徑若無 session cookie 就導回登入提示頁。
 // 真正的角色授權在各頁面 / route handler 以 requireRole(Api) 執行。
 export function proxy(request: NextRequest) {
+  // 開發用：AUTH_DISABLED=1 時完全不擋
+  if (process.env.AUTH_DISABLED === "1" || process.env.AUTH_DISABLED === "true") {
+    return NextResponse.next();
+  }
   const hasSession = request.cookies.has(SESSION_COOKIE);
   if (!hasSession) {
     const url = request.nextUrl.clone();

@@ -5,6 +5,11 @@ import { ROLE_HOME, type Role } from "./game";
 
 export const SESSION_COOKIE = "session";
 
+// 開發用：設環境變數 AUTH_DISABLED=1 即可跳過所有登入 / 權限檢查。
+// ⚠️ 正式上線（Vercel）千萬不要設這個。
+export const AUTH_OFF =
+  process.env.AUTH_DISABLED === "1" || process.env.AUTH_DISABLED === "true";
+
 export type Session = {
   tokenId: number;
   token: string;
@@ -13,8 +18,17 @@ export type Session = {
   teamId: number | null;
 };
 
+const devSession = (role: Role, teamId: number | null = null): Session => ({
+  tokenId: 0,
+  token: "dev",
+  role,
+  label: "DEV",
+  teamId,
+});
+
 // 從 cookie 讀出目前登入身分（無則回 null）
 export async function getSession(): Promise<Session | null> {
+  if (AUTH_OFF) return devSession("ADMIN");
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
@@ -32,6 +46,14 @@ export async function getSession(): Promise<Session | null> {
 // 在頁面 / route handler 中強制要求特定角色。
 // 未登入 → 導向登入提示；角色不符 → 導回自己的首頁。
 export async function requireRole(...roles: Role[]): Promise<Session> {
+  if (AUTH_OFF) {
+    const role = (roles[0] ?? "ADMIN") as Role;
+    if (role === "TEAM") {
+      const t = await prisma.team.findFirst({ orderBy: { id: "asc" } });
+      return devSession("TEAM", t?.id ?? null);
+    }
+    return devSession(role);
+  }
   const session = await getSession();
   if (!session) redirect("/");
   if (roles.length && !roles.includes(session.role)) {
@@ -48,6 +70,7 @@ export class AuthError extends Error {
 }
 
 export async function requireRoleApi(...roles: Role[]): Promise<Session> {
+  if (AUTH_OFF) return devSession("ADMIN");
   const session = await getSession();
   if (!session) throw new AuthError(401, "未登入");
   // ADMIN 永遠可通過（總覽 / 調平衡）
