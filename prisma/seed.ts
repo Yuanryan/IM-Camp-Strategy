@@ -19,13 +19,12 @@ const STARTING_CARD_POINTS = 0; // TODO: 各隊初始卡牌點數
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 // 各角色站別數量
 // 每個角色一張 token（同角色共用，不分站別）
-const STATION_COUNTS: Record<Exclude<Role, "TEAM">, number> = {
+const STATION_COUNTS: Partial<Record<Exclude<Role, "TEAM">, number>> = {
   HOST: 1,
   EXCHANGE: 1,
   MAP: 1,
   MOBILE: 1,
   CARDSHOP: 1,
-  LOTTERY: 1,
   PROJECTION: 1,
   ADMIN: 1,
 };
@@ -40,7 +39,7 @@ async function reset() {
   await prisma.accessToken.deleteMany();
   await prisma.property.deleteMany();
   await prisma.team.deleteMany();
-  await prisma.question.deleteMany();
+  // 題庫不重置：由 prisma/load-questions.ts 另外維護，重跑 seed 不動它
   await prisma.functionCard.deleteMany();
   await prisma.shopDisplay.deleteMany();
   await prisma.gameState.deleteMany();
@@ -70,15 +69,7 @@ async function main() {
     });
   }
 
-  // 範例題庫（流動關主可在 admin 補完整題庫）
-  const sampleQuestions = [
-    { gameName: "猜歌", prompt: "（範例）播放一段旋律，請小隊搶答歌名", answer: "—" },
-    { gameName: "比手畫腳", prompt: "（範例）長頸鹿", answer: "長頸鹿", difficulty: "易" },
-    { gameName: "比手畫腳", prompt: "（範例）資產負債表", answer: "資產負債表", difficulty: "難" },
-    { gameName: "默契大考驗", prompt: "（範例）說出一種台大常見的早餐", answer: "—" },
-    { gameName: "口型猜答案", prompt: "（範例）資訊管理", answer: "資訊管理" },
-  ];
-  await prisma.question.createMany({ data: sampleQuestions });
+  // 題庫由 prisma/load-questions.ts 維護，seed 不碰
 
   // 小隊
   const teams = [];

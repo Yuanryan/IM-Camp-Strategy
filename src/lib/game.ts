@@ -214,6 +214,56 @@ export function spinWheel(): number {
   return 1;
 }
 
+// ── 好運卡 / 厄運卡（光源點 / 迷霧區抽卡）─────────────────────
+// 二驗：刪動產、情報牌實體發放，這裡只收「會動到光幣」的卡。
+export type GoodCard = {
+  name: string;
+  task: string;
+  difficulty: string;
+  success: number; // 成功獎勵光幣
+  fail: number; // 失敗獎勵光幣
+  criteria: string; // 判定
+};
+
+export type BadOutcome = { label: string; deduct: number }; // deduct 為要扣的光幣（正數）
+export type BadCard = {
+  name: string;
+  kind: "扣錢牌" | "懲罰任務牌";
+  content: string; // 扣錢牌＝減免任務；懲罰牌＝懲罰內容
+  difficulty?: string;
+  criteria?: string;
+  outcomes: BadOutcome[];
+};
+
+// 好運卡：光幣牌
+export const GOOD_LUCK_CARDS: GoodCard[] = [
+  { name: "晨光大禮", task: "跟關主猜拳，過半數隊員贏過關主", difficulty: "簡單", success: 150, fail: 0, criteria: "半數以上勝利" },
+  { name: "繁星獎池", task: "冷知識 5 題答對 3 題", difficulty: "中等", success: 250, fail: 0, criteria: "答對 3 題" },
+  { name: "資本大賞", task: "全隊用身體呈現指定國字，隊輔猜出 3 題", difficulty: "中等", success: 300, fail: 0, criteria: "猜出 3 題" },
+  { name: "光幣雙倍", task: "繞口令完成 3 題", difficulty: "中等", success: 300, fail: 0, criteria: "完成 3 題" },
+  { name: "迷霧財寶", task: "說出 10 位工人的本名", difficulty: "困難", success: 500, fail: 100, criteria: "名字正確" },
+  { name: "福星高照", task: "比手畫腳，3 分鐘內猜對 8 題", difficulty: "中等", success: 300, fail: 0, criteria: "猜對 8 題" },
+  { name: "默契滿分", task: "默契大考驗（關鍵字全隊同動作），完成 3 題", difficulty: "簡單", success: 150, fail: 0, criteria: "完成 3 題" },
+];
+
+// 厄運卡：扣錢牌 + 懲罰任務牌
+export const BAD_LUCK_CARDS: BadCard[] = [
+  { name: "迷霧收費站", kind: "扣錢牌", content: "減免任務：猜拳，過半數隊員贏過關主", criteria: "半數以上勝利", outcomes: [{ label: "未完成", deduct: 200 }, { label: "完成減免", deduct: 100 }] },
+  { name: "資本寒流", kind: "扣錢牌", content: "減免任務：每人做 15 下波比跳", criteria: "全員完成", outcomes: [{ label: "未完成", deduct: 300 }, { label: "完成減免", deduct: 100 }] },
+  { name: "黑市稅捐", kind: "扣錢牌", content: "減免任務：繞口令完成 2 題", criteria: "完成 2 題", outcomes: [{ label: "未完成", deduct: 200 }, { label: "完成減免", deduct: 100 }] },
+  { name: "迷霧罰款", kind: "扣錢牌", content: "減免任務：冷知識 5 題答對 3 題", criteria: "答對 3 題", outcomes: [{ label: "未完成", deduct: 100 }, { label: "完成減免", deduct: 50 }] },
+  { name: "暗影徵收", kind: "扣錢牌", content: "減免任務：默契大考驗 5 題完成 3 題", criteria: "完成 3 題", outcomes: [{ label: "未完成", deduct: 100 }, { label: "完成減免", deduct: 50 }] },
+  { name: "影焰稅單", kind: "扣錢牌", content: "減免任務：說出 10 位工人的本名", criteria: "名字正確", outcomes: [{ label: "未完成", deduct: 100 }, { label: "完成減免", deduct: 0 }] },
+  { name: "大頭貼時刻", kind: "懲罰任務牌", content: "全隊鬼臉五連拍，關主拍照存檔", difficulty: "簡單", outcomes: [{ label: "完成", deduct: 0 }, { label: "未完成", deduct: 100 }] },
+  { name: "訓練時間", kind: "懲罰任務牌", content: "每人捲腹 10 下", difficulty: "簡單", outcomes: [{ label: "完成", deduct: 0 }, { label: "未完成", deduct: 100 }] },
+  { name: "神秘書法家", kind: "懲罰任務牌", content: "用屁股寫指定國字，隊輔猜對才完成", difficulty: "中等", outcomes: [{ label: "猜中", deduct: 0 }, { label: "沒猜中", deduct: 100 }] },
+  { name: "霧中魅力秀", kind: "懲罰任務牌", content: "輪流擺自選姿勢，關主評分", difficulty: "簡單", outcomes: [{ label: "及格", deduct: 0 }, { label: "不及格", deduct: 200 }] },
+  { name: "影焰跳操", kind: "懲罰任務牌", content: "每人開合跳 20 下", difficulty: "中等", outcomes: [{ label: "完成", deduct: 0 }, { label: "未完成", deduct: 100 }] },
+  { name: "友善外交", kind: "懲罰任務牌", content: "找三個工人，分別說出各自三個優點", difficulty: "簡單", outcomes: [{ label: "完成", deduct: 0 }, { label: "沒說", deduct: 400 }] },
+  { name: "美麗指數", kind: "懲罰任務牌", content: "說出本隊最帥或最美的人並說明理由", difficulty: "簡單", outcomes: [{ label: "完成", deduct: 0 }] },
+  { name: "部首大考驗", kind: "懲罰任務牌", content: "90 秒內寫出指定數量含該部首的字", difficulty: "困難", outcomes: [{ label: "完成", deduct: 0 }, { label: "失敗", deduct: 100 }] },
+];
+
 // 功能卡清單（cost = 卡牌點數，企畫書未定，預設值可於 admin 調整）
 export const FUNCTION_CARDS: {
   type: string;
