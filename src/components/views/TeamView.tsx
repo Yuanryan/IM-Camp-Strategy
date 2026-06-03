@@ -1,13 +1,21 @@
 "use client";
 
-import { useSnapshot } from "@/components/client";
+import { useState } from "react";
+import useSWR from "swr";
+import { fetcher, useSnapshot } from "@/components/client";
 import { Card } from "@/components/Shell";
-import { Num, PriceTag, LevelDots, EventBanner } from "@/components/ui";
+import { Num, PriceTag, LevelDots, EventBanner, HudTabs } from "@/components/ui";
+import { TradeView } from "@/components/views/TradeView";
+import { Wallet, ArrowLeftRight } from "lucide-react";
 
 const LEVEL_TAG = ["已購", "1級", "2級", "3級"];
 
 export function TeamView({ teamId }: { teamId: number }) {
   const { snap, error } = useSnapshot(3000);
+  const { data: trades } = useSWR<{ incoming: unknown[] }>("/api/trade", fetcher, { refreshInterval: 3000 });
+  const [tab, setTab] = useState<"assets" | "trade">("assets");
+  const incoming = trades?.incoming?.length ?? 0;
+
   if (error) return <p className="text-sm text-slate-400">連線錯誤，重試中…</p>;
   if (!snap) return <p className="text-sm text-slate-400">載入中…</p>;
 
@@ -17,8 +25,32 @@ export function TeamView({ teamId }: { teamId: number }) {
 
   if (!me) return <p className="text-sm text-slate-400">找不到隊伍資料</p>;
 
+  const tradeLabel = (
+    <span className="flex items-center gap-1.5">
+      交易
+      {incoming > 0 && (
+        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-rose-500 px-1 text-[11px] font-bold text-white shadow-[0_0_8px_rgba(244,63,94,0.6)]">
+          {incoming}
+        </span>
+      )}
+    </span>
+  );
+
   return (
     <div className="space-y-4">
+      <HudTabs
+        active={tab}
+        onChange={setTab}
+        tabs={[
+          ["assets", "我的資產", <Wallet className="h-4 w-4" />],
+          ["trade", tradeLabel, <ArrowLeftRight className="h-4 w-4" />],
+        ] as const}
+      />
+
+      {tab === "trade" ? (
+        <TradeView teamId={teamId} />
+      ) : (
+      <>
       <EventBanner events={snap.activeEvents} />
 
       {/* 光幣 — 最大最亮 */}
@@ -74,6 +106,8 @@ export function TeamView({ teamId }: { teamId: number }) {
           </div>
         )}
       </Card>
+      </>
+      )}
     </div>
   );
 }

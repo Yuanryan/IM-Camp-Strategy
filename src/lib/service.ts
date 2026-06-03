@@ -239,6 +239,91 @@ export async function payToll(params: {
   });
 }
 
+// ── 小隊間交易（單向轉帳；發起即凍結發起方資源）──────────────
+export async function createTrade(params: {
+  fromTeamId: number;
+  toTeamId: number;
+  coins: number;
+  cardPoints: number;
+  byToken?: string;
+}) {
+  const { fromTeamId, toTeamId, coins, cardPoints, byToken } = params;
+  if (fromTeamId === toTeamId) throw new Error("不能跟自己交易");
+  if (coins < 0 || cardPoints < 0) throw new Error("數量需為正");
+  if (coins === 0 && cardPoints === 0) throw new Error("請輸入交易內容");
+  return prisma.$transaction(async (tx) => {
+    const from = await tx.team.findUnique({ where: { id: fromTeamId } });
+    const to = await tx.team.findUnique({ where: { id: toTeamId } });
+    if (!from || !to) throw new Error("找不到小隊");
+    if (from.coins < coins) throw new Error(`光幣不足（需 ${coins}）`);
+    if (from.cardPoints < cardPoints) throw new Error(`卡牌點數不足（需 ${cardPoints}）`);
+
+    // 凍結：發起當下先從發起方扣除
+    await tx.team.update({
+      where: { id: fromTeamId },
+      data: { coins: { decrement: coins }, cardPoints: { decrement: cardPoints } },
+    });
+    const trade = await tx.trade.create({
+      data: { fromTeamId, toTeamId, coins, cardPoints, status: "PENDING" },
+    });
+    if (coins) await logLedger(tx, { teamId: fromTeamId, kind: "coins", delta: -coins, note: `發起交易給 ${to.name}（凍結）`, byToken });
+    if (cardPoints) await logLedger(tx, { teamId: fromTeamId, kind: "cardPoints", delta: -cardPoints, note: `發起交易給 ${to.name}（凍結）`, byToken });
+    return { ok: true, tradeId: trade.id };
+  });
+}
+
+export async function respondTrade(params: {
+  tradeId: number;
+  actorTeamId: number;
+  action: "accept" | "reject" | "cancel";
+  byToken?: string;
+}) {
+  const { tradeId, actorTeamId, action, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const trade = await tx.trade.findUnique({ where: { id: tradeId } });
+    if (!trade || trade.status !== "PENDING") throw new Error("交易不存在或已處理");
+
+    // 授權：接受/拒絕只能收受方，取消只能發起方
+    if ((action === "accept" || action === "reject") && trade.toTeamId !== actorTeamId) {
+      throw new Error("只有對方可以接受或拒絕");
+    }
+    if (action === "cancel" && trade.fromTeamId !== actorTeamId) {
+      throw new Error("只有發起方可以取消");
+    }
+
+    // 原子改狀態，擋雙重處理 / 連點
+    const status = action === "accept" ? "ACCEPTED" : action === "reject" ? "REJECTED" : "CANCELLED";
+    const upd = await tx.trade.updateMany({
+      where: { id: tradeId, status: "PENDING" },
+      data: { status, resolvedAt: new Date() },
+    });
+    if (upd.count === 0) throw new Error("交易已被處理");
+
+    const from = await tx.team.findUnique({ where: { id: trade.fromTeamId } });
+    const to = await tx.team.findUnique({ where: { id: trade.toTeamId } });
+
+    if (action === "accept") {
+      // 撥給收受方
+      await tx.team.update({
+        where: { id: trade.toTeamId },
+        data: { coins: { increment: trade.coins }, cardPoints: { increment: trade.cardPoints } },
+      });
+      if (trade.coins) await logLedger(tx, { teamId: trade.toTeamId, kind: "coins", delta: trade.coins, note: `交易收入（來自 ${from?.name}）`, byToken });
+      if (trade.cardPoints) await logLedger(tx, { teamId: trade.toTeamId, kind: "cardPoints", delta: trade.cardPoints, note: `交易收入（來自 ${from?.name}）`, byToken });
+    } else {
+      // 退回發起方（拒絕 / 取消）
+      await tx.team.update({
+        where: { id: trade.fromTeamId },
+        data: { coins: { increment: trade.coins }, cardPoints: { increment: trade.cardPoints } },
+      });
+      const why = action === "reject" ? `對方拒絕（${to?.name}）` : "自行取消";
+      if (trade.coins) await logLedger(tx, { teamId: trade.fromTeamId, kind: "coins", delta: trade.coins, note: `交易退回：${why}`, byToken });
+      if (trade.cardPoints) await logLedger(tx, { teamId: trade.fromTeamId, kind: "cardPoints", delta: trade.cardPoints, note: `交易退回：${why}`, byToken });
+    }
+    return { ok: true, action };
+  });
+}
+
 // ── 卡牌商店 ─────────────────────────────────────────────────
 async function restockSlot(tx: Tx, slot: number) {
   const displays = await tx.shopDisplay.findMany();

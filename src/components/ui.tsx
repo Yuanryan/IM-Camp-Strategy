@@ -72,7 +72,7 @@ export function HudTabs<T extends string>({
   active,
   onChange,
 }: {
-  tabs: readonly (readonly [T, string, ReactNode])[];
+  tabs: readonly (readonly [T, ReactNode, ReactNode])[];
   active: T;
   onChange: (key: T) => void;
 }) {

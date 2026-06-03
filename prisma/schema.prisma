@@ -109,3 +109,18 @@ model Ledger {
   reversed  Boolean  @default(false)
   createdAt DateTime @default(now())
 }
+
+// 小隊間交易（單向轉帳；發起即凍結發起方資源，接受才撥給對方）
+model Trade {
+  id         Int       @id @default(autoincrement())
+  fromTeamId Int // 發起方
+  toTeamId   Int // 收受方
+  coins      Int       @default(0)
+  cardPoints Int       @default(0)
+  status     String    @default("PENDING") // PENDING ACCEPTED REJECTED CANCELLED
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([toTeamId, status])
+  @@index([fromTeamId, status])
+}
