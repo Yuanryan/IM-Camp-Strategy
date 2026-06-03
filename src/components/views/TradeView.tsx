@@ -1,14 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher, useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { Card } from "@/components/Shell";
 import { Num } from "@/components/ui";
+import { TransactionAnimation, type TxResult } from "@/components/TransactionAnimation";
 
+type Resolved = { id: number; toTeamName: string; coins: number; cardPoints: number };
 type TradeData = {
   incoming: { id: number; fromTeamName: string; coins: number; cardPoints: number }[];
   outgoing: { id: number; toTeamName: string; coins: number; cardPoints: number }[];
+  justAccepted: Resolved[];
+  justRejected: Resolved[];
 };
 
 function TradeAmt({ coins, points }: { coins: number; points: number }) {
@@ -27,6 +31,32 @@ export function TradeView({ teamId }: { teamId: number }) {
   const [to, setTo] = useState<number | "">("");
   const [coins, setCoins] = useState(0);
   const [points, setPoints] = useState(0);
+  const [result, setResult] = useState<TxResult>(null);
+  const [busyId, setBusyId] = useState<number | null>(null); // 該列處理中：接受/拒絕互鎖
+  const celebrated = useRef<Set<number>>(new Set());
+  const initialized = useRef(false);
+
+  // 發起方：偵測到自己發出的交易被對方「接受 / 拒絕」→ 跳對應動畫
+  useEffect(() => {
+    if (!data) return;
+    const accepted = data.justAccepted.map((t) => ({ ...t, kind: "accepted" as const }));
+    const rejected = data.justRejected.map((t) => ({ ...t, kind: "rejected" as const }));
+    const list = [...accepted, ...rejected];
+    if (!initialized.current) {
+      list.forEach((t) => celebrated.current.add(t.id)); // 首次載入不補播舊的
+      initialized.current = true;
+      return;
+    }
+    const fresh = list.find((t) => !celebrated.current.has(t.id));
+    if (fresh) {
+      list.forEach((t) => celebrated.current.add(t.id));
+      setResult(
+        fresh.kind === "accepted"
+          ? { status: "success", detail: <span>對方已接受 — 給 {fresh.toTeamName} <TradeAmt coins={fresh.coins} points={fresh.cardPoints} /></span> }
+          : { status: "rejected", detail: <span>{fresh.toTeamName} 拒絕了交易（<TradeAmt coins={fresh.coins} points={fresh.cardPoints} /> 已退回）</span> },
+      );
+    }
+  }, [data]);
 
   if (!snap || !data) return <p className="text-sm text-slate-400">載入中…</p>;
   const me = snap.teams.find((t) => t.id === teamId);
@@ -40,6 +70,8 @@ export function TradeView({ teamId }: { teamId: number }) {
 
   return (
     <div className="space-y-4">
+      <TransactionAnimation result={result} onClose={() => setResult(null)} />
+
       {/* 發起交易 */}
       <Card title="發起交易（送出光幣 / 卡牌點數）">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -90,9 +122,33 @@ export function TradeView({ teamId }: { teamId: number }) {
                 </div>
                 <div className="mt-2 flex gap-2">
                   <ActionButton label="接受" className="bg-emerald-600 text-white hover:bg-emerald-500"
-                    onAction={() => act(t.id, "accept", "已接受交易")} />
+                    disabled={busyId === t.id}
+                    onAction={async () => {
+                      setBusyId(t.id);
+                      try {
+                        await postJson("/api/trade/action", { tradeId: t.id, action: "accept" });
+                        await Promise.all([mutate(), refreshSnap()]);
+                        setResult({
+                          status: "success",
+                          detail: <span>收到 {t.fromTeamName} <TradeAmt coins={t.coins} points={t.cardPoints} /></span>,
+                        });
+                      } catch (e) {
+                        await Promise.all([mutate(), refreshSnap()]);
+                        setResult({ status: "failed", detail: e instanceof Error ? e.message : "交易失敗" });
+                      } finally {
+                        setBusyId(null);
+                      }
+                    }} />
                   <ActionButton label="拒絕" className="bg-rose-500/20 text-rose-300 hover:bg-rose-500/30"
-                    onAction={() => act(t.id, "reject", "已拒絕，資源退回對方")} />
+                    disabled={busyId === t.id}
+                    onAction={async () => {
+                      setBusyId(t.id);
+                      try {
+                        return await act(t.id, "reject", "已拒絕，資源退回對方");
+                      } finally {
+                        setBusyId(null);
+                      }
+                    }} />
                 </div>
               </li>
             ))}
@@ -112,7 +168,16 @@ export function TradeView({ teamId }: { teamId: number }) {
                   給 <b>{t.toTeamName}</b> <TradeAmt coins={t.coins} points={t.cardPoints} />
                   <span className="ml-2 text-xs text-amber-300">待對方接受</span>
                 </div>
-                <ActionButton label="取消" className="chip" onAction={() => act(t.id, "cancel", "已取消，資源退回")} />
+                <ActionButton label="取消" className="chip"
+                  onAction={async () => {
+                    try {
+                      await postJson("/api/trade/action", { tradeId: t.id, action: "cancel" });
+                      await Promise.all([mutate(), refreshSnap()]);
+                      setResult({ status: "canceled", detail: <span>已取消給 {t.toTeamName} 的交易（<TradeAmt coins={t.coins} points={t.cardPoints} /> 退回）</span> });
+                    } catch (e) {
+                      setResult({ status: "failed", detail: e instanceof Error ? e.message : "取消失敗" });
+                    }
+                  }} />
               </li>
             ))}
           </ul>

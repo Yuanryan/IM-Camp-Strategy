@@ -11,8 +11,18 @@ export const GET = apiRoute(["TEAM"], async ({ session }) => {
     where: { status: "PENDING", OR: [{ fromTeamId: me }, { toTeamId: me }] },
     orderBy: { id: "desc" },
   });
+  // 我發出、最近 20 秒內被對方「接受 / 拒絕」的交易（讓發起方也跳動畫）
+  const recent = await prisma.trade.findMany({
+    where: {
+      fromTeamId: me,
+      status: { in: ["ACCEPTED", "REJECTED"] },
+      resolvedAt: { gte: new Date(Date.now() - 20_000) },
+    },
+    orderBy: { id: "desc" },
+  });
   const teams = await prisma.team.findMany({ select: { id: true, name: true } });
   const nameOf = (id: number) => teams.find((t) => t.id === id)?.name ?? `#${id}`;
+  const shape = (t: (typeof recent)[number]) => ({ id: t.id, toTeamName: nameOf(t.toTeamId), coins: t.coins, cardPoints: t.cardPoints });
 
   return {
     incoming: trades
@@ -21,6 +31,8 @@ export const GET = apiRoute(["TEAM"], async ({ session }) => {
     outgoing: trades
       .filter((t) => t.fromTeamId === me)
       .map((t) => ({ id: t.id, toTeamName: nameOf(t.toTeamId), coins: t.coins, cardPoints: t.cardPoints })),
+    justAccepted: recent.filter((t) => t.status === "ACCEPTED").map(shape),
+    justRejected: recent.filter((t) => t.status === "REJECTED").map(shape),
   };
 });
 
