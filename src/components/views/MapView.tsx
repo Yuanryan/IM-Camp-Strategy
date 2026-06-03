@@ -7,8 +7,9 @@ import { LotteryView } from "@/components/views/LotteryView";
 import { WheelView } from "@/components/views/WheelView";
 import { LuckDraw } from "@/components/views/LuckDraw";
 import { Card } from "@/components/Shell";
-import { Num, EventBanner } from "@/components/ui";
+import { Num, EventBanner, HudTabs } from "@/components/ui";
 import { MAP_REWARD_PRESETS, REGIONS, REGION_UI } from "@/lib/game";
+import { Map, CircleDollarSign, LoaderPinwheel } from "lucide-react";
 
 export function MapView() {
   const { snap, mutate } = useSnapshot(2500);
@@ -26,17 +27,16 @@ export function MapView() {
 
   return (
     <div className="space-y-4">
-      {/* 分頁：地圖關主 / 大樂透 */}
-      <div className="flex gap-2">
-        {([["map", "地圖關主"], ["lottery", "大樂透"], ["wheel", "命運輪盤"]] as const).map(([key, label]) => (
-          <button key={key} onClick={() => setTab(key)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-              tab === key ? "bg-cyan-500 text-slate-950" : "chip"
-            }`}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* 分頁：地圖關主 / 大樂透 / 命運輪盤 */}
+      <HudTabs
+        active={tab}
+        onChange={setTab}
+        tabs={[
+          ["map", "地圖中控站", <Map className="h-4 w-4" />],
+          ["lottery", "大樂透", <CircleDollarSign className="h-4 w-4" />],
+          ["wheel", "命運輪盤", <LoaderPinwheel className="h-4 w-4" />],
+        ] as const}
+      />
 
       {tab === "lottery" ? (
         <LotteryView />

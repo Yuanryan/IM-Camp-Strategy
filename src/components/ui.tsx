@@ -65,3 +65,36 @@ export function EventBanner({ events }: { events: number[] }) {
     </div>
   );
 }
+
+// 科技感 HUD 頁籤（發光底線）— 各分頁頁面共用
+export function HudTabs<T extends string>({
+  tabs,
+  active,
+  onChange,
+}: {
+  tabs: readonly (readonly [T, string, ReactNode])[];
+  active: T;
+  onChange: (key: T) => void;
+}) {
+  return (
+    <div className="flex gap-6 border-b border-white/10 pb-1">
+      {tabs.map(([key, label, icon]) => (
+        <button
+          key={key}
+          onClick={() => onChange(key)}
+          className={`relative flex items-center gap-2 px-2 py-3 text-sm font-bold tracking-wider transition-all ${
+            active === key
+              ? "text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]"
+              : "text-slate-500 hover:text-slate-300"
+          }`}
+        >
+          {icon}
+          {label}
+          {active === key && (
+            <span className="absolute bottom-[-1px] left-0 h-[2px] w-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,1)]" />
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}

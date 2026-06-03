@@ -56,7 +56,7 @@ export function Card({
   children,
   className = "",
 }: {
-  title?: string;
+  title?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {

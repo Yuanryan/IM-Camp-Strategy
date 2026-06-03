@@ -5,8 +5,9 @@ import useSWR from "swr";
 import { fetcher, useSnapshot, TeamSelect, ActionButton } from "@/components/client";
 import { RewardButtons, CustomGive } from "@/components/RewardPanel";
 import { Card } from "@/components/Shell";
-import { Num, EventBanner } from "@/components/ui";
+import { Num, EventBanner, HudTabs } from "@/components/ui";
 import { MOBILE_REWARD_PRESETS } from "@/lib/game";
+import { Gamepad2, BookOpen, Timer as TimerIcon, Minus, Plus, Pause, Play, RotateCcw } from "lucide-react";
 
 // 題庫 CRUD（流動關主可編輯）
 async function sendQuestion(method: string, body: unknown) {
@@ -35,16 +36,14 @@ export function MobileView() {
   return (
     <div className="space-y-4">
       {/* 分頁 */}
-      <div className="flex gap-2">
-        {([["ops", "關主操作"], ["bank", "題庫管理"]] as const).map(([key, label]) => (
-          <button key={key} onClick={() => setTab(key)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
-              tab === key ? "bg-cyan-500 text-slate-950" : "chip"
-            }`}>
-            {label}
-          </button>
-        ))}
-      </div>
+      <HudTabs
+        active={tab}
+        onChange={setTab}
+        tabs={[
+          ["ops", "關主操作", <Gamepad2 className="h-4 w-4" />],
+          ["bank", "題庫管理", <BookOpen className="h-4 w-4" />],
+        ] as const}
+      />
 
       {tab === "ops" ? (
         <>
@@ -71,26 +70,133 @@ export function MobileView() {
   );
 }
 
+
 function Timer() {
   const [sec, setSec] = useState(0);
+  const [totalSec, setTotalSec] = useState(0); 
   const [running, setRunning] = useState(false);
+
   useEffect(() => {
     if (!running) return;
-    const id = setInterval(() => setSec((s) => (s > 0 ? s - 1 : (setRunning(false), 0))), 1000);
+    const id = setInterval(() => {
+      setSec((s) => {
+        if (s > 1) return s - 1;
+        setRunning(false);
+        return 0;
+      });
+    }, 1000);
     return () => clearInterval(id);
   }, [running]);
+
+  const adjustTime = (amount: number) => {
+    const newSec = Math.max(0, sec + amount);
+    setSec(newSec);
+    setTotalSec(newSec);
+  };
+
   const mm = String(Math.floor(sec / 60)).padStart(2, "0");
   const ss = String(sec % 60).padStart(2, "0");
+  const isDanger = running && sec <= 10 && sec > 0;
+
+  // SVG 圓環計算邏輯
+  const radius = 120;
+  const stroke = 8;
+  const normalizedRadius = radius - stroke * 2;
+  const circumference = normalizedRadius * 2 * Math.PI;
+  const strokeDashoffset = totalSec > 0 ? circumference - (sec / totalSec) * circumference : circumference;
+
   return (
-    <Card title="計時器">
-      <div className="flex items-center gap-4">
-        <Num className={`text-5xl font-black ${running && sec <= 10 ? "neon-rose" : "text-slate-100"}`}>{mm}:{ss}</Num>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => { setSec(60); setRunning(true); }} className="chip px-4 py-2 text-sm">1 分鐘</button>
-          <button onClick={() => { setSec(180); setRunning(true); }} className="chip px-4 py-2 text-sm">3 分鐘</button>
-          <button onClick={() => setRunning((r) => !r)} className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-medium text-slate-950">{running ? "暫停" : "繼續"}</button>
-          <button onClick={() => { setSec(0); setRunning(false); }} className="chip px-4 py-2 text-sm">歸零</button>
+    <Card title={<div className="flex items-center gap-2"><TimerIcon className="h-5 w-5 text-rose-400" /> 任務計時器</div>}>
+      <div className="flex flex-col items-center gap-6 rounded-lg border border-white/5 bg-slate-950/50 p-6">
+        
+        {/* 圓環與時間顯示區 (Relative Container) */}
+        <div className="relative flex items-center justify-center w-[280px] h-[280px] md:w-[320px] md:h-[320px]">
+          
+          {/* 背景軌道圓環 */}
+          <svg className="absolute inset-0 w-full h-full -rotate-90 transform" viewBox="0 0 240 240">
+            <circle
+              cx="120"
+              cy="120"
+              r={normalizedRadius}
+              fill="transparent"
+              strokeWidth={stroke}
+              className="stroke-slate-800/50"
+            />
+            {/* 動態進度圓環 */}
+            <circle
+              cx="120"
+              cy="120"
+              r={normalizedRadius}
+              fill="transparent"
+              strokeWidth={stroke}
+              strokeDasharray={circumference + " " + circumference}
+              style={{ strokeDashoffset, transition: "stroke-dashoffset 1s linear" }}
+              strokeLinecap="round"
+              className={`transition-colors duration-300 ${
+                isDanger 
+                  ? "stroke-rose-500 drop-shadow-[0_0_8px_rgba(225,29,72,0.4)]" 
+                  : "stroke-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.25)]"
+              }`}
+            />
+          </svg>
+
+          {/* 中央資訊區：使用絕對定位讓動畫不互相干擾 */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            
+            {/* 時間數字 (暫停時偏上，開始時滑到中央並放大) */}
+            <div className={`absolute transition-all duration-500 ease-out ${
+              running 
+                ? "translate-y-0 scale-[1.15] md:scale-[1.2]" // 執行中：回到正中心並放大 15%~25%
+                : "-translate-y-5 md:-translate-y-6 scale-100"  // 暫停時：稍微往上提給按鈕空間
+            }`}>
+              <Num className={`text-6xl md:text-7xl font-black font-mono tracking-widest ${
+                isDanger ? "text-rose-500 drop-shadow-[0_0_15px_rgba(225,29,72,0.8)] animate-pulse" :
+                running ? "text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.6)]" :
+                "text-slate-200"
+              }`}>
+                {mm}:{ss}
+              </Num>
+            </div>
+
+            {/* 微調按鈕群 (暫停時顯示在時間下方，開始時往下降並淡出) */}
+            <div className={`absolute flex gap-2 transition-all duration-500 ease-out ${
+              running 
+                ? "opacity-0 translate-y-16 md:translate-y-20 pointer-events-none scale-90" // 執行中：往下沉並隱藏
+                : "opacity-100 translate-y-10 md:translate-y-12 scale-100"                   // 暫停時：顯示在正下方
+            }`}>
+              <button onClick={() => adjustTime(-30)} 
+                className="flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 border border-white/10 px-3 py-1.5 text-xs md:text-sm font-bold text-slate-300 transition-colors active:scale-95">
+                -30s
+              </button>
+              <button onClick={() => adjustTime(30)} 
+                className="flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 border border-white/10 px-3 py-1.5 text-xs md:text-sm font-bold text-slate-300 transition-colors active:scale-95">
+                +30s
+              </button>
+              <button onClick={() => adjustTime(60)} 
+                className="flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 border border-white/10 px-3 py-1.5 text-xs md:text-sm font-bold text-slate-300 transition-colors active:scale-95">
+                +1m
+              </button>
+            </div>
+          </div>
         </div>
+
+        {/* 底部大按鈕操作區 (Play/Pause & Reset) */}
+        <div className="flex w-full gap-3 mt-2 md:px-8">
+          <button onClick={() => setRunning((r) => !r)} disabled={sec === 0}
+            className={`group flex flex-1 items-center justify-center gap-2 rounded-xl px-6 py-4 md:py-5 text-base md:text-lg font-bold tracking-widest transition-all active:scale-[0.98] disabled:scale-100 disabled:opacity-40 ${
+              running
+                ? "border border-amber-500/50 bg-amber-500/20 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)] hover:bg-amber-500/30"
+                : "border border-cyan-500/50 bg-cyan-500/20 text-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.3)] hover:bg-cyan-500/30 hover:shadow-[0_0_20px_rgba(34,211,238,0.5)]"
+            }`}>
+            {running ? <><Pause className="h-6 w-6" /></> : <><Play className="h-6 w-6" /></>}
+          </button>
+          
+          <button onClick={() => { setSec(0); setTotalSec(0); setRunning(false); }}
+            className="group flex flex-1 max-w-[120px] items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-4 md:py-5 text-sm md:text-base font-bold text-slate-400 transition-all hover:border-rose-500/30 hover:bg-rose-500/20 hover:text-rose-300 active:scale-[0.98]">
+            <RotateCcw className="h-5 w-5 opacity-80 group-hover:opacity-100 transition-opacity" />
+          </button>
+        </div>
+
       </div>
     </Card>
   );
