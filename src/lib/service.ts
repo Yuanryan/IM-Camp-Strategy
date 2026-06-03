@@ -252,8 +252,10 @@ export async function createTrade(params: {
   if (coins < 0 || cardPoints < 0) throw new Error("數量需為正");
   if (coins === 0 && cardPoints === 0) throw new Error("請輸入交易內容");
   return prisma.$transaction(async (tx) => {
-    const from = await tx.team.findUnique({ where: { id: fromTeamId } });
-    const to = await tx.team.findUnique({ where: { id: toTeamId } });
+    // 一次抓兩隊（少一次往返）
+    const teams = await tx.team.findMany({ where: { id: { in: [fromTeamId, toTeamId] } } });
+    const from = teams.find((t) => t.id === fromTeamId);
+    const to = teams.find((t) => t.id === toTeamId);
     if (!from || !to) throw new Error("找不到小隊");
     if (from.coins < coins) throw new Error(`光幣不足（需 ${coins}）`);
     if (from.cardPoints < cardPoints) throw new Error(`卡牌點數不足（需 ${cardPoints}）`);
@@ -266,8 +268,12 @@ export async function createTrade(params: {
     const trade = await tx.trade.create({
       data: { fromTeamId, toTeamId, coins, cardPoints, status: "PENDING" },
     });
-    if (coins) await logLedger(tx, { teamId: fromTeamId, kind: "coins", delta: -coins, note: `發起交易給 ${to.name}（凍結）`, byToken });
-    if (cardPoints) await logLedger(tx, { teamId: fromTeamId, kind: "cardPoints", delta: -cardPoints, note: `發起交易給 ${to.name}（凍結）`, byToken });
+    // 兩筆 ledger 一次寫（少一次往返）
+    const note = `發起交易給 ${to.name}（凍結）`;
+    const ledgers: Prisma.LedgerCreateManyInput[] = [];
+    if (coins) ledgers.push({ teamId: fromTeamId, kind: "coins", delta: -coins, note, byToken });
+    if (cardPoints) ledgers.push({ teamId: fromTeamId, kind: "cardPoints", delta: -cardPoints, note, byToken });
+    if (ledgers.length) await tx.ledger.createMany({ data: ledgers });
     return { ok: true, tradeId: trade.id };
   });
 }
@@ -299,27 +305,26 @@ export async function respondTrade(params: {
     });
     if (upd.count === 0) throw new Error("交易已被處理");
 
-    const from = await tx.team.findUnique({ where: { id: trade.fromTeamId } });
-    const to = await tx.team.findUnique({ where: { id: trade.toTeamId } });
+    // 一次抓兩隊（只為了 ledger 備註的隊名）
+    const teams = await tx.team.findMany({ where: { id: { in: [trade.fromTeamId, trade.toTeamId] } } });
+    const from = teams.find((t) => t.id === trade.fromTeamId);
+    const to = teams.find((t) => t.id === trade.toTeamId);
 
-    if (action === "accept") {
-      // 撥給收受方
-      await tx.team.update({
-        where: { id: trade.toTeamId },
-        data: { coins: { increment: trade.coins }, cardPoints: { increment: trade.cardPoints } },
-      });
-      if (trade.coins) await logLedger(tx, { teamId: trade.toTeamId, kind: "coins", delta: trade.coins, note: `交易收入（來自 ${from?.name}）`, byToken });
-      if (trade.cardPoints) await logLedger(tx, { teamId: trade.toTeamId, kind: "cardPoints", delta: trade.cardPoints, note: `交易收入（來自 ${from?.name}）`, byToken });
-    } else {
-      // 退回發起方（拒絕 / 取消）
-      await tx.team.update({
-        where: { id: trade.fromTeamId },
-        data: { coins: { increment: trade.coins }, cardPoints: { increment: trade.cardPoints } },
-      });
-      const why = action === "reject" ? `對方拒絕（${to?.name}）` : "自行取消";
-      if (trade.coins) await logLedger(tx, { teamId: trade.fromTeamId, kind: "coins", delta: trade.coins, note: `交易退回：${why}`, byToken });
-      if (trade.cardPoints) await logLedger(tx, { teamId: trade.fromTeamId, kind: "cardPoints", delta: trade.cardPoints, note: `交易退回：${why}`, byToken });
-    }
+    // 接受 → 撥給收受方；拒絕 / 取消 → 退回發起方
+    const target = action === "accept" ? trade.toTeamId : trade.fromTeamId;
+    await tx.team.update({
+      where: { id: target },
+      data: { coins: { increment: trade.coins }, cardPoints: { increment: trade.cardPoints } },
+    });
+    const note =
+      action === "accept"
+        ? `交易收入（來自 ${from?.name}）`
+        : `交易退回：${action === "reject" ? `對方拒絕（${to?.name}）` : "自行取消"}`;
+    const ledgers: Prisma.LedgerCreateManyInput[] = [];
+    if (trade.coins) ledgers.push({ teamId: target, kind: "coins", delta: trade.coins, note, byToken });
+    if (trade.cardPoints) ledgers.push({ teamId: target, kind: "cardPoints", delta: trade.cardPoints, note, byToken });
+    if (ledgers.length) await tx.ledger.createMany({ data: ledgers });
+
     return { ok: true, action };
   });
 }

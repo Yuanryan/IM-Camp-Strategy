@@ -26,7 +26,7 @@ function TradeAmt({ coins, points }: { coins: number; points: number }) {
 }
 
 export function TradeView({ teamId }: { teamId: number }) {
-  const { snap, mutate: refreshSnap } = useSnapshot(3000);
+  const { snap } = useSnapshot(3000);
   const { data, mutate } = useSWR<TradeData>("/api/trade", fetcher, { refreshInterval: 3000 });
   const [to, setTo] = useState<number | "">("");
   const [coins, setCoins] = useState(0);
@@ -62,9 +62,10 @@ export function TradeView({ teamId }: { teamId: number }) {
   const me = snap.teams.find((t) => t.id === teamId);
   const others = snap.teams.filter((t) => t.id !== teamId);
 
+  // 拒絕（收受方按）— 自己餘額不變，只需刷新列表
   const act = async (tradeId: number, action: string, ok: string) => {
     await postJson("/api/trade/action", { tradeId, action });
-    await Promise.all([mutate(), refreshSnap()]);
+    await mutate();
     return ok;
   };
 
@@ -96,7 +97,7 @@ export function TradeView({ teamId }: { teamId: number }) {
               if (to === "") return "請先選對象";
               if (coins === 0 && points === 0) return "請輸入交易內容";
               await postJson("/api/trade", { toTeamId: to, coins, cardPoints: points });
-              await Promise.all([mutate(), refreshSnap()]);
+              await mutate();
               setCoins(0);
               setPoints(0);
               setTo("");
@@ -127,13 +128,13 @@ export function TradeView({ teamId }: { teamId: number }) {
                       setBusyId(t.id);
                       try {
                         await postJson("/api/trade/action", { tradeId: t.id, action: "accept" });
-                        await Promise.all([mutate(), refreshSnap()]);
+                        await mutate();
                         setResult({
                           status: "success",
                           detail: <span>收到 {t.fromTeamName} <TradeAmt coins={t.coins} points={t.cardPoints} /></span>,
                         });
                       } catch (e) {
-                        await Promise.all([mutate(), refreshSnap()]);
+                        await mutate();
                         setResult({ status: "failed", detail: e instanceof Error ? e.message : "交易失敗" });
                       } finally {
                         setBusyId(null);
@@ -172,7 +173,7 @@ export function TradeView({ teamId }: { teamId: number }) {
                   onAction={async () => {
                     try {
                       await postJson("/api/trade/action", { tradeId: t.id, action: "cancel" });
-                      await Promise.all([mutate(), refreshSnap()]);
+                      await mutate();
                       setResult({ status: "canceled", detail: <span>已取消給 {t.toTeamName} 的交易（<TradeAmt coins={t.coins} points={t.cardPoints} /> 退回）</span> });
                     } catch (e) {
                       setResult({ status: "failed", detail: e instanceof Error ? e.message : "取消失敗" });
