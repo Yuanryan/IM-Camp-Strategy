@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { Card } from "@/components/Shell";
 import { Num, PriceTag, LevelDots, EventBanner } from "@/components/ui";
-import { REGIONS, REGION_UI, upgradeFee } from "@/lib/game";
+import { REGIONS, REGION_UI, upgradeFee, type UndoRecipe } from "@/lib/game";
 
 const LEVEL_TAG = ["已購", "1級", "2級", "3級"];
 
@@ -22,7 +22,8 @@ export function ExchangeView() {
   const act = async (fn: () => Promise<{ [k: string]: unknown }>, ok: string) => {
     const r = await fn();
     await mutate();
-    return r.error ? String(r.error) : ok;
+    if (r.error) return String(r.error);
+    return { message: ok, undo: r.undo as UndoRecipe | undefined };
   };
 
   return (

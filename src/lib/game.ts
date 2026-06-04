@@ -284,6 +284,14 @@ export const FUNCTION_CARDS: {
 ];
 
 // 發放獎勵 / 懲罰的快捷預設（資料化，單一來源；前端共用元件 RewardButtons 讀取）
+// 幾秒內可撤銷的「反悔配方」：只帶要回沖的 ledger 列 id 與（選用）不動產原狀態。
+// 金額一律由伺服器照 ledger 列的 -delta 反推，不信任前端帶的數字。
+export type UndoRecipe = {
+  label: string;
+  ledgerIds: number[];
+  property?: { id: number; ownerTeamId: number | null; level: number };
+};
+
 export type RewardTone = "good" | "bad" | "gold" | "spirit";
 export type RewardPreset = {
   label: string;

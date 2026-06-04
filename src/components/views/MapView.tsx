@@ -8,7 +8,7 @@ import { WheelView } from "@/components/views/WheelView";
 import { LuckDraw } from "@/components/views/LuckDraw";
 import { Card } from "@/components/Shell";
 import { Num, EventBanner, HudTabs } from "@/components/ui";
-import { MAP_REWARD_PRESETS, REGIONS, REGION_UI } from "@/lib/game";
+import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, type UndoRecipe } from "@/lib/game";
 import { Map, CircleDollarSign, LoaderPinwheel } from "lucide-react";
 
 export function MapView() {
@@ -105,7 +105,7 @@ export function MapView() {
             if (!prop) return "該區尚無資本據點";
             const r = await postJson("/api/exchange/toll", { propertyId: prop.id, payerTeamId: team });
             await mutate();
-            return `${cur?.name} 已付過路費 ${r.toll}`;
+            return { message: `${cur?.name} 已付過路費 ${r.toll}`, undo: r.undo as UndoRecipe | undefined };
           }} />
         <p className="mt-2 text-xs text-slate-500">系統依該區獨佔隊伍現值自動計算（×10%、四捨五入至 50）。踩到自己獨佔區或該區無獨佔則免收。</p>
       </Card>
@@ -123,10 +123,10 @@ export function MapView() {
             onAction={async () => {
               if (team === "") return "請先選小隊";
               if (coins === 0 && points === 0) return "沒有變動";
-              await giveReward({ teamId: team, coins, cardPoints: points, note: note || "自訂" });
+              const r = await giveReward({ teamId: team, coins, cardPoints: points, note: note || "自訂" });
               await mutate();
               const n = note || "自訂"; setCoins(0); setPoints(0); setNote("");
-              return `${cur?.name}：${n}`;
+              return { message: `${cur?.name}：${n}`, undo: r.undo as UndoRecipe | undefined };
             }} />
         </div>
       </Card>

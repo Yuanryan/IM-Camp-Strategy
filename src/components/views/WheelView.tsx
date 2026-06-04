@@ -4,7 +4,7 @@ import { useState } from "react";
 import { postJson, TeamSelect, toast } from "@/components/client";
 import { Card } from "@/components/Shell";
 import { Num } from "@/components/ui";
-import { WHEEL_OUTCOMES } from "@/lib/game";
+import { WHEEL_OUTCOMES, type UndoRecipe } from "@/lib/game";
 
 // 依權重比例切出每一段（x5 權重最低 → 最窄）
 const TOTAL = WHEEL_OUTCOMES.reduce((s, o) => s + o.weight, 0);
@@ -75,7 +75,7 @@ export function WheelView({
       });
       window.setTimeout(async () => {
         setLast({ mult: r.mult, delta: r.delta });
-        toast(`×${r.mult}！淨${r.delta >= 0 ? "+" : ""}${r.delta}`, r.delta >= 0 ? "ok" : "err");
+        toast(`×${r.mult}！淨${r.delta >= 0 ? "+" : ""}${r.delta}`, r.delta >= 0 ? "ok" : "err", r.undo as UndoRecipe | undefined);
         await onDone();
         setSpinning(false);
       }, 4200);

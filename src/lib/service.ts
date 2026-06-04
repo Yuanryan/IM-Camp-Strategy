@@ -9,10 +9,12 @@ import {
   roundTo50,
   upgradeFee,
   type RegionCode,
+  type UndoRecipe,
 } from "./game";
 
 type Tx = Prisma.TransactionClient;
 
+// 寫一筆總帳並回傳其 id（撤銷配方需要這些 id 才能精準回沖）。
 async function logLedger(
   tx: Tx,
   data: {
@@ -22,8 +24,8 @@ async function logLedger(
     note?: string;
     byToken?: string;
   },
-) {
-  await tx.ledger.create({
+): Promise<number> {
+  const row = await tx.ledger.create({
     data: {
       teamId: data.teamId ?? null,
       kind: data.kind,
@@ -32,6 +34,7 @@ async function logLedger(
       byToken: data.byToken,
     },
   });
+  return row.id;
 }
 
 async function getState(tx: Tx) {
@@ -60,11 +63,13 @@ export async function adjustBalance(params: {
       where: { id: teamId },
       data: { coins: { increment: coins }, cardPoints: { increment: cardPoints } },
     });
+    const ledgerIds: number[] = [];
     if (coins !== 0)
-      await logLedger(tx, { teamId, kind, delta: coins, note, byToken });
+      ledgerIds.push(await logLedger(tx, { teamId, kind, delta: coins, note, byToken }));
     if (cardPoints !== 0)
-      await logLedger(tx, { teamId, kind: "cardPoints", delta: cardPoints, note, byToken });
-    return updated;
+      ledgerIds.push(await logLedger(tx, { teamId, kind: "cardPoints", delta: cardPoints, note, byToken }));
+    const undo: UndoRecipe = { label: note || "調整餘額", ledgerIds };
+    return { ...updated, undo };
   });
 }
 
@@ -86,14 +91,15 @@ export async function applyWheel(params: {
       where: { id: teamId },
       data: { coins: { increment: delta } },
     });
-    await logLedger(tx, {
+    const lid = await logLedger(tx, {
       teamId,
       kind: "wheel",
       delta,
       note: `輪盤 投入${stake} ×${mult}`,
       byToken,
     });
-    return { team: updated, mult, stake, delta };
+    const undo: UndoRecipe = { label: `輪盤 ×${mult}`, ledgerIds: [lid] };
+    return { team: updated, mult, stake, delta, undo };
   });
 }
 
@@ -115,14 +121,20 @@ export async function buyProperty(params: {
     if (team.coins < price) throw new Error("光幣不足");
     await tx.team.update({ where: { id: teamId }, data: { coins: { decrement: price } } });
     await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: teamId, level: 0 } });
-    await logLedger(tx, {
+    const lid = await logLedger(tx, {
       teamId,
       kind: "property",
       delta: -price,
       note: `購買 ${prop.name}${discount ? `（折抵${discount}）` : ""}`,
       byToken,
     });
-    return { ok: true, price };
+    // 購買的前提就是無主、level 0 → 撤銷即還原成無主
+    const undo: UndoRecipe = {
+      label: `購買 ${prop.name}`,
+      ledgerIds: [lid],
+      property: { id: propertyId, ownerTeamId: null, level: 0 },
+    };
+    return { ok: true, price, undo };
   });
 }
 
@@ -145,14 +157,20 @@ export async function upgradeProperty(params: {
     if (team.coins < fee) throw new Error("光幣不足");
     await tx.team.update({ where: { id: team.id }, data: { coins: { decrement: fee } } });
     await tx.property.update({ where: { id: propertyId }, data: { level: { increment: 1 } } });
-    await logLedger(tx, {
+    const lid = await logLedger(tx, {
       teamId: team.id,
       kind: "property",
       delta: -fee,
       note: `升級 ${prop.name} → ${prop.level + 1}級${discount ? `（折抵${discount}）` : ""}`,
       byToken,
     });
-    return { ok: true, fee, newLevel: prop.level + 1 };
+    // prop.level 是升級前的等級 → 撤銷即降回此等級
+    const undo: UndoRecipe = {
+      label: `升級 ${prop.name}`,
+      ledgerIds: [lid],
+      property: { id: propertyId, ownerTeamId: prop.ownerTeamId, level: prop.level },
+    };
+    return { ok: true, fee, newLevel: prop.level + 1, undo };
   });
 }
 
@@ -172,16 +190,23 @@ export async function transferProperty(params: {
     const fromTeamId = prop.ownerTeamId;
     const buyer = await tx.team.findUnique({ where: { id: toTeamId } });
     if (!buyer) throw new Error("找不到買方小隊");
+    const ledgerIds: number[] = [];
     if (price > 0) {
       if (buyer.coins < price) throw new Error("買方光幣不足");
       await tx.team.update({ where: { id: toTeamId }, data: { coins: { decrement: price } } });
       await tx.team.update({ where: { id: fromTeamId }, data: { coins: { increment: price } } });
-      await logLedger(tx, { teamId: toTeamId, kind: "property", delta: -price, note: `購入 ${prop.name}`, byToken });
-      await logLedger(tx, { teamId: fromTeamId, kind: "property", delta: price, note: `售出 ${prop.name}`, byToken });
+      ledgerIds.push(await logLedger(tx, { teamId: toTeamId, kind: "property", delta: -price, note: `購入 ${prop.name}`, byToken }));
+      ledgerIds.push(await logLedger(tx, { teamId: fromTeamId, kind: "property", delta: price, note: `售出 ${prop.name}`, byToken }));
     }
     await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: toTeamId } });
-    await logLedger(tx, { teamId: toTeamId, kind: "property", delta: 0, note: `過戶取得 ${prop.name}`, byToken });
-    return { ok: true };
+    ledgerIds.push(await logLedger(tx, { teamId: toTeamId, kind: "property", delta: 0, note: `過戶取得 ${prop.name}`, byToken }));
+    // 撤銷即把持有改回原賣方（等級不變）
+    const undo: UndoRecipe = {
+      label: `過戶 ${prop.name}`,
+      ledgerIds,
+      property: { id: propertyId, ownerTeamId: fromTeamId, level: prop.level },
+    };
+    return { ok: true, undo };
   });
 }
 
@@ -233,9 +258,10 @@ export async function payToll(params: {
 
     await tx.team.update({ where: { id: payerTeamId }, data: { coins: { decrement: toll } } });
     await tx.team.update({ where: { id: monopolyId }, data: { coins: { increment: toll } } });
-    await logLedger(tx, { teamId: payerTeamId, kind: "coins", delta: -toll, note: `過路費 ${REGION_NAME[region]}`, byToken });
-    await logLedger(tx, { teamId: monopolyId, kind: "coins", delta: toll, note: `收過路費 ${REGION_NAME[region]}`, byToken });
-    return { ok: true, toll, monopolyId };
+    const l1 = await logLedger(tx, { teamId: payerTeamId, kind: "coins", delta: -toll, note: `過路費 ${REGION_NAME[region]}`, byToken });
+    const l2 = await logLedger(tx, { teamId: monopolyId, kind: "coins", delta: toll, note: `收過路費 ${REGION_NAME[region]}`, byToken });
+    const undo: UndoRecipe = { label: `過路費 ${toll}`, ledgerIds: [l1, l2] };
+    return { ok: true, toll, monopolyId, undo };
   });
 }
 
@@ -533,5 +559,63 @@ export async function reverseLedger(params: { ledgerId: number; byToken?: string
     }
     await tx.ledger.update({ where: { id: ledgerId }, data: { reversed: true } });
     return { ok: true, autoReversed: !!(entry.teamId && entry.delta !== 0) };
+  });
+}
+
+// ── 反悔：撤銷剛剛的關主操作（幾秒內、限本站）─────────────────
+// 設計：前端在操作回應裡拿到 UndoRecipe（ledgerIds + 選用的不動產原狀態），
+// 幾秒內按「撤銷」就把這些 ledger 列照 -delta 回沖。金額一律由伺服器端
+// 的 ledger 列反推，不信任前端帶來的數字；不動產則還原成記錄的原狀態。
+const UNDO_WINDOW_MS = 30_000;
+
+export async function undoAction(params: {
+  ledgerIds: number[];
+  property?: { id: number; ownerTeamId: number | null; level: number };
+  byToken?: string;
+  isAdmin?: boolean;
+}) {
+  const { ledgerIds, property, byToken, isAdmin } = params;
+  const ids = [...new Set((ledgerIds ?? []).filter((n) => Number.isInteger(n)))];
+  if (!ids.length) throw new Error("沒有可撤銷的項目");
+
+  return prisma.$transaction(async (tx) => {
+    const rows = await tx.ledger.findMany({ where: { id: { in: ids } } });
+    if (rows.length !== ids.length) throw new Error("找不到對應紀錄");
+
+    const now = Date.now();
+    for (const r of rows) {
+      if (r.reversed) throw new Error("此操作已撤銷或已沖銷");
+      if (!isAdmin && r.byToken !== byToken) throw new Error("只能撤銷本站的操作");
+      if (now - r.createdAt.getTime() > UNDO_WINDOW_MS) throw new Error("已超過可撤銷時限");
+    }
+
+    // 金錢：照 ledger 列的 -delta 回沖，並寫一筆補償分錄（與沖銷一致）
+    for (const r of rows) {
+      if (r.teamId && r.delta !== 0) {
+        const field = r.kind === "cardPoints" ? "cardPoints" : "coins";
+        await tx.team.update({
+          where: { id: r.teamId },
+          data: { [field]: { increment: -r.delta } },
+        });
+        await logLedger(tx, {
+          teamId: r.teamId,
+          kind: r.kind,
+          delta: -r.delta,
+          note: `撤銷 #${r.id}：${r.note ?? ""}`,
+          byToken,
+        });
+      }
+      await tx.ledger.update({ where: { id: r.id }, data: { reversed: true } });
+    }
+
+    // 不動產：還原成操作前的持有 / 等級
+    if (property && Number.isInteger(property.id)) {
+      await tx.property.update({
+        where: { id: property.id },
+        data: { ownerTeamId: property.ownerTeamId ?? null, level: property.level },
+      });
+    }
+
+    return { ok: true, undone: ids.length };
   });
 }

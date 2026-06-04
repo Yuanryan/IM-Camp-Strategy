@@ -1,8 +1,12 @@
 "use client";
 
-import useSWR from "swr";
+import useSWR, { mutate as globalMutate } from "swr";
 import { useState } from "react";
 import type { Snapshot } from "@/lib/snapshot";
+import type { UndoRecipe } from "@/lib/game";
+
+// 動作按鈕的回傳：字串＝成功訊息；物件＝成功訊息＋（選用）幾秒內可撤銷的配方
+export type ActionResult = { message?: string; undo?: UndoRecipe };
 
 export const fetcher = (url: string) =>
   fetch(url).then((r) => {
@@ -39,7 +43,7 @@ export function ActionButton({
   confirmText,
 }: {
   label: string;
-  onAction: () => Promise<string | void>;
+  onAction: () => Promise<string | void | ActionResult>;
   className?: string;
   disabled?: boolean;
   confirmText?: string;
@@ -53,8 +57,11 @@ export function ActionButton({
         if (confirmText && !window.confirm(confirmText)) return;
         setBusy(true);
         try {
-          const msg = await onAction();
-          if (msg) toast(msg, "ok");
+          const res = await onAction();
+          if (res) {
+            if (typeof res === "string") toast(res, "ok");
+            else if (res.message || res.undo) toast(res.message ?? "完成", "ok", res.undo);
+          }
         } catch (e) {
           toast(e instanceof Error ? e.message : "操作失敗", "err");
         } finally {
@@ -70,9 +77,9 @@ export function ActionButton({
   );
 }
 
-// 極簡 toast
+// 極簡 toast（帶 undo 時會多一顆「撤銷」按鈕，顯示 5 秒）
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
-export function toast(message: string, kind: "ok" | "err" = "ok") {
+export function toast(message: string, kind: "ok" | "err" = "ok", undo?: UndoRecipe) {
   if (typeof document === "undefined") return;
   let el = document.getElementById("app-toast");
   if (!el) {
@@ -83,6 +90,9 @@ export function toast(message: string, kind: "ok" | "err" = "ok") {
     el.style.left = "50%";
     el.style.transform = "translateX(-50%)";
     el.style.zIndex = "9999";
+    el.style.display = "flex";
+    el.style.alignItems = "center";
+    el.style.gap = "12px";
     el.style.padding = "10px 18px";
     el.style.borderRadius = "10px";
     el.style.fontSize = "15px";
@@ -90,14 +100,51 @@ export function toast(message: string, kind: "ok" | "err" = "ok") {
     el.style.boxShadow = "0 4px 16px rgba(0,0,0,.18)";
     document.body.appendChild(el);
   }
-  el.textContent = message;
+  el.replaceChildren();
+  const span = document.createElement("span");
+  span.textContent = message;
+  el.appendChild(span);
   el.style.background = kind === "ok" ? "#16a34a" : "#dc2626";
   el.style.color = "#fff";
   el.style.opacity = "1";
   if (toastTimer) clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => {
-    if (el) el.style.opacity = "0";
-  }, 2600);
+
+  const hideAfter = (ms: number) => {
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => {
+      if (el) el.style.opacity = "0";
+    }, ms);
+  };
+
+  if (undo && undo.ledgerIds?.length) {
+    const btn = document.createElement("button");
+    btn.textContent = "撤銷";
+    btn.style.cssText =
+      "background:rgba(255,255,255,.22);color:#fff;border:1px solid rgba(255,255,255,.5);" +
+      "border-radius:8px;padding:4px 12px;font-size:14px;font-weight:700;cursor:pointer;";
+    btn.onclick = async () => {
+      btn.disabled = true;
+      btn.style.opacity = "0.5";
+      try {
+        await postJson("/api/undo", { ledgerIds: undo.ledgerIds, property: undo.property });
+        await globalMutate(() => true); // 重新抓所有輪詢資料，畫面馬上回到撤銷後狀態
+        span.textContent = "已撤銷";
+        el!.style.background = "#0891b2";
+        btn.remove();
+        hideAfter(1600);
+      } catch (e) {
+        span.textContent = e instanceof Error ? e.message : "撤銷失敗";
+        el!.style.background = "#dc2626";
+        btn.disabled = false;
+        btn.style.opacity = "1";
+        hideAfter(2600);
+      }
+    };
+    el.appendChild(btn);
+    hideAfter(5000);
+  } else {
+    hideAfter(2600);
+  }
 }
 
 // 小隊下拉選擇

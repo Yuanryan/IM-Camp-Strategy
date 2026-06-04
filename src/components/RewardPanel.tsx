@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { postJson, ActionButton } from "@/components/client";
-import type { RewardPreset, RewardTone } from "@/lib/game";
+import type { RewardPreset, RewardTone, UndoRecipe } from "@/lib/game";
 
 // 發獎 / 扣款的單一前端入口（後端統一走 /api/balance → adjustBalance）
 export async function giveReward(p: {
@@ -40,15 +40,16 @@ export function CustomGive({
   const give = async (kind: "coins" | "cardPoints", label: string) => {
     if (teamId === "") return "請先選小隊";
     if (amt === 0) return "請先輸入金額";
-    await giveReward({
+    const msg = `自訂${label} ${amt >= 0 ? "+" : ""}${amt}`;
+    const r = await giveReward({
       teamId,
       coins: kind === "coins" ? amt : 0,
       cardPoints: kind === "cardPoints" ? amt : 0,
-      note: `自訂${label} ${amt >= 0 ? "+" : ""}${amt}`,
+      note: msg,
     });
     await onDone?.();
     setAmt(0);
-    return `自訂${label} ${amt >= 0 ? "+" : ""}${amt}`;
+    return { message: msg, undo: r.undo as UndoRecipe | undefined };
   };
   return (
     <div className="flex flex-wrap items-end gap-2">
@@ -89,14 +90,14 @@ export function RewardButtons({
           disabled={disabled || teamId === ""}
           onAction={async () => {
             if (teamId === "") return "請先選小隊";
-            await giveReward({
+            const r = await giveReward({
               teamId,
               coins: p.coins,
               cardPoints: p.cardPoints,
               note: p.note ?? p.label,
             });
             await onDone?.();
-            return p.label;
+            return { message: p.label, undo: r.undo as UndoRecipe | undefined };
           }}
         />
       ))}
