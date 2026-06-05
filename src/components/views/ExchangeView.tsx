@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
-import { Card } from "@/components/Shell";
+import { Card, StickyTeam } from "@/components/Shell";
 import { Num, PriceTag, LevelDots, EventBanner } from "@/components/ui";
 import { REGIONS, REGION_UI, upgradeFee, type UndoRecipe } from "@/lib/game";
 
@@ -30,8 +30,7 @@ export function ExchangeView() {
     <div className="space-y-4">
       <EventBanner events={snap.activeEvents} />
 
-      {/* 作用對象 — 釘選，捲動不動產時仍看得到目前選定小隊 */}
-      <div className="sticky top-14 z-10 -mx-4 border-y border-white/10 bg-slate-950/80 px-4 py-3 backdrop-blur-md sm:mx-0 sm:rounded-2xl sm:border">
+      <StickyTeam>
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
           <div className="col-span-2 sm:col-auto">
             <div className="mb-1 text-xs text-slate-400">作用小隊（購買 / 過戶目標）</div>
@@ -58,7 +57,7 @@ export function ExchangeView() {
             </span>
           )}
         </p>
-      </div>
+      </StickyTeam>
 
       {/* 不動產列表 */}
       <Card>
@@ -72,52 +71,57 @@ export function ExchangeView() {
             </button>
           ))}
         </div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {props.map((p) => {
             const fee = upgradeFee(p.basePrice, p.level);
             const buyPrice = Math.max(0, p.basePrice - discount);
+            const ui = REGION_UI[region as keyof typeof REGION_UI];
             return (
-              <div key={p.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="font-bold">{p.name}</div>
-                    <div className="text-xs text-slate-500">{p.type}</div>
+              <div key={p.id} className={`overflow-hidden rounded-xl border border-white/10 bg-white/5`}>
+                {/* Region accent bar */}
+                <div className={`h-0.5 w-full bg-gradient-to-r ${ui.panel}`} />
+                <div className="p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate font-bold">{p.name}</div>
+                      <div className={`text-xs font-medium ${ui.text}`}>{p.type}</div>
+                    </div>
+                    <div className="shrink-0 text-right leading-tight">
+                      <PriceTag current={p.currentValue} base={p.basePrice} />
+                      <div className="text-[11px] text-slate-500">初始 <Num>{p.basePrice}</Num></div>
+                    </div>
                   </div>
-                  <div className="text-right leading-tight">
-                    <PriceTag current={p.currentValue} base={p.basePrice} />
-                    <div className="text-[11px] text-slate-500">初始 <Num>{p.basePrice}</Num></div>
+
+                  <div className="mt-2 flex items-center gap-1.5 text-sm">
+                    {p.ownerName ? (
+                      <>
+                        <span className="truncate text-slate-300">{p.ownerName}</span>
+                        <LevelDots level={p.level} />
+                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${ui.chipBg}`}>{LEVEL_TAG[p.level]}</span>
+                      </>
+                    ) : (
+                      <span className="text-slate-500">未售出</span>
+                    )}
                   </div>
-                </div>
 
-                <div className="mt-2 flex items-center gap-1.5 text-sm">
-                  {p.ownerName ? (
-                    <>
-                      <span className="text-slate-300">{p.ownerName}</span>
-                      <LevelDots level={p.level} />
-                      <span className="chip px-1.5 text-xs">{LEVEL_TAG[p.level]}</span>
-                    </>
-                  ) : (
-                    <span className="text-slate-500">未售出</span>
-                  )}
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {!p.ownerTeamId && (
-                    <ActionButton label={`購買 ${buyPrice}`} className="min-w-[6rem] flex-1 bg-emerald-600 text-white hover:bg-emerald-500"
-                      disabled={team === ""}
-                      onAction={() => team === "" ? Promise.resolve("請先選小隊") :
-                        act(() => postJson("/api/exchange/buy", { propertyId: p.id, teamId: team, discount }), `已購買 ${p.name}`)} />
-                  )}
-                  {p.ownerTeamId && fee != null && (
-                    <ActionButton label={`升級 ${Math.max(0, fee - discount)}`} className="min-w-[6rem] flex-1 bg-amber-500 text-white hover:bg-amber-400"
-                      onAction={() => act(() => postJson("/api/exchange/upgrade", { propertyId: p.id, discount }), `已升級 ${p.name}`)} />
-                  )}
-                  {p.ownerTeamId && (
-                    <ActionButton label="過戶" className="min-w-[6rem] flex-1 chip hover:bg-white/20"
-                      disabled={team === ""}
-                      onAction={() => team === "" ? Promise.resolve("請先選目標隊") :
-                        act(() => postJson("/api/exchange/transfer", { propertyId: p.id, toTeamId: team, price }), `已過戶 ${p.name}`)} />
-                  )}
+                  <div className="mt-3 flex flex-col gap-2">
+                    {!p.ownerTeamId && (
+                      <ActionButton label={`購買  ${buyPrice}`} className="w-full bg-emerald-600 text-white hover:bg-emerald-500"
+                        disabled={team === ""}
+                        onAction={() => team === "" ? Promise.resolve("請先選小隊") :
+                          act(() => postJson("/api/exchange/buy", { propertyId: p.id, teamId: team, discount }), `已購買 ${p.name}`)} />
+                    )}
+                    {p.ownerTeamId && fee != null && (
+                      <ActionButton label={`升級  ${Math.max(0, fee - discount)}`} className="w-full bg-amber-500 text-white hover:bg-amber-400"
+                        onAction={() => act(() => postJson("/api/exchange/upgrade", { propertyId: p.id, discount }), `已升級 ${p.name}`)} />
+                    )}
+                    {p.ownerTeamId && (
+                      <ActionButton label="過戶" className="w-full chip hover:bg-white/20"
+                        disabled={team === ""}
+                        onAction={() => team === "" ? Promise.resolve("請先選目標隊") :
+                          act(() => postJson("/api/exchange/transfer", { propertyId: p.id, toTeamId: team, price }), `已過戶 ${p.name}`)} />
+                    )}
+                  </div>
                 </div>
               </div>
             );

@@ -153,3 +153,60 @@ input[type="number"] {
 * {
   scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
 }
+
+/* 大樂透球 */
+.lottery-ball {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  font-family: var(--font-geist-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  font-size: 0.8125rem;
+  background: radial-gradient(
+    circle at 35% 30%,
+    rgba(52, 211, 153, 0.28) 0%,
+    rgba(16, 185, 129, 0.06) 100%
+  );
+  border: 1.5px solid rgba(52, 211, 153, 0.45);
+  color: #34d399;
+  box-shadow:
+    0 0 10px rgba(52, 211, 153, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  text-shadow: 0 0 6px rgba(52, 211, 153, 0.55);
+}
+
+/* 底部導航列（玩家頁面） */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 30;
+  background: rgba(2, 6, 23, 0.96);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  /* iOS Safe Area */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+  box-shadow: 0 -4px 28px rgba(0, 0, 0, 0.55);
+}
+
+/* 進場滑入 */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.slide-up {
+  animation: slideUp 0.32s ease-out both;
+}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { postJson, TeamSelect, toast } from "@/components/client";
-import { Card } from "@/components/Shell";
+import { Card, StickyTeam } from "@/components/Shell";
 import { Num } from "@/components/ui";
 import { WHEEL_OUTCOMES, type UndoRecipe } from "@/lib/game";
 
@@ -87,14 +87,18 @@ export function WheelView({
 
   return (
     <div className="space-y-4">
-      <Card title="選擇小隊">
-        <TeamSelect teams={teams} value={team} onChange={setTeam} />
-        {cur && (
-          <span className="ml-3 text-sm text-slate-400">
-            光幣 <Num className="neon-gold">{cur.coins}</Num>
-          </span>
-        )}
-      </Card>
+      <StickyTeam>
+        <div className="flex flex-wrap items-center gap-3">
+          <TeamSelect teams={teams} value={team} onChange={setTeam} />
+          {cur ? (
+            <span className="text-sm text-slate-400">
+              光幣 <Num className="neon-gold font-bold">{cur.coins}</Num>
+            </span>
+          ) : (
+            <span className="text-xs text-amber-300/80">⚠ 請先選擇小隊</span>
+          )}
+        </div>
+      </StickyTeam>
 
       <Card title="命運投資輪盤">
         <div className="relative mx-auto aspect-square w-full max-w-xs">
@@ -157,14 +161,46 @@ export function WheelView({
           </div>
         )}
 
-        <div className="mt-4 flex items-end justify-center gap-3">
-          <label className="text-xs text-slate-400">
-            <div className="mb-1">投入光幣（≤500）</div>
-            <input type="number" inputMode="numeric" value={stake} min={1} max={500} disabled={spinning}
-              onChange={(e) => setStake(Number(e.target.value) || 0)} className="fld w-28" />
-          </label>
-          <button onClick={spin} disabled={team === "" || spinning}
-            className="rounded-xl bg-purple-600 px-6 py-3 text-base font-bold text-white shadow-lg shadow-purple-500/30 transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40">
+        <div className="mt-4 space-y-3">
+          {/* Quick-stake chips */}
+          <div>
+            <div className="mb-1.5 text-xs text-slate-400">投入光幣（≤ 500）</div>
+            <div className="flex gap-2">
+              {[100, 200, 300, 500].map((v) => (
+                <button
+                  key={v}
+                  disabled={spinning}
+                  onClick={() => setStake(v)}
+                  className={`flex-1 rounded-lg py-2.5 text-sm font-bold transition active:scale-95 disabled:opacity-40 ${
+                    stake === v
+                      ? "bg-purple-500 text-white shadow-[0_0_12px_rgba(168,85,247,0.4)]"
+                      : "chip hover:bg-white/15"
+                  }`}
+                >
+                  {v}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Custom stake input */}
+          <input
+            type="number"
+            inputMode="numeric"
+            value={stake}
+            min={1}
+            max={500}
+            disabled={spinning}
+            onChange={(e) => setStake(Number(e.target.value) || 0)}
+            className="fld w-full text-center text-lg font-bold"
+          />
+
+          {/* Spin button */}
+          <button
+            onClick={spin}
+            disabled={team === "" || spinning}
+            className="w-full rounded-xl bg-purple-600 py-4 text-lg font-black tracking-widest text-white shadow-lg shadow-purple-500/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 hover:bg-purple-500 hover:shadow-[0_0_20px_rgba(168,85,247,0.5)]"
+          >
             {spinning ? "轉動中…" : "轉輪盤"}
           </button>
         </div>

@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import { useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
-import { RewardButtons, giveReward } from "@/components/RewardPanel";
+import { RewardButtons } from "@/components/RewardPanel";
 import { LotteryView } from "@/components/views/LotteryView";
 import { WheelView } from "@/components/views/WheelView";
 import { LuckDraw } from "@/components/views/LuckDraw";
-import { Card } from "@/components/Shell";
+import { Card, StickyTeam } from "@/components/Shell";
 import { Num, EventBanner, HudTabs } from "@/components/ui";
 import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, type UndoRecipe } from "@/lib/game";
 import { Map, CircleDollarSign, LoaderPinwheel } from "lucide-react";
@@ -27,14 +27,14 @@ export function MapView() {
 
   return (
     <div className="space-y-4">
-      {/* 分頁：地圖關主 / 大樂透 / 命運輪盤 */}
+      {/* ── Tab bar ──────────────────────────────────────────── */}
       <HudTabs
         active={tab}
         onChange={setTab}
         tabs={[
-          ["map", "地圖中控站", <Map className="h-4 w-4" />],
-          ["lottery", "大樂透", <CircleDollarSign className="h-4 w-4" />],
-          ["wheel", "命運輪盤", <LoaderPinwheel className="h-4 w-4" />],
+          ["map", "地圖中控站", <Map key="m" className="h-4 w-4" />],
+          ["lottery", "大樂透", <CircleDollarSign key="l" className="h-4 w-4" />],
+          ["wheel", "命運輪盤", <LoaderPinwheel key="w" className="h-4 w-4" />],
         ] as const}
       />
 
@@ -43,94 +43,168 @@ export function MapView() {
       ) : tab === "wheel" ? (
         <WheelView teams={teams} team={team} setTeam={setTeam} cur={cur} onDone={mutate} />
       ) : (
-      <>
-      <EventBanner events={snap.activeEvents} />
+        <>
+          <EventBanner events={snap.activeEvents} />
 
-      {/* 選擇小隊 — 所有格子操作共用 */}
-      <Card title="選擇小隊">
-        <TeamSelect teams={teams} value={team} onChange={setTeam} />
-        {cur && (
-          <span className="ml-3 text-sm text-slate-400">
-            光幣 <Num className="neon-gold">{cur.coins}</Num>　卡牌點數 <Num className="text-cyan-300">{cur.cardPoints}</Num>
-          </span>
-        )}
-      </Card>
+          {/* ── Sticky team strip ────────────────────────────── */}
+          <StickyTeam>
+            <div className="flex flex-wrap items-center gap-3">
+              <TeamSelect teams={teams} value={team} onChange={setTeam} />
+              {cur ? (
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="text-slate-400">
+                    光幣 <Num className="neon-gold font-bold">{cur.coins}</Num>
+                  </span>
+                  <span className="text-slate-400">
+                    點數 <Num className="font-bold text-cyan-300">{cur.cardPoints}</Num>
+                  </span>
+                </div>
+              ) : (
+                <span className="text-xs text-amber-300/80">⚠ 請先選擇作用小隊</span>
+              )}
+              {event1 && (
+                <span className="breathe rounded-md border border-amber-400/40 bg-amber-400/10 px-2 py-1 text-xs font-semibold text-amber-200">
+                  事件一：抽卡加倍
+                </span>
+              )}
+            </div>
+          </StickyTeam>
 
-      {/* 光源點 / 迷霧區 — 抽卡格 */}
-      <Card title="光源點 / 迷霧區（抽卡格獎懲）">
-        <div className="mb-3 space-y-1.5 text-sm text-slate-300">
-          <p>
-            <b className="text-amber-300">光源點</b>：請小隊抽<b>好運卡</b>並執行效果。
-          </p>
-          <p>
-            <b className="text-rose-300">迷霧區</b>：請小隊抽<b>迷霧卡</b>並執行懲罰。
-          </p>
-        </div>
-        {event1 && (
-          <div className="breathe mb-3 rounded-lg border border-cyan-400/40 bg-cyan-400/10 px-3 py-2 text-sm font-semibold text-cyan-200">
-            事件一進行中：抽卡獎勵 / 扣錢自動 ×2
-          </div>
-        )}
+          {/* ── 光源點 / 迷霧區 ──────────────────────────────── */}
+          <Card title="光源點 / 迷霧區">
+            <div className="mb-1 text-xs text-slate-400">
+              好運卡完成任務可獲得光幣；厄運卡扣錢或執行懲罰任務。
+            </div>
+            <LuckDraw team={team} curName={cur?.name} event1={event1} onDone={mutate} />
+          </Card>
 
-        <LuckDraw team={team} curName={cur?.name} event1={event1} onDone={mutate} />
+          {/* ── 資本據點 / 過路費 ─────────────────────────────── */}
+          <Card title="資本據點 / 過路費">
+            <p className="mb-3 text-sm text-slate-300">
+              告知小隊可<b>購買 / 升級</b>（須到交易所登記）。踩到有獨佔的區域需在此向付款隊收取過路費。
+            </p>
 
-        <div className="mt-4 border-t border-white/10 pt-3">
-          <div className="mb-2 text-xs font-semibold text-slate-400">其他快速加減</div>
-          <RewardButtons teamId={team} presets={MAP_REWARD_PRESETS} onDone={mutate} />
-        </div>
-      </Card>
+            {/* Region grid with live monopoly info */}
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              {REGIONS.map((r) => {
+                const ri = snap.regions.find((x) => x.code === r.code);
+                const ui = REGION_UI[r.code];
+                const selected = tollRegion === r.code;
+                const hasMonopoly = !!ri?.monopolyTeamName;
+                return (
+                  <button
+                    key={r.code}
+                    onClick={() => setTollRegion(r.code)}
+                    className={`rounded-xl border p-3 text-left transition active:scale-[0.98] ${
+                      selected
+                        ? `${ui.border} bg-white/8 ring-1 ${ui.border}`
+                        : "border-white/8 bg-white/3 hover:bg-white/8"
+                    }`}
+                  >
+                    <div className={`mb-1 text-xs font-bold tracking-wide ${ui.text}`}>
+                      {r.name}
+                    </div>
+                    {hasMonopoly ? (
+                      <>
+                        <div className="truncate text-sm font-semibold text-slate-100">
+                          {ri!.monopolyTeamName}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          過路費{" "}
+                          <Num className="font-bold text-slate-200">{ri!.toll}</Num>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-xs text-slate-500">目前無獨佔</div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
 
-      {/* 資本據點 */}
-      <Card title="資本據點">
-        <p className="mb-3 text-sm text-slate-300">
-          告知小隊可<b>購買 / 升級</b>該區資產（須到<b>交易所</b>登記）；並確認是否需付<b>過路費</b>
-          —— 該區有獨佔隊伍才需付，於下方收取。
-        </p>
-        <div className="mb-1 text-xs font-semibold text-slate-400">收過路費（選付款隊踩到的區域）</div>
-        <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 py-1.5">
-          {REGIONS.map((r) => (
-            <button key={r.code} onClick={() => setTollRegion(r.code)}
-              className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition ${
-                tollRegion === r.code ? `bg-white/10 ${REGION_UI[r.code].text} ring-1 ${REGION_UI[r.code].border}` : "chip"
-              }`}>
-              {r.name}
-            </button>
-          ))}
-        </div>
-        <ActionButton label="向選定小隊收過路費" className="bg-sky-600 text-white hover:bg-sky-500"
-          disabled={team === ""}
-          onAction={async () => {
-            if (team === "") return "請先選付款小隊";
-            const prop = snap.properties.find((p) => p.region === tollRegion);
-            if (!prop) return "該區尚無資本據點";
-            const r = await postJson("/api/exchange/toll", { propertyId: prop.id, payerTeamId: team });
-            await mutate();
-            return { message: `${cur?.name} 已付過路費 ${r.toll}`, undo: r.undo as UndoRecipe | undefined };
-          }} />
-        <p className="mt-2 text-xs text-slate-500">系統依該區獨佔隊伍現值自動計算（×10%、四捨五入至 50）。踩到自己獨佔區或該區無獨佔則免收。</p>
-      </Card>
+            <ActionButton
+              label="向選定小隊收過路費"
+              className="w-full bg-sky-600 text-white hover:bg-sky-500"
+              disabled={team === ""}
+              onAction={async () => {
+                if (team === "") return "請先選付款小隊";
+                const prop = snap.properties.find((p) => p.region === tollRegion);
+                if (!prop) return "該區尚無資本據點";
+                const r = await postJson("/api/exchange/toll", {
+                  propertyId: prop.id,
+                  payerTeamId: team,
+                });
+                await mutate();
+                return {
+                  message: `${cur?.name} 已付過路費 ${r.toll}`,
+                  undo: r.undo as UndoRecipe | undefined,
+                };
+              }}
+            />
+            <p className="mt-2 text-xs text-slate-500">
+              系統依獨佔隊伍現值自動計算（×10%、四捨五入至 50）。踩自己獨佔區或無獨佔則免收。
+            </p>
+          </Card>
 
-      {/* 自訂加減 — 通用工具（事件加倍 / 特殊情況） */}
-      <Card title="自訂加減（事件加倍 / 特殊情況）">
-        <div className="flex flex-wrap items-end gap-3">
-          <label className="text-xs text-slate-400"><div className="mb-1">光幣（可負）</div>
-            <input type="number" inputMode="numeric" value={coins} onChange={(e) => setCoins(Number(e.target.value) || 0)} className="fld w-28" /></label>
-          <label className="text-xs text-slate-400"><div className="mb-1">卡牌點數（可負）</div>
-            <input type="number" inputMode="numeric" value={points} onChange={(e) => setPoints(Number(e.target.value) || 0)} className="fld w-28" /></label>
-          <label className="flex-1 text-xs text-slate-400"><div className="mb-1">備註</div>
-            <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="例如：好運卡效果" className="fld w-full" /></label>
-          <ActionButton label="套用" disabled={team === ""}
-            onAction={async () => {
-              if (team === "") return "請先選小隊";
-              if (coins === 0 && points === 0) return "沒有變動";
-              const r = await giveReward({ teamId: team, coins, cardPoints: points, note: note || "自訂" });
-              await mutate();
-              const n = note || "自訂"; setCoins(0); setPoints(0); setNote("");
-              return { message: `${cur?.name}：${n}`, undo: r.undo as UndoRecipe | undefined };
-            }} />
-        </div>
-      </Card>
-      </>
+          {/* ── 快速加減 ──────────────────────────────────────── */}
+          <Card title="快速加減">
+            <RewardButtons teamId={team} presets={MAP_REWARD_PRESETS} onDone={mutate} />
+            <div className="mt-3 border-t border-white/10 pt-3">
+              <div className="mb-2 text-xs font-semibold text-slate-400">自訂（可正可負）</div>
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="text-xs text-slate-400">
+                  <div className="mb-1">光幣</div>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={coins}
+                    onChange={(e) => setCoins(Number(e.target.value) || 0)}
+                    className="fld w-24"
+                  />
+                </label>
+                <label className="text-xs text-slate-400">
+                  <div className="mb-1">卡牌點數</div>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={points}
+                    onChange={(e) => setPoints(Number(e.target.value) || 0)}
+                    className="fld w-24"
+                  />
+                </label>
+                <label className="min-w-0 flex-1 text-xs text-slate-400">
+                  <div className="mb-1">備註</div>
+                  <input
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="例如：好運卡效果"
+                    className="fld w-full"
+                  />
+                </label>
+                <ActionButton
+                  label="套用"
+                  disabled={team === ""}
+                  onAction={async () => {
+                    if (team === "") return "請先選小隊";
+                    if (coins === 0 && points === 0) return "沒有變動";
+                    const r = await postJson("/api/balance", {
+                      teamId: team,
+                      coins,
+                      cardPoints: points,
+                      note: note || "自訂",
+                    });
+                    await mutate();
+                    const n = note || "自訂";
+                    setCoins(0);
+                    setPoints(0);
+                    setNote("");
+                    return { message: `${cur?.name}：${n}`, undo: r.undo as UndoRecipe | undefined };
+                  }}
+                />
+              </div>
+            </div>
+          </Card>
+        </>
       )}
     </div>
   );

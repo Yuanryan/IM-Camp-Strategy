@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { fetcher, useSnapshot, TeamSelect, ActionButton } from "@/components/client";
 import { RewardButtons, CustomGive } from "@/components/RewardPanel";
-import { Card } from "@/components/Shell";
+import { Card, StickyTeam } from "@/components/Shell";
 import { Num, EventBanner, HudTabs } from "@/components/ui";
 import { MOBILE_REWARD_PRESETS } from "@/lib/game";
 import { Gamepad2, BookOpen, Timer as TimerIcon, Minus, Plus, Pause, Play, RotateCcw } from "lucide-react";
@@ -49,11 +49,15 @@ export function MobileView() {
         <>
           <EventBanner events={snap.activeEvents} />
 
-          <Card title="發放獎勵（光幣 / 卡牌點數）">
-            <TeamSelect teams={snap.teams} value={team} onChange={setTeam} />
-            <div className="mt-3">
-              <RewardButtons teamId={team} presets={MOBILE_REWARD_PRESETS} onDone={mutate} />
+          <StickyTeam>
+            <div className="flex flex-wrap items-center gap-3">
+              <TeamSelect teams={snap.teams} value={team} onChange={setTeam} />
+              {!team && <span className="text-xs text-amber-300/80">⚠ 請先選擇作用小隊</span>}
             </div>
+          </StickyTeam>
+
+          <Card title="發放獎勵（光幣 / 卡牌點數）">
+            <RewardButtons teamId={team} presets={MOBILE_REWARD_PRESETS} onDone={mutate} />
             <div className="mt-3 border-t border-white/10 pt-3">
               <CustomGive teamId={team} onDone={mutate} />
             </div>

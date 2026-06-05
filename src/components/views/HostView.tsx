@@ -19,11 +19,22 @@ export function HostView() {
   return (
     <div className="space-y-4">
       <Card title="遊戲階段">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2">
           {Object.entries(PHASES).map(([p, label]) => (
-            <ActionButton key={p} label={label}
-              className={snap.phase === p ? "bg-cyan-500 text-slate-950" : "chip"}
-              onAction={async () => { await postJson("/api/host/phase", { phase: p }); await mutate(); return `階段：${label}`; }} />
+            <ActionButton
+              key={p}
+              label={label}
+              className={`flex-1 py-3 text-base font-bold ${
+                snap.phase === p
+                  ? "bg-cyan-500 text-slate-950 shadow-[0_0_14px_rgba(34,211,238,0.4)]"
+                  : "chip"
+              }`}
+              onAction={async () => {
+                await postJson("/api/host/phase", { phase: p });
+                await mutate();
+                return `階段：${label}`;
+              }}
+            />
           ))}
         </div>
       </Card>
@@ -34,27 +45,62 @@ export function HostView() {
             const ev = EVENTS[i];
             const on = active.has(i);
             return (
-              <div key={i} className={`rounded-xl border p-3 transition ${on ? "border-cyan-400/40 bg-cyan-400/10" : "border-white/10 bg-white/5"}`}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="font-bold">{ev.name} {on && <span className="ml-1 text-xs text-emerald-300">● 進行中</span>}</div>
-                    <div className="text-xs text-slate-400">{ev.news}</div>
+              <div
+                key={i}
+                className={`rounded-xl border p-4 transition ${
+                  on
+                    ? "border-cyan-400/40 bg-cyan-400/10 shadow-[0_0_16px_rgba(34,211,238,0.08)]"
+                    : "border-white/10 bg-white/5"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 font-bold">
+                      <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-black ${on ? "bg-cyan-400 text-slate-950" : "bg-white/10 text-slate-400"}`}>
+                        {i}
+                      </span>
+                      {ev.name.replace(/^事件[一二三四]：/, "")}
+                      {on && (
+                        <span className="shrink-0 rounded-md bg-emerald-400/15 px-1.5 py-0.5 text-[10px] font-bold text-emerald-300 ring-1 ring-emerald-400/25">
+                          進行中
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-400">{ev.news}</div>
                   </div>
-                  <ActionButton label={on ? "關閉" : "觸發"}
-                    className={on ? "bg-rose-500/20 text-rose-300 hover:bg-rose-500/30" : "bg-amber-500 text-white hover:bg-amber-400"}
+                  <ActionButton
+                    label={on ? "關閉" : "觸發"}
+                    className={
+                      on
+                        ? "shrink-0 bg-rose-500/20 text-rose-300 hover:bg-rose-500/30"
+                        : "shrink-0 bg-amber-500 px-5 text-white hover:bg-amber-400"
+                    }
                     onAction={async () => {
-                      await postJson("/api/host/event", { index: i, on: !on, penaltyRegion: i === 4 ? penalty : undefined });
+                      await postJson("/api/host/event", {
+                        index: i,
+                        on: !on,
+                        penaltyRegion: i === 4 ? penalty : undefined,
+                      });
                       await mutate();
                       return `事件${i} ${on ? "已關閉" : "已觸發"}`;
-                    }} />
+                    }}
+                  />
                 </div>
                 {i === 4 && (
-                  <div className="mt-2 text-xs text-slate-400">
-                    「前次漲最多區域 −15%」由你選定：
-                    <select value={penalty} onChange={(e) => setPenalty(e.target.value)} className="fld ml-2 px-2 py-1">
-                      {REGIONS.map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}
+                  <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-white/8 bg-white/5 px-3 py-2 text-xs text-slate-400">
+                    <span>「前次漲最多區域 −15%」：</span>
+                    <select
+                      value={penalty}
+                      onChange={(e) => setPenalty(e.target.value)}
+                      className="fld px-2 py-1 text-xs"
+                    >
+                      {REGIONS.map((r) => (
+                        <option key={r.code} value={r.code}>
+                          {r.name}
+                        </option>
+                      ))}
                     </select>
-                    <span className="ml-2 text-slate-500">（觸發前先選好；改選後需重新觸發）</span>
+                    <span className="text-slate-500">觸發前先選好</span>
                   </div>
                 )}
               </div>

@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import type { NextRequest } from "next/server";
 import { prisma } from "./db";
 import { ROLE_HOME, type Role } from "./game";
 
@@ -69,8 +70,20 @@ export class AuthError extends Error {
   }
 }
 
-export async function requireRoleApi(...roles: Role[]): Promise<Session> {
-  if (AUTH_OFF) return devSession("ADMIN");
+// req 只在 AUTH_OFF 時用來讀 ?teamId= dev 參數，prod 傳 null 即可。
+export async function requireRoleApi(req: NextRequest | null, ...roles: Role[]): Promise<Session> {
+  if (AUTH_OFF) {
+    const role = (roles[0] ?? "ADMIN") as Role;
+    if (role === "TEAM") {
+      // Dev: 先從 ?teamId= 讀，讀不到才 fallback 到第一隊
+      const paramId = req ? parseInt(req.nextUrl.searchParams.get("teamId") ?? "", 10) : NaN;
+      const teamId = Number.isFinite(paramId)
+        ? paramId
+        : ((await prisma.team.findFirst({ orderBy: { id: "asc" } }))?.id ?? null);
+      return devSession("TEAM", teamId);
+    }
+    return devSession(role);
+  }
   const session = await getSession();
   if (!session) throw new AuthError(401, "未登入");
   // ADMIN 永遠可通過（總覽 / 調平衡）

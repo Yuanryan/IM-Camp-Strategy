@@ -11,7 +11,7 @@ type Handler = (
 export function apiRoute(roles: Role[], handler: Handler) {
   return async (req: NextRequest) => {
     try {
-      const session = await requireRoleApi(...roles);
+      const session = await requireRoleApi(req, ...roles);
       let body: Record<string, unknown> = {};
       if (req.method !== "GET") {
         body = (await req.json().catch(() => ({}))) as Record<string, unknown>;

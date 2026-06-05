@@ -66,6 +66,45 @@ export function EventBanner({ events }: { events: number[] }) {
   );
 }
 
+// 底部導航欄（玩家頁面專用，fixed bottom）
+export function BottomNav<T extends string>({
+  tabs,
+  active,
+  onChange,
+}: {
+  tabs: readonly (readonly [T, ReactNode, ReactNode])[];
+  active: T;
+  onChange: (key: T) => void;
+}) {
+  return (
+    <nav className="bottom-nav">
+      <div className="mx-auto flex max-w-5xl">
+        {tabs.map(([key, label, icon]) => (
+          <button
+            key={key}
+            onClick={() => onChange(key)}
+            className={`relative flex flex-1 flex-col items-center justify-center gap-1 py-3.5 text-[11px] font-semibold tracking-wide transition-all ${
+              active === key ? "text-cyan-400" : "text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            <span
+              className={`transition-transform duration-150 ${
+                active === key ? "scale-110 drop-shadow-[0_0_8px_rgba(34,211,238,0.8)]" : ""
+              }`}
+            >
+              {icon}
+            </span>
+            {label}
+            {active === key && (
+              <span className="absolute top-0 left-0 right-0 h-[2px] bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,1)]" />
+            )}
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
 // 科技感 HUD 頁籤（發光底線）— 各分頁頁面共用
 export function HudTabs<T extends string>({
   tabs,

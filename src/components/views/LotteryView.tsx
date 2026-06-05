@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSnapshot, postJson, ActionButton, TeamSelect, toast } from "@/components/client";
-import { Card } from "@/components/Shell";
+import { Card, StickyTeam } from "@/components/Shell";
 import { Num } from "@/components/ui";
 import { lotteryFee } from "@/lib/game";
 
@@ -40,34 +40,50 @@ export function LotteryView() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-2 sm:gap-4">
-        <Card title="本期">
-          <Num className="text-xl font-black text-slate-100 sm:text-3xl">第 {snap.lottery.period} 期</Num>
-        </Card>
-        <Card title="獎金池">
-          <Num className="neon-emerald text-xl font-black sm:text-3xl">{snap.lottery.pool}</Num>
-        </Card>
-        <Card title="開獎">
-          <ActionButton label="開獎抽號" className="bg-rose-600 text-white shadow-rose-500/30 hover:bg-rose-500"
-            confirmText="確定開獎？"
-            onAction={async () => {
-              const r = await postJson("/api/lottery/draw", {});
-              await mutate();
-              if (r.winnerTeamId) toast(`中獎號碼 ${r.number}！得主獲得 ${r.pool}`, "ok");
-              else toast(`開出 ${r.number}，無人中獎，獎金池保留`, "err");
-            }} />
-        </Card>
+      {/* Stats + draw in one hero strip */}
+      <div className="overflow-hidden rounded-2xl border border-emerald-400/20 bg-gradient-to-br from-emerald-400/8 to-transparent">
+        <div className="h-0.5 w-full bg-gradient-to-r from-emerald-400/80 via-emerald-300/40 to-transparent" />
+        <div className="flex items-center gap-0 divide-x divide-white/8">
+          <div className="flex-1 px-4 py-4 text-center">
+            <div className="mb-0.5 text-[10px] uppercase tracking-widest text-slate-500">本期</div>
+            <Num className="text-2xl font-black text-slate-100">第 {snap.lottery.period} 期</Num>
+          </div>
+          <div className="flex-1 px-4 py-4 text-center">
+            <div className="mb-0.5 text-[10px] uppercase tracking-widest text-slate-500">獎金池</div>
+            <Num className="neon-emerald text-2xl font-black">{snap.lottery.pool}</Num>
+          </div>
+          <div className="px-4 py-4">
+            <ActionButton
+              label="開獎"
+              className="bg-rose-600 px-5 py-3 text-base font-black text-white shadow-lg shadow-rose-500/30 hover:bg-rose-500"
+              confirmText="確定開獎？"
+              onAction={async () => {
+                const r = await postJson("/api/lottery/draw", {});
+                await mutate();
+                if (r.winnerTeamId) toast(`中獎號碼 ${r.number}！得主獲得 ${r.pool}`, "ok");
+                else toast(`開出 ${r.number}，無人中獎，獎金池保留`, "err");
+              }}
+            />
+          </div>
+        </div>
       </div>
 
-      <Card title="登記號碼">
-        <div className="mb-3 flex flex-wrap items-center gap-3">
+      <StickyTeam>
+        <div className="flex flex-wrap items-center gap-3">
           <TeamSelect teams={snap.teams} value={team} onChange={setTeam} />
-          {team !== "" && (
+          {team !== "" ? (
             <span className="text-sm text-slate-400">
-              已持 {myCount} 個，下個號碼費用 <Num className="font-bold neon-gold">{nextFee}</Num>（光幣 <Num className="neon-gold">{snap.teams.find((t) => t.id === team)?.coins}</Num>）
+              已持 <Num className="font-bold text-slate-200">{myCount}</Num> 個・下個費用{" "}
+              <Num className="neon-gold font-bold">{nextFee}</Num>・光幣{" "}
+              <Num className="neon-gold font-bold">{snap.teams.find((t) => t.id === team)?.coins}</Num>
             </span>
+          ) : (
+            <span className="text-xs text-amber-300/80">⚠ 請先選擇登記小隊</span>
           )}
         </div>
+      </StickyTeam>
+
+      <Card title="登記號碼">
         {result && (
           <div className={`mb-3 rounded-lg px-3 py-2 text-sm font-medium ring-1 ${
             result.ok

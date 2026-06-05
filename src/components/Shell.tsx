@@ -51,6 +51,15 @@ export function Shell({
   );
 }
 
+// 各站別共用黏頂小隊選擇列（top = header 高度 56px = top-14）
+export function StickyTeam({ children }: { children: ReactNode }) {
+  return (
+    <div className="sticky top-14 z-10 -mx-4 border-y border-white/10 bg-slate-950/80 px-4 py-3 backdrop-blur-md sm:mx-0 sm:rounded-2xl sm:border">
+      {children}
+    </div>
+  );
+}
+
 export function Card({
   title,
   children,

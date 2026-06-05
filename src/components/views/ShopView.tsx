@@ -3,7 +3,7 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { fetcher, useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
-import { Card } from "@/components/Shell";
+import { Card, StickyTeam } from "@/components/Shell";
 import { Num } from "@/components/ui";
 
 type ShopData = {
@@ -21,10 +21,18 @@ export function ShopView() {
 
   return (
     <div className="space-y-4">
-      <Card title="購買對象">
-        <TeamSelect teams={snap.teams} value={team} onChange={setTeam} />
-        {cur && <span className="ml-3 text-sm text-slate-400">卡牌點數 <Num className="text-cyan-300">{cur.cardPoints}</Num></span>}
-      </Card>
+      <StickyTeam>
+        <div className="flex flex-wrap items-center gap-3">
+          <TeamSelect teams={snap.teams} value={team} onChange={setTeam} />
+          {cur ? (
+            <span className="text-sm text-slate-400">
+              卡牌點數 <Num className="font-bold text-cyan-300">{cur.cardPoints}</Num>
+            </span>
+          ) : (
+            <span className="text-xs text-amber-300/80">⚠ 請先選擇購買小隊</span>
+          )}
+        </div>
+      </StickyTeam>
 
       <Card title="展示中（3 張，售出後自動補）">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
