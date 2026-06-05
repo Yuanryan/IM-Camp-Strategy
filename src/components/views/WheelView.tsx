@@ -172,9 +172,7 @@ export function WheelView({
                   disabled={spinning}
                   onClick={() => setStake(v)}
                   className={`flex-1 rounded-lg py-2.5 text-sm font-bold transition active:scale-95 disabled:opacity-40 ${
-                    stake === v
-                      ? "bg-purple-500 text-white shadow-[0_0_12px_rgba(168,85,247,0.4)]"
-                      : "chip hover:bg-white/15"
+                    stake === v ? "btn-purple ring-1 ring-purple-400/40" : "chip"
                   }`}
                 >
                   {v}
@@ -199,7 +197,7 @@ export function WheelView({
           <button
             onClick={spin}
             disabled={team === "" || spinning}
-            className="w-full rounded-xl bg-purple-600 py-4 text-lg font-black tracking-widest text-white shadow-lg shadow-purple-500/30 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 hover:bg-purple-500 hover:shadow-[0_0_20px_rgba(168,85,247,0.5)]"
+            className="btn-purple w-full rounded-xl py-4 text-lg font-black tracking-widest transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
           >
             {spinning ? "轉動中…" : "轉輪盤"}
           </button>

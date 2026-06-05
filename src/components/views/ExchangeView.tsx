@@ -106,17 +106,17 @@ export function ExchangeView() {
 
                   <div className="mt-3 flex flex-col gap-2">
                     {!p.ownerTeamId && (
-                      <ActionButton label={`購買  ${buyPrice}`} className="w-full bg-emerald-600 text-white hover:bg-emerald-500"
+                      <ActionButton label={`購買  ${buyPrice}`} className="w-full btn-emerald"
                         disabled={team === ""}
                         onAction={() => team === "" ? Promise.resolve("請先選小隊") :
                           act(() => postJson("/api/exchange/buy", { propertyId: p.id, teamId: team, discount }), `已購買 ${p.name}`)} />
                     )}
                     {p.ownerTeamId && fee != null && (
-                      <ActionButton label={`升級  ${Math.max(0, fee - discount)}`} className="w-full bg-amber-500 text-white hover:bg-amber-400"
+                      <ActionButton label={`升級  ${Math.max(0, fee - discount)}`} className="w-full btn-amber"
                         onAction={() => act(() => postJson("/api/exchange/upgrade", { propertyId: p.id, discount }), `已升級 ${p.name}`)} />
                     )}
                     {p.ownerTeamId && (
-                      <ActionButton label="過戶" className="w-full chip hover:bg-white/20"
+                      <ActionButton label="過戶" className="w-full chip"
                         disabled={team === ""}
                         onAction={() => team === "" ? Promise.resolve("請先選目標隊") :
                           act(() => postJson("/api/exchange/transfer", { propertyId: p.id, toTeamId: team, price }), `已過戶 ${p.name}`)} />
@@ -148,7 +148,7 @@ function LedgerCard() {
               {r.delta !== 0 && <b className={r.delta > 0 ? "text-emerald-400" : "text-rose-400"}> {r.delta > 0 ? "+" : ""}{r.delta}</b>}
             </span>
             {!r.reversed && r.delta !== 0 && (
-              <ActionButton label="沖銷" className="bg-rose-500/20 text-rose-300 hover:bg-rose-500/30"
+              <ActionButton label="沖銷" className="btn-rose"
                 confirmText={`確定沖銷 #${r.id}？`}
                 onAction={async () => { await postJson("/api/ledger/reverse", { ledgerId: r.id }); await load(); return "已沖銷"; }} />
             )}

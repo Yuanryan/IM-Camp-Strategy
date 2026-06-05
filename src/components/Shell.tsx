@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { LogOut, Sparkles } from "lucide-react";
 import { ROLE_LABEL, type Role } from "@/lib/game";
 import { FogToggle } from "@/components/ui/fog-toggle";
+import { FullscreenButton } from "@/components/ui/fullscreen-button";
 
 // 各角色頁面共用外框（透明毛玻璃標題列 + 登出）
 export function Shell({
@@ -36,6 +37,7 @@ export function Shell({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <FullscreenButton />
             <FogToggle />
             <form action="/api/logout" method="post">
               <button className="flex items-center gap-1.5 rounded-lg border border-white/5 px-2.5 py-1.5 text-xs text-slate-400 transition-all hover:border-rose-500/30 hover:bg-rose-500/10 hover:text-rose-400">

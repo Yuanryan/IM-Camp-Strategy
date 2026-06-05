@@ -68,8 +68,8 @@ export function ActionButton({
           setBusy(false);
         }
       }}
-      className={`inline-flex min-h-[2.75rem] items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold shadow-sm transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 ${
-        className || "bg-cyan-500 text-slate-950 shadow-cyan-500/30 hover:bg-cyan-400"
+      className={`inline-flex min-h-[2.75rem] items-center justify-center rounded-xl px-4 py-2 text-sm font-semibold transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100 ${
+        className || "btn-cyan"
       }`}
     >
       {busy ? "處理中…" : label}

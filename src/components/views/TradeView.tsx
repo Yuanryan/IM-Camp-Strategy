@@ -122,7 +122,7 @@ export function TradeView({ teamId }: { teamId: number }) {
                   <b className="text-cyan-300">{t.fromTeamName}</b> 要給你 <TradeAmt coins={t.coins} points={t.cardPoints} />
                 </div>
                 <div className="mt-2 flex gap-2">
-                  <ActionButton label="接受" className="bg-emerald-600 text-white hover:bg-emerald-500"
+                  <ActionButton label="接受" className="btn-emerald"
                     disabled={busyId === t.id}
                     onAction={async () => {
                       setBusyId(t.id);
@@ -140,7 +140,7 @@ export function TradeView({ teamId }: { teamId: number }) {
                         setBusyId(null);
                       }
                     }} />
-                  <ActionButton label="拒絕" className="bg-rose-500/20 text-rose-300 hover:bg-rose-500/30"
+                  <ActionButton label="拒絕" className="btn-rose"
                     disabled={busyId === t.id}
                     onAction={async () => {
                       setBusyId(t.id);

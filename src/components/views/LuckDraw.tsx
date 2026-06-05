@@ -37,13 +37,13 @@ export function LuckDraw({
       <div className="grid grid-cols-2 gap-2">
         <button
           onClick={() => { setBad(null); setGood(pick(GOOD_LUCK_CARDS)); }}
-          className="rounded-xl bg-amber-500/90 py-3 text-sm font-bold text-slate-950 transition active:scale-95 hover:bg-amber-400"
+          className="btn-amber rounded-xl py-3 text-sm font-bold transition active:scale-95"
         >
           抽好運卡
         </button>
         <button
           onClick={() => { setGood(null); setBad(pick(BAD_LUCK_CARDS)); }}
-          className="rounded-xl bg-rose-500/80 py-3 text-sm font-bold text-white transition active:scale-95 hover:bg-rose-500"
+          className="btn-rose rounded-xl py-3 text-sm font-bold transition active:scale-95"
         >
           抽厄運卡
         </button>
@@ -67,7 +67,7 @@ export function LuckDraw({
           <div className="grid grid-cols-2 gap-2">
             <ActionButton
               label={`成功  +${good.success * mult}`}
-              className="w-full bg-emerald-600 text-white hover:bg-emerald-500"
+              className="w-full btn-emerald"
               disabled={team === ""}
               onAction={() => settle(good.success * mult, `好運卡 ${good.name}（成功）`)}
             />
@@ -104,7 +104,7 @@ export function LuckDraw({
               <ActionButton
                 key={i}
                 label={o.deduct > 0 ? `${o.label}  −${o.deduct * mult}` : `${o.label}（不扣）`}
-                className={`w-full ${o.deduct > 0 ? "bg-rose-500/20 text-rose-200 hover:bg-rose-500/30" : "chip"}`}
+                className={`w-full ${o.deduct > 0 ? "btn-rose" : "chip"}`}
                 disabled={team === ""}
                 onAction={() => settle(-o.deduct * mult, `厄運卡 ${bad.name}（${o.label}）`)}
               />

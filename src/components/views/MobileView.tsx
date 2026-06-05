@@ -7,7 +7,7 @@ import { RewardButtons, CustomGive } from "@/components/RewardPanel";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, EventBanner, HudTabs } from "@/components/ui";
 import { MOBILE_REWARD_PRESETS } from "@/lib/game";
-import { Gamepad2, BookOpen, Timer as TimerIcon, Minus, Plus, Pause, Play, RotateCcw } from "lucide-react";
+import { Gamepad2, BookOpen, Timer as TimerIcon, Pause, Play, RotateCcw } from "lucide-react";
 
 // 題庫 CRUD（流動關主可編輯）
 async function sendQuestion(method: string, body: unknown) {
@@ -232,7 +232,7 @@ function Questions() {
             {show && q.answer && <div className="text-emerald-300">答案：{q.answer}</div>}
             <div className="mt-3 flex gap-2">
               <button onClick={() => { setIdx(Math.floor(Math.random() * pool.length)); setShow(false); }}
-                className="rounded-lg bg-sky-600 px-4 py-2 text-sm text-white">抽一題</button>
+                className="chip rounded-lg px-4 py-2 text-sm hover:bg-white/20">抽一題</button>
               <button onClick={() => setShow((s) => !s)} className="chip px-4 py-2 text-sm">{show ? "隱藏答案" : "看答案"}</button>
               <button onClick={() => { setIdx((i) => (i + 1) % pool.length); setShow(false); }} className="chip px-4 py-2 text-sm">下一題</button>
             </div>

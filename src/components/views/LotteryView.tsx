@@ -55,7 +55,7 @@ export function LotteryView() {
           <div className="px-4 py-4">
             <ActionButton
               label="開獎"
-              className="bg-rose-600 px-5 py-3 text-base font-black text-white shadow-lg shadow-rose-500/30 hover:bg-rose-500"
+              className="btn-rose px-5 py-3 text-base font-black"
               confirmText="確定開獎？"
               onAction={async () => {
                 const r = await postJson("/api/lottery/draw", {});

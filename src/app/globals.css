@@ -87,9 +87,74 @@ body {
 
 /* 灰底小標籤 / 次要按鈕 */
 .chip {
-  background: rgba(148, 163, 184, 0.12);
-  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  color: #94a3b8;
   border-radius: 0.5rem;
+}
+.chip:not(:disabled):hover {
+  background: rgba(148, 163, 184, 0.14);
+  border-color: rgba(148, 163, 184, 0.24);
+  color: #cbd5e1;
+}
+
+/* ── 按鈕色彩變體（半透明霓虹玻璃風格） ─────────────────────────────
+   使用方式：className="btn-emerald"（搭配 ActionButton 或 <button>）
+   佈局（w-full、flex-1 等）仍用 Tailwind utility 疊加。
+   ─────────────────────────────────────────────────────────────── */
+.btn-emerald {
+  background: rgba(52, 211, 153, 0.09);
+  border: 1px solid rgba(52, 211, 153, 0.36);
+  color: #6ee7b7;
+}
+.btn-emerald:not(:disabled):hover {
+  background: rgba(52, 211, 153, 0.16);
+  border-color: rgba(52, 211, 153, 0.60);
+  box-shadow: 0 0 16px rgba(52, 211, 153, 0.14);
+}
+
+.btn-amber {
+  background: rgba(251, 191, 36, 0.09);
+  border: 1px solid rgba(251, 191, 36, 0.36);
+  color: #fcd34d;
+}
+.btn-amber:not(:disabled):hover {
+  background: rgba(251, 191, 36, 0.16);
+  border-color: rgba(251, 191, 36, 0.60);
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.14);
+}
+
+.btn-cyan {
+  background: rgba(34, 211, 238, 0.09);
+  border: 1px solid rgba(34, 211, 238, 0.36);
+  color: #67e8f9;
+}
+.btn-cyan:not(:disabled):hover {
+  background: rgba(34, 211, 238, 0.16);
+  border-color: rgba(34, 211, 238, 0.60);
+  box-shadow: 0 0 16px rgba(34, 211, 238, 0.14);
+}
+
+.btn-rose {
+  background: rgba(251, 113, 133, 0.09);
+  border: 1px solid rgba(251, 113, 133, 0.36);
+  color: #fda4af;
+}
+.btn-rose:not(:disabled):hover {
+  background: rgba(251, 113, 133, 0.16);
+  border-color: rgba(251, 113, 133, 0.60);
+  box-shadow: 0 0 16px rgba(251, 113, 133, 0.14);
+}
+
+.btn-purple {
+  background: rgba(168, 85, 247, 0.10);
+  border: 1px solid rgba(168, 85, 247, 0.38);
+  color: #d8b4fe;
+}
+.btn-purple:not(:disabled):hover {
+  background: rgba(168, 85, 247, 0.20);
+  border-color: rgba(168, 85, 247, 0.65);
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.20);
 }
 
 :focus-visible {

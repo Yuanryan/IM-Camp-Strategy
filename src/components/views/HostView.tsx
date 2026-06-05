@@ -26,7 +26,7 @@ export function HostView() {
               label={label}
               className={`flex-1 py-3 text-base font-bold ${
                 snap.phase === p
-                  ? "bg-cyan-500 text-slate-950 shadow-[0_0_14px_rgba(34,211,238,0.4)]"
+                  ? "btn-cyan ring-1 ring-cyan-400/50 shadow-[0_0_14px_rgba(34,211,238,0.18)]"
                   : "chip"
               }`}
               onAction={async () => {
@@ -70,11 +70,7 @@ export function HostView() {
                   </div>
                   <ActionButton
                     label={on ? "關閉" : "觸發"}
-                    className={
-                      on
-                        ? "shrink-0 bg-rose-500/20 text-rose-300 hover:bg-rose-500/30"
-                        : "shrink-0 bg-amber-500 px-5 text-white hover:bg-amber-400"
-                    }
+                    className={on ? "shrink-0 btn-rose" : "shrink-0 btn-amber px-5"}
                     onAction={async () => {
                       await postJson("/api/host/event", {
                         index: i,
@@ -110,7 +106,7 @@ export function HostView() {
       </Card>
 
       <Card title="結算">
-        <ActionButton label="進行最終結算（鎖定並排名）" className="bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+        <ActionButton label="進行最終結算（鎖定並排名）" className="btn-rose w-full py-3 text-base"
           confirmText="確定結算？將鎖定為已結算狀態。"
           onAction={async () => { const r = await postJson("/api/host/settle", {}); setRanking(r.ranking); await mutate(); return "已結算"; }} />
         {ranking && (

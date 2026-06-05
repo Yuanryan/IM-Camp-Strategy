@@ -144,7 +144,7 @@ function LedgerCard() {
               <span className="ml-1 text-xs text-slate-500">{r.byToken}</span>
             </span>
             {!r.reversed && r.delta !== 0 && (
-              <ActionButton label="沖銷" className="bg-rose-500/20 text-rose-300 hover:bg-rose-500/30"
+              <ActionButton label="沖銷" className="btn-rose"
                 confirmText={`沖銷 #${r.id}？`}
                 onAction={async () => { await postJson("/api/ledger/reverse", { ledgerId: r.id }); mutate(); return "已沖銷"; }} />
             )}

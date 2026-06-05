@@ -41,7 +41,7 @@ export function ShopView() {
               <div className="text-base font-bold text-cyan-200">{d.cardType ?? "（空）"}</div>
               <div className="mt-1 h-8 text-xs text-slate-400">{d.effect}</div>
               <div className="my-2 text-sm text-slate-300">點數 <Num className="font-bold text-cyan-300">{d.cost}</Num>　庫存 <Num>{d.remaining}</Num></div>
-              <ActionButton label="售出" className="w-full bg-emerald-600 text-white hover:bg-emerald-500"
+              <ActionButton label="售出" className="w-full btn-emerald"
                 disabled={team === "" || !d.cardType || d.remaining <= 0}
                 onAction={async () => {
                   const r = await postJson("/api/shop/sell", { teamId: team, slot: d.slot });
@@ -54,7 +54,7 @@ export function ShopView() {
       </Card>
 
       <Card title="功能卡兌換券">
-        <ActionButton label="抽一張（兌換券）" className="bg-sky-600 text-white hover:bg-sky-500"
+        <ActionButton label="抽一張（兌換券）" className="btn-emerald"
           disabled={team === ""}
           onAction={async () => {
             const r = await postJson("/api/shop/voucher", { teamId: team });

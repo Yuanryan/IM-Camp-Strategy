@@ -124,7 +124,7 @@ export function MapView() {
 
             <ActionButton
               label="向選定小隊收過路費"
-              className="w-full bg-sky-600 text-white hover:bg-sky-500"
+              className="w-full bg-cyan-500 text-slate-950 hover:bg-cyan-400"
               disabled={team === ""}
               onAction={async () => {
                 if (team === "") return "請先選付款小隊";

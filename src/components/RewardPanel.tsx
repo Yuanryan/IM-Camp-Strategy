@@ -20,10 +20,10 @@ export async function giveReward(p: {
 }
 
 const TONE: Record<RewardTone, string> = {
-  good: "bg-emerald-600 text-white hover:bg-emerald-500",
-  bad: "bg-red-600 text-white hover:bg-red-500",
-  gold: "bg-amber-500 text-white hover:bg-amber-400",
-  spirit: "bg-emerald-500 text-white hover:bg-emerald-400",
+  good:   "btn-emerald",
+  bad:    "btn-rose",
+  gold:   "btn-amber",
+  spirit: "btn-emerald",
 };
 
 // 自訂金額發獎 / 扣款（任何發獎處都可放，留一點彈性空間）
@@ -58,7 +58,7 @@ export function CustomGive({
         <input type="number" inputMode="numeric" value={amt}
           onChange={(e) => setAmt(Number(e.target.value) || 0)} className="fld w-28" />
       </label>
-      <ActionButton label="給光幣" className="bg-amber-500/90 text-slate-950 hover:bg-amber-400"
+      <ActionButton label="給光幣" className="btn-amber"
         disabled={teamId === ""} onAction={() => give("coins", "光幣")} />
       {points && (
         <ActionButton label="給點數" className="chip" disabled={teamId === ""}
