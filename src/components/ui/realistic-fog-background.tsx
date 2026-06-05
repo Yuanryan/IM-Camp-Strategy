@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useFog } from "@/components/ui/fog-context";
 
 /**
@@ -19,17 +20,35 @@ import { useFog } from "@/components/ui/fog-context";
  *    stops animating, so after one final frame the WebGL loop idles and
  *    ongoing GPU usage drops to ~zero.
  */
-export default function MistBackground() {
+export default function MistBackground({
+  speed,
+  angle,
+}: {
+  speed?: number;
+  angle?: number;
+} = {}) {
   const { enabled } = useFog();
-  return <MistCanvas animate={enabled} />;
+  return <MistCanvas animate={enabled} speed={speed} angle={angle} />;
 }
 
-function MistCanvas({ animate }: { animate: boolean }) {
+function MistCanvas({
+  animate,
+  speed = 1.0,
+  angle = 0.0,
+  className,
+}: {
+  animate: boolean;
+  speed?: number;
+  angle?: number;
+  className?: string;
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  // Latest animate flag, readable from inside the one-time setup effect.
   const animateRef = useRef(animate);
   animateRef.current = animate;
-  // Lets the [animate] effect re-evaluate the render mode without rebuilding GL.
+  const speedRef = useRef(speed);
+  speedRef.current = speed;
+  const angleRef = useRef(angle);
+  angleRef.current = angle;
   const applyRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -59,6 +78,8 @@ function MistCanvas({ animate }: { animate: boolean }) {
     const fsSource = `
       precision highp float;
       uniform float u_time;
+      uniform float u_speed;
+      uniform float u_angle;
       uniform vec2 u_resolution;
       uniform vec2 u_mouse;
 
@@ -96,19 +117,25 @@ function MistCanvas({ animate }: { animate: boolean }) {
           vec2 uv = gl_FragCoord.xy / u_resolution.xy;
           uv.x *= u_resolution.x / u_resolution.y;
 
+          // Rotate UV for directional fog drift
+          float ca = cos(u_angle); float sa = sin(u_angle);
+          vec2 ruv = vec2(ca * uv.x - sa * uv.y, sa * uv.x + ca * uv.y);
+
+          float t = u_speed * u_time;
+
           vec2 mPos = u_mouse / u_resolution.xy;
           mPos.x *= u_resolution.x / u_resolution.y;
           float dist = distance(uv, mPos);
 
           vec2 q = vec2(0.0);
-          q.x = fbm(uv + 0.07 * u_time);
-          q.y = fbm(uv + vec2(1.0, 1.0));
+          q.x = fbm(ruv + 0.07 * t);
+          q.y = fbm(ruv + vec2(1.0, 1.0));
 
           vec2 r = vec2(0.0);
-          r.x = fbm(uv + 1.0 * q + vec2(1.7, 9.2) + 0.15 * u_time);
-          r.y = fbm(uv + 1.0 * q + vec2(8.3, 2.8) + 0.126 * u_time);
+          r.x = fbm(ruv + 1.0 * q + vec2(1.7, 9.2) + 0.15 * t);
+          r.y = fbm(ruv + 1.0 * q + vec2(8.3, 2.8) + 0.126 * t);
 
-          float f = fbm(uv + r);
+          float f = fbm(ruv + r);
 
           // Deep slate base with cyan-tinted mist highlights (matches slate-950 + neon cyan)
           vec3 baseColor = vec3(0.01, 0.03, 0.09);
@@ -150,8 +177,10 @@ function MistCanvas({ animate }: { animate: boolean }) {
     gl.enableVertexAttribArray(posAttrib);
     gl.vertexAttribPointer(posAttrib, 2, gl.FLOAT, false, 0, 0);
 
-    const timeLoc = gl.getUniformLocation(program, "u_time");
-    const resLoc = gl.getUniformLocation(program, "u_resolution");
+    const timeLoc  = gl.getUniformLocation(program, "u_time");
+    const speedLoc = gl.getUniformLocation(program, "u_speed");
+    const angleLoc = gl.getUniformLocation(program, "u_angle");
+    const resLoc   = gl.getUniformLocation(program, "u_resolution");
     const mouseLoc = gl.getUniformLocation(program, "u_mouse");
 
     const mouse = { x: 0, y: 0 };
@@ -175,8 +204,10 @@ function MistCanvas({ animate }: { animate: boolean }) {
     // Draw a single frame at the given time (seconds-domain handled by caller).
     const drawFrame = (timeMs: number) => {
       resizeIfNeeded();
-      gl.uniform1f(timeLoc, timeMs * 0.001);
-      gl.uniform2f(resLoc, canvas.width, canvas.height);
+      gl.uniform1f(timeLoc,  timeMs * 0.001);
+      gl.uniform1f(speedLoc, speedRef.current);
+      gl.uniform1f(angleLoc, angleRef.current);
+      gl.uniform2f(resLoc,   canvas.width, canvas.height);
       gl.uniform2f(mouseLoc, mouse.x, mouse.y);
       gl.drawArrays(gl.TRIANGLES, 0, 6);
     };
@@ -246,8 +277,46 @@ function MistCanvas({ animate }: { animate: boolean }) {
     <canvas
       ref={canvasRef}
       aria-hidden
-      className="fixed inset-0 -z-10 h-full w-full pointer-events-none"
+      className={className ?? "fixed inset-0 -z-10 h-full w-full pointer-events-none"}
       style={{ background: "#020617" }}
     />
+  );
+}
+
+/**
+ * Renders a second instance of the exact same WebGL fog at z-60 for page
+ * transitions. Mounts on demand so GPU overhead only exists during the surge.
+ */
+export function MistSurgeOverlay({
+  visible,
+  direction = 1,
+}: {
+  visible: boolean;
+  /** 1 = forward (swipe left), -1 = backward (swipe right) */
+  direction?: number;
+}) {
+  // direction 1  → content moves left  → fog sweeps leftward  (angle = π)
+  // direction -1 → content moves right → fog sweeps rightward (angle = 0)
+  const angle = direction < 0 ? -2.5 : Math.PI/4;
+
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          className="fixed inset-0 z-[60] pointer-events-none overflow-hidden"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 0.88 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2, ease: "easeInOut" }}
+        >
+          <MistCanvas
+            animate
+            speed={4}
+            angle={angle}
+            className="absolute inset-0 h-full w-full pointer-events-none"
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

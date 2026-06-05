@@ -6,7 +6,8 @@ import { fetcher, useSnapshot } from "@/components/client";
 import { Card } from "@/components/Shell";
 import { Num, PriceTag, LevelDots, EventBanner, BottomNav } from "@/components/ui";
 import { TradeView } from "@/components/views/TradeView";
-import { Wallet, ArrowLeftRight, Trophy } from "lucide-react";
+import { InstructionsView } from "@/components/views/InstructionsView";
+import { Wallet, ArrowLeftRight, Trophy, BookOpen } from "lucide-react";
 import { REGIONS, REGION_UI } from "@/lib/game";
 
 const LEVEL_TAG = ["已購", "1級", "2級", "3級"];
@@ -16,7 +17,7 @@ export function TeamView({ teamId }: { teamId: number }) {
   const { data: trades } = useSWR<{ incoming: unknown[] }>("/api/trade", fetcher, {
     refreshInterval: 3000,
   });
-  const [tab, setTab] = useState<"assets" | "trade">("assets");
+  const [tab, setTab] = useState<"assets" | "trade" | "guide">("assets");
   const incoming = trades?.incoming?.length ?? 0;
 
   if (error) return <p className="p-4 text-sm text-slate-400">連線錯誤，重試中…</p>;
@@ -54,6 +55,10 @@ export function TeamView({ teamId }: { teamId: number }) {
       )}
     </span>
   );
+
+  if (tab === "guide") {
+    return <InstructionsView onBack={() => setTab("assets")} />;
+  }
 
   return (
     <div className="space-y-4 pb-24">
@@ -211,6 +216,7 @@ export function TeamView({ teamId }: { teamId: number }) {
         tabs={[
           ["assets", "我的資產", <Wallet key="w" className="h-5 w-5" />],
           ["trade", tradeLabel, <ArrowLeftRight key="t" className="h-5 w-5" />],
+          ["guide", "說明書", <BookOpen key="g" className="h-5 w-5" />],
         ] as const}
       />
     </div>
