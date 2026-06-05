@@ -196,12 +196,12 @@ export function lotteryFee(alreadyOwnedCount: number): number {
 
 // 命運投資輪盤倍率與機率（x5 低機率）
 export const WHEEL_OUTCOMES: { mult: number; weight: number }[] = [
-  { mult: 0.5, weight: 25 },
-  { mult: 1, weight: 40 },
-  { mult: 1.5, weight: 20 },
+  { mult: 0, weight: 25 },
+  { mult: 0.5, weight: 20 },
+  { mult: 1, weight: 35 },
   { mult: 2, weight: 10 },
-  { mult: 5, weight: 4 },
-  { mult: 10, weight: 1 },
+  { mult: 5, weight: 3 },
+  { mult: 10, weight: 2 },
 ];
 
 export function spinWheel(): number {

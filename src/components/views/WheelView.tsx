@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { postJson, TeamSelect, toast } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num } from "@/components/ui";
@@ -51,14 +51,27 @@ export function WheelView({
   const [stake, setStake] = useState(100);
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
-  const [last, setLast] = useState<{ mult: number; delta: number } | null>(null);
+  const [last, setLast] = useState<{ mult: number; delta: number; stake: number } | null>(null);
+  // Freeze the coins display at spin-start so mid-animation SWR refreshes
+  // don't update the balance or max-stake while the wheel is still moving.
+  const [frozenCoins, setFrozenCoins] = useState<number | null>(null);
+
+  const displayCoins = spinning && frozenCoins !== null ? frozenCoins : (cur?.coins ?? 0);
+  const maxStake = Math.max(500, Math.floor(displayCoins / 10));
+
+  // Clamp stake only after the animation ends (maxStake is stable during spinning)
+  useEffect(() => {
+    if (spinning) return;
+    if (stake > maxStake) setStake(maxStake);
+  }, [maxStake, spinning]);
 
   const spin = async () => {
     if (team === "" || spinning) return;
-    if (stake < 1 || stake > 500) {
-      toast("投入需 1–500 光幣", "err");
+    if (stake < 1 || stake > maxStake) {
+      toast(`投入需 1–${maxStake} 光幣`, "err");
       return;
     }
+    setFrozenCoins(cur?.coins ?? 0);
     setSpinning(true);
     setLast(null);
     try {
@@ -74,9 +87,14 @@ export function WheelView({
         return prev + 360 * 6 + add; // 轉 6 圈再對準
       });
       window.setTimeout(async () => {
-        setLast({ mult: r.mult, delta: r.delta });
-        toast(`×${r.mult}！淨${r.delta >= 0 ? "+" : ""}${r.delta}`, r.delta >= 0 ? "ok" : "err", r.undo as UndoRecipe | undefined);
+        setLast({ mult: r.mult, delta: r.delta, stake });
+        toast(
+          `×${r.mult}！${r.delta >= 0 ? "賺" : "賠"} ${Math.abs(r.delta)} 光幣`,
+          r.delta >= 0 ? "ok" : "err",
+          r.undo as UndoRecipe | undefined,
+        );
         await onDone();
+        setFrozenCoins(null);
         setSpinning(false);
       }, 4200);
     } catch (e) {
@@ -92,7 +110,7 @@ export function WheelView({
           <TeamSelect teams={teams} value={team} onChange={setTeam} />
           {cur ? (
             <span className="text-sm text-slate-400">
-              光幣 <Num className="neon-gold font-bold">{cur.coins}</Num>
+              光幣 <Num className="neon-gold font-bold">{displayCoins}</Num>
             </span>
           ) : (
             <span className="text-xs text-amber-300/80">⚠ 請先選擇小隊</span>
@@ -133,8 +151,8 @@ export function WheelView({
                   <text
                     x={lx}
                     y={ly}
-                    fill={s.mult === 5 ? "#020617" : "#e2e8f0"}
-                    fontSize={s.sweep < 16 ? 9 : 13}
+                    fill={s.mult === 10 ? "#020617" : "#e2e8f0"}
+                    fontSize={s.sweep < 16 ? (s.mult === 10 ? 4 : 9) : 13}
                     fontWeight="bold"
                     textAnchor="middle"
                     dominantBaseline="middle"
@@ -151,22 +169,55 @@ export function WheelView({
 
         {last && (
           <div
-            className={`mt-4 rounded-lg px-3 py-2 text-center text-sm font-bold ring-1 ${
+            className={`mt-4 flex items-center gap-4 rounded-xl p-4 ring-1 ${
               last.delta >= 0
-                ? "bg-emerald-500/15 text-emerald-200 ring-emerald-400/30"
-                : "bg-rose-500/15 text-rose-200 ring-rose-400/30"
+                ? "bg-emerald-500/10 ring-emerald-400/30"
+                : "bg-rose-500/10 ring-rose-400/30"
             }`}
           >
-            轉到 ×{last.mult} —— 淨 {last.delta >= 0 ? "+" : ""}{last.delta} 光幣
+            {/* Multiplier */}
+            <div className="shrink-0 text-center">
+              <div className="text-[10px] uppercase tracking-widest text-slate-500">倍率</div>
+              <Num
+                className={`text-4xl font-black leading-none ${
+                  last.delta >= 0 ? "text-emerald-300" : "text-rose-300"
+                }`}
+              >
+                ×{last.mult}
+              </Num>
+            </div>
+
+            {/* Transaction breakdown */}
+            <div className="flex-1 min-w-0">
+              <div className="text-xs text-slate-400">
+                投入 <Num className="font-bold text-slate-200">{last.stake}</Num>
+                {"  →  "}
+                拿回 <Num className="font-bold text-slate-200">{last.stake + last.delta}</Num>
+              </div>
+              <div
+                className={`num mt-0.5 text-2xl font-black ${
+                  last.delta > 0
+                    ? "text-emerald-300"
+                    : last.delta < 0
+                      ? "text-rose-300"
+                      : "text-slate-400"
+                }`}
+              >
+                {last.delta > 0 ? `+${last.delta}` : last.delta === 0 ? "持平" : last.delta}{" "}
+                <span className="text-sm font-semibold">光幣</span>
+              </div>
+            </div>
           </div>
         )}
 
         <div className="mt-4 space-y-3">
           {/* Quick-stake chips */}
           <div>
-            <div className="mb-1.5 text-xs text-slate-400">投入光幣（≤ 500）</div>
+            <div className="mb-1.5 text-xs text-slate-400">
+              投入光幣（上限 <span className="neon-gold font-bold">{maxStake}</span>）
+            </div>
             <div className="flex gap-2">
-              {[100, 200, 300, 500].map((v) => (
+              {[...new Set([100, 200, 300, 500, maxStake])].sort((a, b) => a - b).map((v) => (
                 <button
                   key={v}
                   disabled={spinning}
@@ -187,7 +238,7 @@ export function WheelView({
             inputMode="numeric"
             value={stake}
             min={1}
-            max={500}
+            max={maxStake}
             disabled={spinning}
             onChange={(e) => setStake(Number(e.target.value) || 0)}
             className="fld w-full text-center text-lg font-bold"

@@ -81,11 +81,13 @@ export async function applyWheel(params: {
   byToken?: string;
 }) {
   const { teamId, stake, mult, byToken } = params;
-  if (stake <= 0 || stake > 500) throw new Error("投入金額需為 1–500");
+  if (stake <= 0) throw new Error("投入金額需大於 0");
   const delta = Math.round(stake * mult) - stake; // 淨變動
   return prisma.$transaction(async (tx) => {
     const team = await tx.team.findUnique({ where: { id: teamId } });
     if (!team) throw new Error("找不到小隊");
+    const maxStake = Math.max(500, Math.floor(team.coins / 10));
+    if (stake > maxStake) throw new Error(`投入上限為 ${maxStake} 光幣`);
     if (team.coins + delta < 0) throw new Error("光幣不足以支付投入");
     const updated = await tx.team.update({
       where: { id: teamId },
