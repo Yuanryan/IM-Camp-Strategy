@@ -214,6 +214,121 @@ export function spinWheel(): number {
   return 1;
 }
 
+// ── 動產效果系統 ─────────────────────────────────────────────────
+// const 物件 enum 模式：值即字串，與 Prisma String 欄位直接比較
+export const EffectType = {
+  TOLL_INCOME:     "TOLL_INCOME",     // 收取過路費加成（+0.15 → +15%）
+  TOLL_PAID:       "TOLL_PAID",       // 支付過路費減免（-0.10 → -10%）
+  SHOP_PRICE:      "SHOP_PRICE",      // 購買 / 升級折扣（-0.10 → -10%）
+  PROPERTY_VALUE:  "PROPERTY_VALUE",  // 持有不動產淨值加成（+0.10 → +10%）
+  COINS_PER_ROUND: "COINS_PER_ROUND", // 每輪固定光幣（50 → +50/輪）
+  TAX_COLLECTOR:   "TAX_COLLECTOR",   // 全場每筆過路費抽成（0.02 → 2%）
+  GOOD_CARD_BONUS: "GOOD_CARD_BONUS", // 好運卡獎勵加成（+0.20 → +20%）
+  BAD_CARD_REDUCE: "BAD_CARD_REDUCE", // 厄運卡懲罰減免（-0.50 → -50%；-1.0 → 免疫）
+  REMINDER:        "REMINDER",        // 無計算，僅提醒關主
+} as const;
+export type EffectType = typeof EffectType[keyof typeof EffectType];
+
+export const EFFECT_TYPE_LABELS: Record<EffectType, string> = {
+  TOLL_INCOME:     "收路費加成",
+  TOLL_PAID:       "付路費減免",
+  SHOP_PRICE:      "購買折扣",
+  PROPERTY_VALUE:  "不動產增值",
+  COINS_PER_ROUND: "每輪收益",
+  TAX_COLLECTOR:   "全場稅收",
+  GOOD_CARD_BONUS: "好運卡加成",
+  BAD_CARD_REDUCE: "厄運卡減免",
+  REMINDER:        "提醒（無計算）",
+};
+
+export const ITEM_GRADE_COLORS: Record<string, string> = {
+  S: "text-amber-300 border-amber-400/60 bg-amber-500/10",
+  A: "text-violet-300 border-violet-400/60 bg-violet-500/10",
+  B: "text-slate-300 border-slate-400/40 bg-white/5",
+};
+
+// 疊加效果：同類效果直接相加（道具數量由發放端控管，不用遞減）
+// e.g. [0.20, 0.20, 0.08] → 0.48
+export function stackEffects(values: number[]): number {
+  return values.reduce((sum, v) => sum + v, 0);
+}
+
+// ── 動產效果套用公式（單一事實來源；service.ts / snapshot.ts / UI 共用）──
+// 每個 effectType 對應一條純函式，輸入金額與 delta、輸出最終金額。
+
+// SHOP_PRICE：購買 / 升級價（折後價再套道具折扣，不低於 0）
+export function applyShopPrice(price: number, delta: number): number {
+  return Math.max(0, Math.round(price * (1 + delta)));
+}
+
+// TOLL_INCOME（獨佔隊加成）+ TOLL_PAID（付款隊減免）：守恆過路費，不低於 0
+export function applyToll(baseToll: number, incomeDelta: number, paidDelta: number): number {
+  return Math.max(0, Math.round(baseToll * (1 + incomeDelta + paidDelta)));
+}
+
+// PROPERTY_VALUE：不動產結算淨值加成，不低於 0
+export function applyPropertyValue(value: number, delta: number): number {
+  return Math.max(0, Math.round(value * (1 + delta)));
+}
+
+// GOOD_CARD_BONUS：好運卡獎勵加成（baseReward 為 0 時不發）
+export function applyGoodCardReward(baseReward: number, bonusDelta: number): number {
+  return baseReward > 0 ? Math.max(0, Math.round(baseReward * (1 + bonusDelta))) : 0;
+}
+
+// BAD_CARD_REDUCE：厄運卡懲罰減免（-1.0 = 完全免疫），不低於 0
+export function applyBadCardPenalty(basePenalty: number, reduceDelta: number): number {
+  return basePenalty > 0 ? Math.max(0, Math.round(basePenalty * (1 + reduceDelta))) : 0;
+}
+
+// TAX_COLLECTOR：對單筆過路費抽成（totalRate = 各道具 rate 直接相加），不低於 0
+export function applyTaxCut(baseToll: number, totalRate: number): number {
+  return Math.max(0, Math.round(baseToll * totalRate));
+}
+
+// COINS_PER_ROUND：每輪固定收益（total = 各道具光幣直接相加）
+export function applyRoundIncome(total: number): number {
+  return Math.round(total);
+}
+
+// 動產模板種子資料（seeded to DB via prisma/seed.ts）
+// defaultUses: null=永久；n=效果觸發 n 次後失效
+export const MOVABLE_ASSET_SEED: {
+  name: string;
+  grade: string;
+  effectType: EffectType;
+  effectValue: number;
+  condition: string | null;
+  description: string;
+  defaultUses: number | null;
+}[] = [
+  // ── S 級 ──
+  { name: "黃金稅收牌",   grade: "S", effectType: "TOLL_INCOME",    effectValue:  0.25, condition: null, defaultUses: 3,    description: "收取過路費時額外獲得 25%（3 次）" },
+  { name: "鑽石免稅令",   grade: "S", effectType: "TOLL_PAID",       effectValue: -0.25, condition: null, defaultUses: 3,    description: "支付過路費時減少 25%（3 次）" },
+  { name: "地產霸業卷",   grade: "S", effectType: "PROPERTY_VALUE",  effectValue:  0.25, condition: null, defaultUses: null, description: "持有不動產結算淨值 +25%（永久）" },
+  { name: "稅務特許狀",   grade: "S", effectType: "TAX_COLLECTOR",   effectValue:  0.04, condition: null, defaultUses: null, description: "全場每筆過路費自動抽成 4%（永久）" },
+  // ── A 級 ──
+  { name: "銀行分紅卡",   grade: "A", effectType: "TOLL_INCOME",    effectValue:  0.15, condition: null, defaultUses: 2,    description: "收取過路費時額外獲得 15%（2 次）" },
+  { name: "商業折扣券",   grade: "A", effectType: "SHOP_PRICE",      effectValue: -0.15, condition: null, defaultUses: 2,    description: "購買或升級不動產費用 -15%（2 次）" },
+  { name: "地產加值令",   grade: "A", effectType: "PROPERTY_VALUE",  effectValue:  0.15, condition: null, defaultUses: null, description: "持有不動產結算淨值 +15%（永久）" },
+  { name: "穩定收益債",   grade: "A", effectType: "COINS_PER_ROUND", effectValue: 100,   condition: null, defaultUses: null, description: "每輪固定收益 100 光幣（永久）" },
+  { name: "區域壟斷令",   grade: "A", effectType: "TOLL_INCOME",    effectValue:  0.20, condition: JSON.stringify({ region: "AURORA" }), defaultUses: 2, description: "在極光金域收取過路費 +20%（2 次）" },
+  { name: "好運加倍咒",   grade: "A", effectType: "GOOD_CARD_BONUS", effectValue:  0.20, condition: null, defaultUses: 2,    description: "好運卡獎勵光幣 +20%（2 次）" },
+  { name: "行動加速符",   grade: "A", effectType: "REMINDER",        effectValue:  0,    condition: null, defaultUses: null, description: "【提醒關主】每輪可多移動 2 步（永久）" },
+  // ── B 級 ──
+  { name: "小額分潤卡",   grade: "B", effectType: "TOLL_INCOME",    effectValue:  0.08, condition: null, defaultUses: 1,    description: "收取過路費時額外獲得 8%（1 次）" },
+  { name: "折扣優惠券",   grade: "B", effectType: "SHOP_PRICE",      effectValue: -0.08, condition: null, defaultUses: 1,    description: "購買或升級不動產費用 -8%（1 次）" },
+  { name: "地產小加成",   grade: "B", effectType: "PROPERTY_VALUE",  effectValue:  0.08, condition: null, defaultUses: null, description: "持有不動產結算淨值 +8%（永久）" },
+  { name: "每輪小收益",   grade: "B", effectType: "COINS_PER_ROUND", effectValue:  50,   condition: null, defaultUses: null, description: "每輪固定收益 50 光幣（永久）" },
+  { name: "付路費折扣牌", grade: "B", effectType: "TOLL_PAID",       effectValue: -0.10, condition: null, defaultUses: 1,    description: "支付過路費時減少 10%（1 次）" },
+  { name: "迷霧護身符",   grade: "B", effectType: "BAD_CARD_REDUCE", effectValue: -1.0,  condition: null, defaultUses: 1,    description: "厄運卡懲罰完全免疫（1 次）" },
+  { name: "幸運符咒",     grade: "B", effectType: "GOOD_CARD_BONUS", effectValue:  0.10, condition: null, defaultUses: 1,    description: "好運卡獎勵光幣 +10%（1 次）" },
+  { name: "受難減免卡",   grade: "B", effectType: "BAD_CARD_REDUCE", effectValue: -0.50, condition: null, defaultUses: 1,    description: "厄運卡懲罰減少 50%（1 次）" },
+  // ── 詛咒道具（偽裝成普通 B 級，實際為負面效果）──
+  { name: "詛咒稅單",     grade: "B", effectType: "TOLL_INCOME",    effectValue: -0.15, condition: null, defaultUses: 3,    description: "收取過路費時反而少收 15%（詛咒，3 次）" },
+  { name: "黑市合約",     grade: "B", effectType: "SHOP_PRICE",      effectValue:  0.10, condition: null, defaultUses: 2,    description: "購買或升級費用 +10%（詛咒，2 次）" },
+];
+
 // ── 好運卡 / 厄運卡（光源點 / 迷霧區抽卡）─────────────────────
 // 二驗：刪動產、情報牌實體發放，這裡只收「會動到光幣」的卡。
 export type GoodCard = {

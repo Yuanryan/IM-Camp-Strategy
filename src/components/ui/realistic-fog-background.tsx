@@ -60,9 +60,9 @@ function MistCanvas({
 
     // ── Device-aware quality knobs ──────────────────────────────
     const isMobile = window.matchMedia("(max-width: 768px), (pointer: coarse)").matches;
-    const renderScale = isMobile ? 0.5 : 0.65; // internal resolution multiplier
-    const octaves = isMobile ? 4 : 6; // fbm detail
-    const fpsCap = 30;
+    const renderScale = isMobile ? 0.7 : 0.75; // fog is blurry, higher res → less blocky
+    const octaves = isMobile ? 5 : 6;           // 4 looked flat; 5 gives visible swirl
+    const fpsCap = isMobile ? 30 : 30;          // slightly lower cap offsets the extra octave
     const frameInterval = 1000 / fpsCap;
 
     const reducedMotionMql = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -114,8 +114,13 @@ function MistCanvas({
       }
 
       void main() {
+          float aspect = u_resolution.x / u_resolution.y;
           vec2 uv = gl_FragCoord.xy / u_resolution.xy;
-          uv.x *= u_resolution.x / u_resolution.y;
+          uv.x *= aspect;
+          // Portrait zoom-out: prevents the narrow x-slice from showing large blobs
+          // with hard visible edges. Scales both axes so feature density is consistent
+          // across orientations (landscape = no change; portrait = uniform zoom-out).
+          uv *= max(1.0, 1.0 / aspect);
 
           // Rotate UV for directional fog drift
           float ca = cos(u_angle); float sa = sin(u_angle);
@@ -124,7 +129,8 @@ function MistCanvas({
           float t = u_speed * u_time;
 
           vec2 mPos = u_mouse / u_resolution.xy;
-          mPos.x *= u_resolution.x / u_resolution.y;
+          mPos.x *= aspect;
+          mPos *= max(1.0, 1.0 / aspect);
           float dist = distance(uv, mPos);
 
           vec2 q = vec2(0.0);
@@ -136,6 +142,9 @@ function MistCanvas({
           r.y = fbm(ruv + 1.0 * q + vec2(8.3, 2.8) + 0.126 * t);
 
           float f = fbm(ruv + r);
+          // Remap away from extremes — prevents fbm "valleys" (f≈0) from rendering
+          // as a hard dark band as features drift through over time.
+          f = f * 0.65 + 0.2;
 
           // Deep slate base with cyan-tinted mist highlights (matches slate-950 + neon cyan)
           vec3 baseColor = vec3(0.01, 0.03, 0.09);
@@ -143,7 +152,8 @@ function MistCanvas({
           vec3 accentColor = vec3(0.13, 0.45, 0.55);
 
           vec3 color = mix(baseColor, mistColor, f);
-          color = mix(color, accentColor, dot(q, r) * 0.5);
+          // Clamp accent so dot(q,r) going negative doesn't cause harsh colour jumps.
+          color = mix(color, accentColor, clamp(dot(q, r) * 0.5, 0.0, 0.5));
 
           // Subtle cyan mouse glow
           float mouseGlow = smoothstep(0.35, 0.0, dist);

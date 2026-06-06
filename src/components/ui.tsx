@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { RadioTower } from "lucide-react";
-import { EVENTS } from "@/lib/game";
+import { EVENTS, EffectType, ITEM_GRADE_COLORS } from "@/lib/game";
+import type { ActiveItemView } from "@/lib/snapshot";
 
 // 等寬霓虹數字
 export function Num({
@@ -102,6 +103,42 @@ export function BottomNav<T extends string>({
         ))}
       </div>
     </nav>
+  );
+}
+
+// 當前小隊與頁面相關的動產效果徽章（顯示在 StickyTeam 內）
+export function TeamItemBadges({
+  items,
+  relevantTypes,
+}: {
+  items: ActiveItemView[];
+  relevantTypes: EffectType[];
+}) {
+  const relevant = items.filter((i) => (relevantTypes as string[]).includes(i.effectType));
+  if (!relevant.length) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {relevant.map((item) => (
+        <span
+          key={item.id}
+          title={item.description}
+          className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-xs font-medium ${ITEM_GRADE_COLORS[item.grade] ?? "chip"}`}
+        >
+          <span className="font-bold opacity-70">{item.grade}</span>
+          <span>{item.name}</span>
+          {item.effectType !== EffectType.REMINDER && (
+            <span className={`font-mono ${item.effectValue >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+              {item.effectType === EffectType.COINS_PER_ROUND
+                ? `+${item.effectValue}/輪`
+                : `${item.effectValue >= 0 ? "+" : ""}${(item.effectValue * 100).toFixed(0)}%`}
+            </span>
+          )}
+          {item.usesRemaining !== null && (
+            <span className="text-slate-400">×{item.usesRemaining}</span>
+          )}
+        </span>
+      ))}
+    </div>
   );
 }
 

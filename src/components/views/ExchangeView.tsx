@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num, PriceTag, LevelDots, EventBanner } from "@/components/ui";
-import { REGIONS, REGION_UI, upgradeFee, type UndoRecipe } from "@/lib/game";
+import { Num, PriceTag, LevelDots, EventBanner, TeamItemBadges } from "@/components/ui";
+import { REGIONS, REGION_UI, EffectType, upgradeFee, type UndoRecipe } from "@/lib/game";
 
 const LEVEL_TAG = ["已購", "1級", "2級", "3級"];
 
@@ -57,6 +57,10 @@ export function ExchangeView() {
             </span>
           )}
         </p>
+        <TeamItemBadges
+          items={teams.find((t) => t.id === team)?.items ?? []}
+          relevantTypes={[EffectType.SHOP_PRICE, EffectType.TOLL_INCOME, EffectType.TOLL_PAID, EffectType.PROPERTY_VALUE]}
+        />
       </StickyTeam>
 
       {/* 不動產列表 */}

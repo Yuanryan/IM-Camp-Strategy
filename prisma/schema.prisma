@@ -37,7 +37,47 @@ model Team {
   lotteryNumbers LotteryNumber[]
   ledgers        Ledger[]
   tokens         AccessToken[]
+  items          TeamItem[]
   createdAt      DateTime        @default(now())
+}
+
+enum ItemEffectType {
+  TOLL_INCOME
+  TOLL_PAID
+  SHOP_PRICE
+  PROPERTY_VALUE
+  COINS_PER_ROUND
+  TAX_COLLECTOR
+  GOOD_CARD_BONUS
+  BAD_CARD_REDUCE
+  REMINDER
+}
+
+// 動產模板：定義效果種類與強度
+model MovableAsset {
+  id           Int            @id @default(autoincrement())
+  name         String         @unique
+  grade        String         // S A B
+  effectType   ItemEffectType
+  effectValue  Float          @default(0) // +0.15=+15%；負數=負面；COINS_PER_ROUND 單位為光幣
+  condition    String?        // JSON：{"region":"AURORA"} 條件觸發；null=無條件
+  description  String         @default("")
+  defaultUses  Int?           // null=永久；n=預設觸發次數上限
+  teamItems    TeamItem[]
+}
+
+// 動產實例：每隊持有的動產（含秘密幣值）
+model TeamItem {
+  id            Int          @id @default(autoincrement())
+  teamId        Int
+  team          Team         @relation(fields: [teamId], references: [id])
+  assetId       Int
+  asset         MovableAsset @relation(fields: [assetId], references: [id])
+  hiddenValue   Int          @default(0)   // 結算時的動產幣值（秘密帳本）
+  usesRemaining Int?                       // null=永久；0=已耗盡（active 同步設 false）
+  active        Boolean      @default(true) // false = 已失效（耗盡 / 手動撤銷）
+  note          String?      // 取得方式備註
+  obtainedAt    DateTime     @default(now())
 }
 
 model Property {

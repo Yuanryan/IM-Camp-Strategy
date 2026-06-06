@@ -3,11 +3,19 @@ import { Prisma } from "@/generated/prisma";
 import {
   EVENTS,
   REGION_NAME,
+  applyShopPrice,
+  applyToll,
+  applyGoodCardReward,
+  applyBadCardPenalty,
+  applyTaxCut,
+  applyRoundIncome,
   currentValue,
   lotteryFee,
   parseActiveEvents,
   roundTo50,
+  stackEffects,
   upgradeFee,
+  type EffectType,
   type RegionCode,
   type UndoRecipe,
 } from "./game";
@@ -41,6 +49,51 @@ async function getState(tx: Tx) {
   const s = await tx.gameState.findUnique({ where: { id: 1 } });
   if (!s) throw new Error("遊戲狀態未初始化，請先執行 seed");
   return s;
+}
+
+// ── 動產效果載入 + 使用次數管理 ─────────────────────────────────
+type EffectLoad = { delta: number; usedIds: number[] };
+
+async function loadActiveEffects(
+  tx: Tx,
+  teamId: number,
+  type: EffectType,
+  context?: { region?: string },
+): Promise<EffectLoad> {
+  const items = await tx.teamItem.findMany({
+    where: { teamId, active: true },
+    include: { asset: true },
+  });
+  const matched = items.filter((item) => {
+    if (item.asset.effectType !== type) return false;
+    if (item.asset.condition) {
+      try {
+        const cond = JSON.parse(item.asset.condition) as { region?: string };
+        if (cond.region && context?.region && cond.region !== context.region) return false;
+      } catch {
+        return false;
+      }
+    }
+    return true;
+  });
+  const delta = stackEffects(matched.map((i) => i.asset.effectValue));
+  return { delta, usedIds: matched.map((i) => i.id) };
+}
+
+// 效果觸發後遞減使用次數；歸零時自動失效。
+async function decrementUses(tx: Tx, itemIds: number[]): Promise<void> {
+  if (!itemIds.length) return;
+  // 只處理有限次數的（usesRemaining != null）
+  const items = await tx.teamItem.findMany({
+    where: { id: { in: itemIds }, usesRemaining: { not: null } },
+  });
+  for (const item of items) {
+    const next = (item.usesRemaining ?? 1) - 1;
+    await tx.teamItem.update({
+      where: { id: item.id },
+      data: { usesRemaining: next, active: next > 0 },
+    });
+  }
 }
 
 // ── 餘額調整（光幣 / 卡牌點數）──────────────────────────────
@@ -117,12 +170,14 @@ export async function buyProperty(params: {
     const prop = await tx.property.findUnique({ where: { id: propertyId } });
     if (!prop) throw new Error("找不到不動產");
     if (prop.ownerTeamId != null) throw new Error("該不動產已被購買");
-    const price = Math.max(0, prop.basePrice - discount);
+    const shopEffect = await loadActiveEffects(tx, teamId, "SHOP_PRICE");
+    const price = applyShopPrice(prop.basePrice - discount, shopEffect.delta);
     const team = await tx.team.findUnique({ where: { id: teamId } });
     if (!team) throw new Error("找不到小隊");
     if (team.coins < price) throw new Error("光幣不足");
     await tx.team.update({ where: { id: teamId }, data: { coins: { decrement: price } } });
     await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: teamId, level: 0 } });
+    await decrementUses(tx, shopEffect.usedIds);
     const lid = await logLedger(tx, {
       teamId,
       kind: "property",
@@ -153,12 +208,14 @@ export async function upgradeProperty(params: {
     if (prop.ownerTeamId == null) throw new Error("該不動產尚未售出");
     const fee0 = upgradeFee(prop.basePrice, prop.level);
     if (fee0 == null) throw new Error("已達最高等級（3 級）");
-    const fee = Math.max(0, fee0 - discount);
+    const shopEffect = await loadActiveEffects(tx, prop.ownerTeamId, "SHOP_PRICE");
+    const fee = applyShopPrice(fee0 - discount, shopEffect.delta);
     const team = await tx.team.findUnique({ where: { id: prop.ownerTeamId } });
     if (!team) throw new Error("找不到持有小隊");
     if (team.coins < fee) throw new Error("光幣不足");
     await tx.team.update({ where: { id: team.id }, data: { coins: { decrement: fee } } });
     await tx.property.update({ where: { id: propertyId }, data: { level: { increment: 1 } } });
+    await decrementUses(tx, shopEffect.usedIds);
     const lid = await logLedger(tx, {
       teamId: team.id,
       kind: "property",
@@ -251,19 +308,46 @@ export async function payToll(params: {
     const totalValue = regionProps
       .filter((p) => p.ownerTeamId === monopolyId)
       .reduce((s, p) => s + currentValue(p, activeEvents, state.event4Penalty), 0);
-    const toll = roundTo50(totalValue * 0.1);
-    if (toll <= 0) throw new Error("過路費為 0");
+    const baseToll = roundTo50(totalValue * 0.1);
+    if (baseToll <= 0) throw new Error("過路費為 0");
+
+    // 動產效果：獨佔隊 TOLL_INCOME 提高過路費、付款隊 TOLL_PAID 降低過路費。
+    // 金額守恆：付多少＝收多少（同一個 toll 數字）。
+    const tollPaidEffect   = await loadActiveEffects(tx, payerTeamId, "TOLL_PAID",   { region });
+    const tollIncomeEffect = await loadActiveEffects(tx, monopolyId,  "TOLL_INCOME", { region });
+    const toll = applyToll(baseToll, tollIncomeEffect.delta, tollPaidEffect.delta);
 
     const payer = await tx.team.findUnique({ where: { id: payerTeamId } });
     if (!payer) throw new Error("找不到付款小隊");
     if (payer.coins < toll) throw new Error(`光幣不足（過路費 ${toll}）`);
 
     await tx.team.update({ where: { id: payerTeamId }, data: { coins: { decrement: toll } } });
-    await tx.team.update({ where: { id: monopolyId }, data: { coins: { increment: toll } } });
-    const l1 = await logLedger(tx, { teamId: payerTeamId, kind: "coins", delta: -toll, note: `過路費 ${REGION_NAME[region]}`, byToken });
-    const l2 = await logLedger(tx, { teamId: monopolyId, kind: "coins", delta: toll, note: `收過路費 ${REGION_NAME[region]}`, byToken });
-    const undo: UndoRecipe = { label: `過路費 ${toll}`, ledgerIds: [l1, l2] };
-    return { ok: true, toll, monopolyId, undo };
+    await tx.team.update({ where: { id: monopolyId  }, data: { coins: { increment: toll } } });
+    await decrementUses(tx, [...tollPaidEffect.usedIds, ...tollIncomeEffect.usedIds]);
+    const noteBase = `過路費 ${REGION_NAME[region]}`;
+    const l1 = await logLedger(tx, { teamId: payerTeamId, kind: "coins", delta: -toll, note: noteBase,        byToken });
+    const l2 = await logLedger(tx, { teamId: monopolyId,  kind: "coins", delta: toll,  note: `收${noteBase}`, byToken });
+    const ledgerIds = [l1, l2];
+
+    // 全場稅收：TAX_COLLECTOR 效果（永久型，不計入 decrementUses）
+    const allItems = await tx.teamItem.findMany({
+      where: { active: true, asset: { effectType: "TAX_COLLECTOR" } },
+      include: { asset: true },
+    });
+    const taxMap = new Map<number, number>();
+    for (const item of allItems) {
+      taxMap.set(item.teamId, (taxMap.get(item.teamId) ?? 0) + item.asset.effectValue);
+    }
+    for (const [taxTeamId, totalRate] of taxMap) {
+      const cut = applyTaxCut(baseToll, totalRate);
+      if (cut <= 0) continue;
+      await tx.team.update({ where: { id: taxTeamId }, data: { coins: { increment: cut } } });
+      const lTax = await logLedger(tx, { teamId: taxTeamId, kind: "coins", delta: cut, note: `全場稅收 ${noteBase}`, byToken });
+      ledgerIds.push(lTax);
+    }
+
+    const undo: UndoRecipe = { label: `過路費 ${toll}`, ledgerIds };
+    return { ok: true, baseToll, toll, monopolyId, undo };
   });
 }
 
@@ -561,6 +645,143 @@ export async function reverseLedger(params: { ledgerId: number; byToken?: string
     }
     await tx.ledger.update({ where: { id: ledgerId }, data: { reversed: true } });
     return { ok: true, autoReversed: !!(entry.teamId && entry.delta !== 0) };
+  });
+}
+
+// ── 好運卡 / 厄運卡（含動產效果）────────────────────────────────
+export async function applyGoodCard(params: {
+  teamId: number;
+  baseReward: number; // 卡面原始獎勵（正數）
+  note: string;
+  byToken?: string;
+}) {
+  const { teamId, baseReward, note, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const bonusEffect = await loadActiveEffects(tx, teamId, "GOOD_CARD_BONUS");
+    const finalReward = applyGoodCardReward(baseReward, bonusEffect.delta);
+    if (finalReward > 0) {
+      await tx.team.update({ where: { id: teamId }, data: { coins: { increment: finalReward } } });
+    }
+    await decrementUses(tx, bonusEffect.usedIds);
+    const lid = await logLedger(tx, { teamId, kind: "coins", delta: finalReward, note, byToken });
+    const undo: UndoRecipe = { label: note, ledgerIds: [lid] };
+    return { ok: true, baseReward, finalReward, undo };
+  });
+}
+
+export async function applyBadCard(params: {
+  teamId: number;
+  basePenalty: number; // 卡面原始懲罰（正數，內部取負）
+  note: string;
+  byToken?: string;
+}) {
+  const { teamId, basePenalty, note, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const reduceEffect = await loadActiveEffects(tx, teamId, "BAD_CARD_REDUCE");
+    // reduceEffect.delta 為負數；-1.0 = 完全免疫
+    const finalPenalty = applyBadCardPenalty(basePenalty, reduceEffect.delta);
+    if (finalPenalty > 0) {
+      await tx.team.update({ where: { id: teamId }, data: { coins: { decrement: finalPenalty } } });
+    }
+    await decrementUses(tx, reduceEffect.usedIds);
+    const lid = await logLedger(tx, { teamId, kind: "coins", delta: -finalPenalty, note, byToken });
+    const undo: UndoRecipe = { label: note, ledgerIds: [lid] };
+    return { ok: true, basePenalty, finalPenalty, undo };
+  });
+}
+
+// ── 動產：授予 / 過戶 / 失效 / 每輪收益 ─────────────────────────
+export async function grantItem(params: {
+  teamId: number;
+  assetId: number;
+  hiddenValue?: number;
+  note?: string;
+  byToken?: string;
+}) {
+  const { teamId, assetId, hiddenValue = 0, note, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const team = await tx.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new Error("找不到小隊");
+    const asset = await tx.movableAsset.findUnique({ where: { id: assetId } });
+    if (!asset) throw new Error("找不到動產模板");
+    const item = await tx.teamItem.create({
+      data: { teamId, assetId, hiddenValue, note, usesRemaining: asset.defaultUses ?? null },
+      include: { asset: true },
+    });
+    await logLedger(tx, {
+      teamId,
+      kind: "items",
+      delta: 0,
+      note: `取得動產：${asset.name}（${asset.grade} 級）${note ? `，${note}` : ""}`,
+      byToken,
+    });
+    return { ok: true, item };
+  });
+}
+
+export async function transferItem(params: {
+  itemId: number;
+  toTeamId: number;
+  byToken?: string;
+}) {
+  const { itemId, toTeamId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const item = await tx.teamItem.findUnique({ where: { id: itemId }, include: { asset: true } });
+    if (!item) throw new Error("找不到動產");
+    if (!item.active) throw new Error("該動產已失效");
+    if (item.teamId === toTeamId) throw new Error("來源與目標相同");
+    const toTeam = await tx.team.findUnique({ where: { id: toTeamId } });
+    if (!toTeam) throw new Error("找不到目標小隊");
+    const fromTeamId = item.teamId;
+    await tx.teamItem.update({ where: { id: itemId }, data: { teamId: toTeamId } });
+    await logLedger(tx, { teamId: fromTeamId, kind: "items", delta: 0, note: `動產轉出：${item.asset.name} → ${toTeam.name}`, byToken });
+    await logLedger(tx, { teamId: toTeamId,   kind: "items", delta: 0, note: `動產收入：${item.asset.name}（來自隊伍 #${fromTeamId}）`, byToken });
+    return { ok: true };
+  });
+}
+
+export async function deactivateItem(params: { itemId: number; byToken?: string }) {
+  const { itemId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const item = await tx.teamItem.findUnique({ where: { id: itemId }, include: { asset: true } });
+    if (!item) throw new Error("找不到動產");
+    if (!item.active) throw new Error("該動產已失效");
+    await tx.teamItem.update({ where: { id: itemId }, data: { active: false } });
+    await logLedger(tx, { teamId: item.teamId, kind: "items", delta: 0, note: `動產失效：${item.asset.name}`, byToken });
+    return { ok: true };
+  });
+}
+
+// 由主持人手動觸發：發放所有隊伍的每輪固定收益（COINS_PER_ROUND 效果）
+export async function distributeRoundIncome(params: { byToken?: string }) {
+  const { byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const items = await tx.teamItem.findMany({
+      where: { active: true },
+      include: { asset: true },
+    });
+    // 按隊伍合計（無遞減）
+    const incomeItems = items.filter((i) => i.asset.effectType === "COINS_PER_ROUND");
+    if (incomeItems.length === 0) throw new Error("目前無隊伍持有每輪收益動產");
+
+    // 按隊伍合計（COINS_PER_ROUND 不套遞減，全加）
+    const incomeMap = new Map<number, { total: number; ids: number[] }>();
+    for (const item of incomeItems) {
+      const cur = incomeMap.get(item.teamId) ?? { total: 0, ids: [] };
+      cur.total += item.asset.effectValue;
+      cur.ids.push(item.id);
+      incomeMap.set(item.teamId, cur);
+    }
+    const results: { teamId: number; income: number }[] = [];
+    for (const [teamId, { total, ids }] of incomeMap) {
+      const amount = applyRoundIncome(total);
+      if (amount <= 0) continue;
+      await tx.team.update({ where: { id: teamId }, data: { coins: { increment: amount } } });
+      await logLedger(tx, { teamId, kind: "coins", delta: amount, note: "每輪動產收益", byToken });
+      await decrementUses(tx, ids);
+      results.push({ teamId, income: amount });
+    }
+    return { ok: true, results };
   });
 }
 

@@ -7,8 +7,8 @@ import { LotteryView } from "@/components/views/LotteryView";
 import { WheelView } from "@/components/views/WheelView";
 import { LuckDraw } from "@/components/views/LuckDraw";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num, EventBanner, HudTabs } from "@/components/ui";
-import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, type UndoRecipe } from "@/lib/game";
+import { Num, EventBanner, HudTabs, TeamItemBadges } from "@/components/ui";
+import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, EffectType, ITEM_GRADE_COLORS, stackEffects, applyToll, type UndoRecipe } from "@/lib/game";
 import { Map, CircleDollarSign, LoaderPinwheel } from "lucide-react";
 
 export function MapView() {
@@ -68,6 +68,10 @@ export function MapView() {
                 </span>
               )}
             </div>
+            <TeamItemBadges
+              items={cur?.items ?? []}
+              relevantTypes={[EffectType.GOOD_CARD_BONUS, EffectType.BAD_CARD_REDUCE, EffectType.TOLL_PAID, EffectType.REMINDER]}
+            />
           </StickyTeam>
 
           {/* ── 光源點 / 迷霧區 ──────────────────────────────── */}
@@ -91,6 +95,24 @@ export function MapView() {
                 const ui = REGION_UI[r.code];
                 const selected = tollRegion === r.code;
                 const hasMonopoly = !!ri?.monopolyTeamName;
+                const baseToll = ri?.toll ?? 0;
+
+                // 獨佔隊的 TOLL_INCOME 提高過路費；付款隊的 TOLL_PAID 降低過路費。
+                // 顯示僅列出獨佔隊的 TOLL_INCOME 道具。
+                const monopolyItems = snap.teams.find((t) => t.id === ri?.monopolyTeamId)?.items ?? [];
+                const incomeItems = monopolyItems.filter((i) => i.effectType === EffectType.TOLL_INCOME);
+                const tollIncomeDelta = stackEffects(incomeItems.map((i) => i.effectValue));
+                const tollPaidDelta = stackEffects(
+                  (cur?.items ?? [])
+                    .filter((i) => i.effectType === EffectType.TOLL_PAID)
+                    .map((i) => i.effectValue),
+                );
+                const payDelta = team !== "" ? tollPaidDelta : 0;
+                const toll = hasMonopoly
+                  ? applyToll(baseToll, tollIncomeDelta, payDelta)
+                  : baseToll;
+                const tollChanged = toll !== baseToll;
+
                 return (
                   <button
                     key={r.code}
@@ -110,9 +132,23 @@ export function MapView() {
                           {ri!.monopolyTeamName}
                         </div>
                         <div className="text-xs text-slate-400">
-                          過路費{" "}
-                          <Num className="font-bold text-slate-200">{ri!.toll}</Num>
+                          需付{" "}
+                          <Num className={`font-bold ${tollChanged ? (toll > baseToll ? "text-rose-400" : "text-emerald-400") : "text-slate-200"}`}>{toll}</Num>
+                          {tollChanged && <span className="text-slate-500"> （基礎 {baseToll}）</span>}
                         </div>
+                        {incomeItems.length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {incomeItems.map((i) => (
+                              <span
+                                key={i.id}
+                                title={i.description}
+                                className={`rounded border px-1 py-0.5 text-[10px] font-medium ${ITEM_GRADE_COLORS[i.grade] ?? "chip"}`}
+                              >
+                                {i.name} <span className="text-emerald-400">+{(i.effectValue * 100).toFixed(0)}%</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </>
                     ) : (
                       <div className="text-xs text-slate-500">目前無獨佔</div>
@@ -136,7 +172,7 @@ export function MapView() {
                 });
                 await mutate();
                 return {
-                  message: `${cur?.name} 已付過路費 ${r.toll}`,
+                  message: `${cur?.name} 付款 ${r.toll}${r.toll !== r.baseToll ? `（基礎 ${r.baseToll}）` : ""}`,
                   undo: r.undo as UndoRecipe | undefined,
                 };
               }}

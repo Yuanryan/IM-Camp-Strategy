@@ -5,7 +5,7 @@ import useSWR from "swr";
 import { fetcher, useSnapshot, postJson, ActionButton } from "@/components/client";
 import { Card } from "@/components/Shell";
 import { Num } from "@/components/ui";
-import { REGIONS, REGION_UI } from "@/lib/game";
+import { REGIONS, REGION_UI, EFFECT_TYPE_LABELS, ITEM_GRADE_COLORS } from "@/lib/game";
 import type { Snapshot } from "@/lib/snapshot";
 
 const STATION_LINKS = [
@@ -35,6 +35,7 @@ export function AdminView() {
       <TeamEditor snap={snap} onChange={mutate} />
       <PropertyEditor snap={snap} onChange={mutate} />
       <CardEditor />
+      <ItemEditor snap={snap} />
       <LedgerCard />
     </div>
   );
@@ -128,6 +129,126 @@ function CardRow({ card, onChange }: { card: { type: string; cost: number; remai
       <ActionButton label="儲存" className="chip hover:bg-white/20"
         onAction={async () => { await postJson("/api/admin/card", { type: card.type, cost, remaining }); onChange(); return "已儲存"; }} />
     </div>
+  );
+}
+
+type AssetTemplate = { id: number; name: string; grade: string; effectType: string; effectValue: number; description: string };
+type AdminItem = { id: number; teamId: number; teamName: string; assetId: number; assetName: string; grade: string; effectType: string; effectValue: number; description: string; hiddenValue: number; active: boolean; note: string | null; obtainedAt: string };
+
+function ItemEditor({ snap }: { snap: Snapshot }) {
+  const { data: assets, isLoading: aLoading } = useSWR<AssetTemplate[]>("/api/items", fetcher);
+  const { data: items, mutate } = useSWR<AdminItem[]>("/api/admin/items", fetcher);
+
+  const [gTeam, setGTeam]   = useState<number | "">("");
+  const [gAsset, setGAsset] = useState<number | "">("");
+  const [gHidden, setGHidden] = useState(0);
+  const [gNote, setGNote]   = useState("");
+
+  const [xItem, setXItem]   = useState<number | "">("");
+  const [xTeam, setXTeam]   = useState<number | "">("");
+
+  return (
+    <Card title="動產管理">
+      {/* 授予 */}
+      <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3">
+        <div className="mb-2 text-xs font-semibold text-slate-300">授予動產給小隊</div>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-xs text-slate-400">
+            <div className="mb-1">小隊</div>
+            <select value={gTeam} onChange={(e) => setGTeam(e.target.value ? Number(e.target.value) : "")} className="fld min-w-28">
+              <option value="">選擇小隊</option>
+              {snap.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </label>
+          <label className="text-xs text-slate-400">
+            <div className="mb-1">動產模板</div>
+            <select value={gAsset} onChange={(e) => setGAsset(e.target.value ? Number(e.target.value) : "")} className="fld min-w-48">
+              <option value="">選擇動產</option>
+              {assets?.map((a) => <option key={a.id} value={a.id}>[{a.grade}] {a.name}</option>)}
+            </select>
+          </label>
+          <label className="text-xs text-slate-400">
+            <div className="mb-1">秘密幣值</div>
+            <input type="number" inputMode="numeric" value={gHidden} onChange={(e) => setGHidden(Number(e.target.value) || 0)} className="fld w-24" />
+          </label>
+          <label className="text-xs text-slate-400">
+            <div className="mb-1">備註</div>
+            <input value={gNote} onChange={(e) => setGNote(e.target.value)} className="fld w-36" placeholder="例：光源點獎勵" />
+          </label>
+          <ActionButton label="授予" className="btn-emerald"
+            disabled={gTeam === "" || gAsset === ""}
+            onAction={async () => {
+              await postJson("/api/items/grant", { teamId: gTeam, assetId: gAsset, hiddenValue: gHidden, note: gNote || undefined });
+              mutate();
+              return "已授予";
+            }} />
+        </div>
+        {gAsset !== "" && assets && (
+          <p className="mt-2 text-xs text-slate-400">
+            {assets.find((a) => a.id === gAsset)?.description}
+          </p>
+        )}
+      </div>
+
+      {/* 過戶（admin） */}
+      <div className="mb-4 rounded-xl border border-white/10 bg-white/5 p-3">
+        <div className="mb-2 text-xs font-semibold text-slate-300">動產過戶（Admin）</div>
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="text-xs text-slate-400">
+            <div className="mb-1">動產 ID</div>
+            <input type="number" inputMode="numeric" value={xItem} onChange={(e) => setXItem(e.target.value ? Number(e.target.value) : "")} className="fld w-20" placeholder="ID" />
+          </label>
+          <label className="text-xs text-slate-400">
+            <div className="mb-1">目標小隊</div>
+            <select value={xTeam} onChange={(e) => setXTeam(e.target.value ? Number(e.target.value) : "")} className="fld min-w-28">
+              <option value="">選擇小隊</option>
+              {snap.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+            </select>
+          </label>
+          <ActionButton label="過戶" className="chip hover:bg-white/20"
+            disabled={xItem === "" || xTeam === ""}
+            onAction={async () => {
+              await postJson("/api/items/transfer", { itemId: xItem, toTeamId: xTeam });
+              mutate();
+              return "已過戶";
+            }} />
+        </div>
+      </div>
+
+      {/* 動產一覽（含秘密幣值） */}
+      <div className="text-xs font-semibold text-slate-300 mb-2">所有動產（含秘密幣值）</div>
+      {!items ? (
+        <p className="text-xs text-slate-500">載入中…</p>
+      ) : items.length === 0 ? (
+        <p className="text-xs text-slate-500">尚未授予任何動產</p>
+      ) : (
+        <div className="space-y-1.5">
+          {items.map((item) => (
+            <div key={item.id} className={`flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1.5 text-sm ${item.active ? "" : "opacity-40"} ${ITEM_GRADE_COLORS[item.grade] ?? ""}`}>
+              <span className="font-bold text-[11px] w-4">#{item.id}</span>
+              <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold border ${ITEM_GRADE_COLORS[item.grade] ?? "chip"}`}>{item.grade}</span>
+              <span className="font-semibold w-28 truncate">{item.assetName}</span>
+              <span className="text-xs text-slate-400 w-24 truncate">{item.teamName}</span>
+              <span className="text-xs text-slate-400">{EFFECT_TYPE_LABELS[item.effectType as keyof typeof EFFECT_TYPE_LABELS] ?? item.effectType}</span>
+              <span className={`text-xs font-mono ${item.effectValue >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                {item.effectType === "COINS_PER_ROUND" ? `+${item.effectValue}光幣/輪` : `${item.effectValue >= 0 ? "+" : ""}${(item.effectValue * 100).toFixed(0)}%`}
+              </span>
+              <span className="text-amber-300 text-xs font-mono">幣值:{item.hiddenValue}</span>
+              {item.note && <span className="text-xs text-slate-500 italic">{item.note}</span>}
+              {item.active && (
+                <ActionButton label="失效" className="btn-rose ml-auto"
+                  confirmText={`確定讓「${item.assetName}」失效？`}
+                  onAction={async () => {
+                    await postJson("/api/items/deactivate", { itemId: item.id });
+                    mutate();
+                    return "已失效";
+                  }} />
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 

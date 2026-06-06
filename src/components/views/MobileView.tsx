@@ -2,11 +2,11 @@
 
 import { useEffect, useState } from "react";
 import useSWR from "swr";
-import { fetcher, useSnapshot, TeamSelect, ActionButton } from "@/components/client";
+import { fetcher, useSnapshot, TeamSelect, ActionButton, postJson } from "@/components/client";
 import { RewardButtons, CustomGive } from "@/components/RewardPanel";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num, EventBanner, HudTabs } from "@/components/ui";
-import { MOBILE_REWARD_PRESETS } from "@/lib/game";
+import { Num, EventBanner, HudTabs, TeamItemBadges } from "@/components/ui";
+import { MOBILE_REWARD_PRESETS, ITEM_GRADE_COLORS, EffectType } from "@/lib/game";
 import { Gamepad2, BookOpen, Timer as TimerIcon, Pause, Play, RotateCcw } from "lucide-react";
 
 // 題庫 CRUD（流動關主可編輯）
@@ -54,6 +54,10 @@ export function MobileView() {
               <TeamSelect teams={snap.teams} value={team} onChange={setTeam} />
               {!team && <span className="text-xs text-amber-300/80">⚠ 請先選擇作用小隊</span>}
             </div>
+            <TeamItemBadges
+              items={snap.teams.find((t) => t.id === team)?.items ?? []}
+              relevantTypes={[EffectType.GOOD_CARD_BONUS, EffectType.BAD_CARD_REDUCE, EffectType.REMINDER]}
+            />
           </StickyTeam>
 
           <Card title="發放獎勵（光幣 / 卡牌點數）">
@@ -63,6 +67,8 @@ export function MobileView() {
             </div>
             <p className="mt-2 text-xs text-slate-500">骰子、情報牌、特殊骰、功能卡兌換券為實體發放，請隊輔記錄，不在系統登記。</p>
           </Card>
+
+          <GrantItemCard teamId={team} />
 
           <Timer />
           <Questions />
@@ -74,6 +80,56 @@ export function MobileView() {
   );
 }
 
+
+type AssetTemplate = { id: number; name: string; grade: string; effectType: string; effectValue: number; description: string };
+
+function GrantItemCard({ teamId }: { teamId: number | "" }) {
+  const { data: assets } = useSWR<AssetTemplate[]>("/api/items", fetcher);
+  const [assetId, setAssetId] = useState<number | "">("");
+  const [hidden, setHidden] = useState(0);
+  const [note, setNote] = useState("");
+
+  return (
+    <Card title="授予動產">
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">動產</div>
+          <select value={assetId} onChange={(e) => setAssetId(e.target.value ? Number(e.target.value) : "")} className="fld min-w-48">
+            <option value="">選擇動產</option>
+            {assets?.map((a) => (
+              <option key={a.id} value={a.id}>[{a.grade}] {a.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">秘密幣值</div>
+          <input type="number" inputMode="numeric" value={hidden} onChange={(e) => setHidden(Number(e.target.value) || 0)} className="fld w-24" />
+        </label>
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">備註</div>
+          <input value={note} onChange={(e) => setNote(e.target.value)} className="fld w-32" placeholder="例：挑戰獎勵" />
+        </label>
+        <ActionButton label="授予" className="btn-emerald"
+          disabled={teamId === "" || assetId === ""}
+          onAction={async () => {
+            await postJson("/api/items/grant", { teamId, assetId, hiddenValue: hidden, note: note || undefined });
+            setAssetId("");
+            setHidden(0);
+            setNote("");
+            return "已授予動產";
+          }} />
+      </div>
+      {assetId !== "" && assets && (
+        <p className="mt-2 text-xs text-slate-400">
+          <span className={`mr-1.5 rounded border px-1 py-0.5 text-[10px] font-bold ${ITEM_GRADE_COLORS[assets.find((a) => a.id === assetId)?.grade ?? ""] ?? ""}`}>
+            {assets.find((a) => a.id === assetId)?.grade}
+          </span>
+          {assets.find((a) => a.id === assetId)?.description}
+        </p>
+      )}
+    </Card>
+  );
+}
 
 function Timer() {
   const [sec, setSec] = useState(0);

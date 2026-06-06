@@ -2,9 +2,11 @@ import { prisma } from "./db";
 import {
   REGIONS,
   REGION_NAME,
+  applyPropertyValue,
   currentValue,
   parseActiveEvents,
   roundTo50,
+  stackEffects,
   type RegionCode,
 } from "./game";
 
@@ -21,14 +23,28 @@ export type PropertyView = {
   currentValue: number; // 已售出才有意義；未售出顯示為現價參考
 };
 
+export type ActiveItemView = {
+  id: number;       // TeamItem id
+  assetId: number;
+  name: string;
+  grade: string;
+  effectType: string;
+  effectValue: number;
+  condition: string | null;
+  description: string;
+  usesRemaining: number | null; // null = 永久
+};
+
 export type TeamView = {
   id: number;
   name: string;
   coins: number;
   cardPoints: number;
   propertyCount: number;
-  propertyValue: number; // 持有不動產現值總和
-  netWorth: number; // coins + propertyValue（結算口徑，不含動產）
+  propertyValue: number; // 持有不動產現值總和（含 PROPERTY_VALUE 動產加成）
+  netWorth: number;      // coins + propertyValue（結算口徑，不含動產幣值）
+  itemCount: number;
+  items: ActiveItemView[];
 };
 
 export type RegionView = {
@@ -79,11 +95,12 @@ function findMonopoly(
 }
 
 export async function getSnapshot(): Promise<Snapshot> {
-  const [state, teams, properties, lotteryNumbers] = await Promise.all([
+  const [state, teams, properties, lotteryNumbers, teamItems] = await Promise.all([
     prisma.gameState.findUnique({ where: { id: 1 } }),
     prisma.team.findMany({ orderBy: { id: "asc" } }),
     prisma.property.findMany({ orderBy: { id: "asc" } }),
     prisma.lotteryNumber.findMany(),
+    prisma.teamItem.findMany({ where: { active: true }, include: { asset: true } }),
   ]);
 
   const activeEvents = parseActiveEvents(state?.activeEvents ?? "");
@@ -103,6 +120,24 @@ export async function getSnapshot(): Promise<Snapshot> {
     currentValue: currentValue(p, activeEvents, event4Penalty),
   }));
 
+  // 各隊動產效果（按隊伍分組，不含 hiddenValue）
+  const teamItemsMap = new Map<number, ActiveItemView[]>();
+  for (const item of teamItems) {
+    const list = teamItemsMap.get(item.teamId) ?? [];
+    list.push({
+      id: item.id,
+      assetId: item.assetId,
+      name: item.asset.name,
+      grade: item.asset.grade,
+      effectType: item.asset.effectType,
+      effectValue: item.asset.effectValue,
+      condition: item.asset.condition,
+      description: item.asset.description,
+      usesRemaining: item.usesRemaining,
+    });
+    teamItemsMap.set(item.teamId, list);
+  }
+
   // 各隊不動產現值
   const teamPropValue = new Map<number, { count: number; value: number }>();
   for (const p of propViews) {
@@ -115,14 +150,22 @@ export async function getSnapshot(): Promise<Snapshot> {
 
   const teamViews: TeamView[] = teams.map((t) => {
     const pv = teamPropValue.get(t.id) ?? { count: 0, value: 0 };
+    const items = teamItemsMap.get(t.id) ?? [];
+    // PROPERTY_VALUE 效果：調整不動產顯示淨值（疊加遞減）
+    const propDelta = stackEffects(
+      items.filter((i) => i.effectType === "PROPERTY_VALUE").map((i) => i.effectValue),
+    );
+    const adjustedPropValue = applyPropertyValue(pv.value, propDelta);
     return {
       id: t.id,
       name: t.name,
       coins: t.coins,
       cardPoints: t.cardPoints,
       propertyCount: pv.count,
-      propertyValue: pv.value,
-      netWorth: t.coins + pv.value,
+      propertyValue: adjustedPropValue,
+      netWorth: t.coins + adjustedPropValue,
+      itemCount: items.length,
+      items,
     };
   });
 

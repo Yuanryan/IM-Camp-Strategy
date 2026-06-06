@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ActionButton } from "@/components/client";
-import { giveReward, CustomGive } from "@/components/RewardPanel";
-import { GOOD_LUCK_CARDS, BAD_LUCK_CARDS, type GoodCard, type BadCard } from "@/lib/game";
+import { ActionButton, postJson } from "@/components/client";
+import { CustomGive } from "@/components/RewardPanel";
+import { GOOD_LUCK_CARDS, BAD_LUCK_CARDS, type GoodCard, type BadCard, type UndoRecipe } from "@/lib/game";
 
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
@@ -22,11 +22,22 @@ export function LuckDraw({
   const [bad, setBad] = useState<BadCard | null>(null);
   const mult = event1 ? 2 : 1;
 
-  const settle = async (delta: number, note: string) => {
-    if (team === "") return "請先選小隊";
-    if (delta !== 0) await giveReward({ teamId: team, coins: delta, note });
+  const settle = async (delta: number, note: string): Promise<{ message: string; undo?: UndoRecipe }> => {
+    if (team === "") return { message: "請先選小隊" };
+    let finalDelta = delta;
+    let undo: UndoRecipe | undefined;
+    if (delta > 0) {
+      const r = await postJson("/api/map/good-card", { teamId: team, baseReward: delta, note });
+      finalDelta = r.finalReward;
+      undo = r.undo;
+    } else if (delta < 0) {
+      const r = await postJson("/api/map/bad-card", { teamId: team, basePenalty: -delta, note });
+      finalDelta = -r.finalPenalty;
+      undo = r.undo;
+    }
     await onDone();
-    return `${curName ?? ""} ${note}（${delta >= 0 ? "+" : ""}${delta} 光幣）`;
+    const suffix = finalDelta !== delta ? `（原 ${delta >= 0 ? "+" : ""}${delta}，動產效果後 ${finalDelta >= 0 ? "+" : ""}${finalDelta}）` : `（${finalDelta >= 0 ? "+" : ""}${finalDelta}）`;
+    return { message: `${curName ?? ""} ${note} ${suffix}`, undo };
   };
 
   const drawn = good || bad;
@@ -106,7 +117,7 @@ export function LuckDraw({
                 label={o.deduct > 0 ? `${o.label}  −${o.deduct * mult}` : `${o.label}（不扣）`}
                 className={`w-full ${o.deduct > 0 ? "btn-rose" : "chip"}`}
                 disabled={team === ""}
-                onAction={() => settle(-o.deduct * mult, `厄運卡 ${bad.name}（${o.label}）`)}
+                onAction={() => settle(-(o.deduct * mult), `厄運卡 ${bad.name}（${o.label}）`)}
               />
             ))}
           </div>

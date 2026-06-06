@@ -6,6 +6,7 @@ import QRCode from "qrcode";
 import {
   PROPERTY_SEED,
   FUNCTION_CARDS,
+  MOVABLE_ASSET_SEED,
   ROLE_LABEL,
   type Role,
 } from "../src/lib/game";
@@ -33,13 +34,15 @@ const STATION_COUNTS: Partial<Record<Exclude<Role, "TEAM">, number>> = {
 const newToken = () => randomBytes(16).toString("hex");
 
 async function reset() {
-  // FK 安全順序清空（重新布置用）
+  // FK 安全順序清空（子表先刪）
   await prisma.ledger.deleteMany();
   await prisma.lotteryNumber.deleteMany();
   await prisma.accessToken.deleteMany();
+  await prisma.teamItem.deleteMany();   // 必須在 team 之前（FK: teamId, assetId）
   await prisma.property.deleteMany();
   await prisma.team.deleteMany();
   // 題庫不重置：由 prisma/load-questions.ts 另外維護，重跑 seed 不動它
+  // MovableAsset 模板不重置：skipDuplicates 保留現有設定
   await prisma.functionCard.deleteMany();
   await prisma.shopDisplay.deleteMany();
   await prisma.gameState.deleteMany();
@@ -68,6 +71,9 @@ async function main() {
       data: { slot, cardType: FUNCTION_CARDS[slot]?.type ?? null },
     });
   }
+
+  // 動產模板（skipDuplicates：重跑 seed 不覆蓋已建立的模板）
+  await prisma.movableAsset.createMany({ data: MOVABLE_ASSET_SEED, skipDuplicates: true });
 
   // 題庫由 prisma/load-questions.ts 維護，seed 不碰
 
