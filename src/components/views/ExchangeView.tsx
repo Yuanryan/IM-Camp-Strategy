@@ -4,9 +4,20 @@ import { useState } from "react";
 import { useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, PriceTag, LevelDots, EventBanner, TeamItemBadges } from "@/components/ui";
-import { REGIONS, REGION_UI, EffectType, upgradeFee, type UndoRecipe } from "@/lib/game";
+import { REGIONS, REGION_UI, EffectType, upgradeFee, applyShopPrice, stackEffects, type UndoRecipe } from "@/lib/game";
 
 const LEVEL_TAG = ["已購", "1級", "2級", "3級"];
+
+// 按鈕價格標籤：有動產折扣時，原價刪除線顯示在右側
+function PriceLabel({ prefix, final, base }: { prefix: string; final: number; base: number }) {
+  if (final === base) return <>{prefix}  {final}</>;
+  return (
+    <>
+      {prefix}  {final}
+      <s className="ml-1.5 opacity-60">{base}</s>
+    </>
+  );
+}
 
 export function ExchangeView() {
   const { snap, mutate } = useSnapshot(2500);
@@ -18,6 +29,15 @@ export function ExchangeView() {
   if (!snap) return <p className="text-sm text-slate-400">載入中…</p>;
   const teams = snap.teams;
   const props = snap.properties.filter((p) => p.region === region);
+
+  // 某隊的 SHOP_PRICE 折扣 delta（與 service.buyProperty / upgradeProperty 一致）
+  const shopDeltaFor = (teamId: number | null | undefined) => {
+    if (teamId == null) return 0;
+    const items = teams.find((t) => t.id === teamId)?.items ?? [];
+    return stackEffects(
+      items.filter((i) => i.effectType === EffectType.SHOP_PRICE).map((i) => i.effectValue),
+    );
+  };
 
   const act = async (fn: () => Promise<{ [k: string]: unknown }>, ok: string) => {
     const r = await fn();
@@ -59,7 +79,7 @@ export function ExchangeView() {
         </p>
         <TeamItemBadges
           items={teams.find((t) => t.id === team)?.items ?? []}
-          relevantTypes={[EffectType.SHOP_PRICE, EffectType.TOLL_INCOME, EffectType.TOLL_PAID, EffectType.PROPERTY_VALUE]}
+          relevantTypes={[EffectType.SHOP_PRICE, EffectType.PROPERTY_VALUE]}
         />
       </StickyTeam>
 
@@ -77,8 +97,13 @@ export function ExchangeView() {
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {props.map((p) => {
-            const fee = upgradeFee(p.basePrice, p.level);
-            const buyPrice = Math.max(0, p.basePrice - discount);
+            // 採用受事件影響的現價（currentValue），與後端 buyProperty / upgradeProperty 一致
+            const fee = upgradeFee(p.currentValue, p.level);
+            // 購買：用選定隊（買方）的折扣；升級：用持有隊的折扣（與後端一致）
+            const buyBase = Math.max(0, p.currentValue - discount);
+            const buyPrice = applyShopPrice(p.currentValue - discount, shopDeltaFor(team === "" ? null : team));
+            const upgradeBase = fee != null ? Math.max(0, fee - discount) : null;
+            const upgradePrice = fee != null ? applyShopPrice(fee - discount, shopDeltaFor(p.ownerTeamId)) : null;
             const ui = REGION_UI[region as keyof typeof REGION_UI];
             return (
               <div key={p.id} className={`overflow-hidden rounded-xl border border-white/10 bg-white/5`}>
@@ -110,13 +135,17 @@ export function ExchangeView() {
 
                   <div className="mt-3 flex flex-col gap-2">
                     {!p.ownerTeamId && (
-                      <ActionButton label={`購買  ${buyPrice}`} className="w-full btn-emerald"
+                      <ActionButton
+                        label={<PriceLabel prefix="購買" final={buyPrice} base={buyBase} />}
+                        className="w-full btn-emerald"
                         disabled={team === ""}
                         onAction={() => team === "" ? Promise.resolve("請先選小隊") :
                           act(() => postJson("/api/exchange/buy", { propertyId: p.id, teamId: team, discount }), `已購買 ${p.name}`)} />
                     )}
-                    {p.ownerTeamId && fee != null && (
-                      <ActionButton label={`升級  ${Math.max(0, fee - discount)}`} className="w-full btn-amber"
+                    {p.ownerTeamId === team && fee != null && upgradePrice != null && upgradeBase != null && (
+                      <ActionButton
+                        label={<PriceLabel prefix="升級" final={upgradePrice} base={upgradeBase} />}
+                        className="w-full btn-amber"
                         onAction={() => act(() => postJson("/api/exchange/upgrade", { propertyId: p.id, discount }), `已升級 ${p.name}`)} />
                     )}
                     {p.ownerTeamId && (

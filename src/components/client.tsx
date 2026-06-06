@@ -2,6 +2,7 @@
 
 import useSWR, { mutate as globalMutate } from "swr";
 import { useState } from "react";
+import type { ReactNode } from "react";
 import type { Snapshot } from "@/lib/snapshot";
 import type { UndoRecipe } from "@/lib/game";
 
@@ -42,7 +43,7 @@ export function ActionButton({
   disabled,
   confirmText,
 }: {
-  label: string;
+  label: ReactNode;
   onAction: () => Promise<string | void | ActionResult>;
   className?: string;
   disabled?: boolean;

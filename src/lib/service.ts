@@ -170,8 +170,10 @@ export async function buyProperty(params: {
     const prop = await tx.property.findUnique({ where: { id: propertyId } });
     if (!prop) throw new Error("找不到不動產");
     if (prop.ownerTeamId != null) throw new Error("該不動產已被購買");
+    const state = await getState(tx);
+    const marketValue = currentValue(prop, parseActiveEvents(state.activeEvents), state.event4Penalty);
     const shopEffect = await loadActiveEffects(tx, teamId, "SHOP_PRICE");
-    const price = applyShopPrice(prop.basePrice - discount, shopEffect.delta);
+    const price = applyShopPrice(marketValue - discount, shopEffect.delta);
     const team = await tx.team.findUnique({ where: { id: teamId } });
     if (!team) throw new Error("找不到小隊");
     if (team.coins < price) throw new Error("光幣不足");
@@ -206,7 +208,9 @@ export async function upgradeProperty(params: {
     const prop = await tx.property.findUnique({ where: { id: propertyId } });
     if (!prop) throw new Error("找不到不動產");
     if (prop.ownerTeamId == null) throw new Error("該不動產尚未售出");
-    const fee0 = upgradeFee(prop.basePrice, prop.level);
+    const state = await getState(tx);
+    const marketValue = currentValue(prop, parseActiveEvents(state.activeEvents), state.event4Penalty);
+    const fee0 = upgradeFee(marketValue, prop.level);
     if (fee0 == null) throw new Error("已達最高等級（3 級）");
     const shopEffect = await loadActiveEffects(tx, prop.ownerTeamId, "SHOP_PRICE");
     const fee = applyShopPrice(fee0 - discount, shopEffect.delta);

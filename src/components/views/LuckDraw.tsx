@@ -3,7 +3,18 @@
 import { useState } from "react";
 import { ActionButton, postJson } from "@/components/client";
 import { CustomGive } from "@/components/RewardPanel";
-import { GOOD_LUCK_CARDS, BAD_LUCK_CARDS, type GoodCard, type BadCard, type UndoRecipe } from "@/lib/game";
+import {
+  GOOD_LUCK_CARDS,
+  BAD_LUCK_CARDS,
+  EffectType,
+  stackEffects,
+  applyGoodCardReward,
+  applyBadCardPenalty,
+  type GoodCard,
+  type BadCard,
+  type UndoRecipe,
+} from "@/lib/game";
+import type { ActiveItemView } from "@/lib/snapshot";
 
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
 
@@ -11,16 +22,48 @@ export function LuckDraw({
   team,
   curName,
   event1,
+  items = [],
   onDone,
 }: {
   team: number | "";
   curName?: string;
   event1: boolean;
+  items?: ActiveItemView[];
   onDone: () => void | Promise<unknown>;
 }) {
   const [good, setGood] = useState<GoodCard | null>(null);
   const [bad, setBad] = useState<BadCard | null>(null);
   const mult = event1 ? 2 : 1;
+
+  // 動產預覽 delta（與 service.applyGoodCard / applyBadCard 一致）
+  const goodDelta = stackEffects(
+    items.filter((i) => i.effectType === EffectType.GOOD_CARD_BONUS).map((i) => i.effectValue),
+  );
+  const badDelta = stackEffects(
+    items.filter((i) => i.effectType === EffectType.BAD_CARD_REDUCE).map((i) => i.effectValue),
+  );
+  // 預覽標籤：效果改變數值時，原值刪除線顯示在右側
+  const goodLabel = (prefix: string, base: number) => {
+    const final = applyGoodCardReward(base, goodDelta);
+    if (final === base) return `${prefix}  +${base}`;
+    return (
+      <>
+        {prefix}  +{final}
+        <s className="ml-1.5 opacity-60">+{base}</s>
+      </>
+    );
+  };
+  const badLabel = (prefix: string, base: number) => {
+    if (base <= 0) return `${prefix}（不扣）`;
+    const final = applyBadCardPenalty(base, badDelta);
+    if (final === base) return `${prefix}  −${final}`;
+    return (
+      <>
+        {prefix}  −{final}
+        <s className="ml-1.5 opacity-60">−{base}</s>
+      </>
+    );
+  };
 
   const settle = async (delta: number, note: string): Promise<{ message: string; undo?: UndoRecipe }> => {
     if (team === "") return { message: "請先選小隊" };
@@ -36,6 +79,9 @@ export function LuckDraw({
       undo = r.undo;
     }
     await onDone();
+    // 結算後自動收起卡片
+    setGood(null);
+    setBad(null);
     const suffix = finalDelta !== delta ? `（原 ${delta >= 0 ? "+" : ""}${delta}，動產效果後 ${finalDelta >= 0 ? "+" : ""}${finalDelta}）` : `（${finalDelta >= 0 ? "+" : ""}${finalDelta}）`;
     return { message: `${curName ?? ""} ${note} ${suffix}`, undo };
   };
@@ -77,13 +123,13 @@ export function LuckDraw({
           <p className="mb-3 text-xs text-slate-500">判定：{good.criteria}</p>
           <div className="grid grid-cols-2 gap-2">
             <ActionButton
-              label={`成功  +${good.success * mult}`}
+              label={goodLabel("成功", good.success * mult)}
               className="w-full btn-emerald"
               disabled={team === ""}
               onAction={() => settle(good.success * mult, `好運卡 ${good.name}（成功）`)}
             />
             <ActionButton
-              label={`失敗  +${good.fail * mult}`}
+              label={goodLabel("失敗", good.fail * mult)}
               className="w-full chip"
               disabled={team === ""}
               onAction={() => settle(good.fail * mult, `好運卡 ${good.name}（失敗）`)}
@@ -114,7 +160,7 @@ export function LuckDraw({
             {bad.outcomes.map((o, i) => (
               <ActionButton
                 key={i}
-                label={o.deduct > 0 ? `${o.label}  −${o.deduct * mult}` : `${o.label}（不扣）`}
+                label={badLabel(o.label, o.deduct * mult)}
                 className={`w-full ${o.deduct > 0 ? "btn-rose" : "chip"}`}
                 disabled={team === ""}
                 onAction={() => settle(-(o.deduct * mult), `厄運卡 ${bad.name}（${o.label}）`)}

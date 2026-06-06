@@ -59,6 +59,8 @@ export function MobileView() {
               relevantTypes={[EffectType.GOOD_CARD_BONUS, EffectType.BAD_CARD_REDUCE, EffectType.REMINDER]}
             />
           </StickyTeam>
+          <Questions />
+          <Timer />
 
           <Card title="發放獎勵（光幣 / 卡牌點數）">
             <RewardButtons teamId={team} presets={MOBILE_REWARD_PRESETS} onDone={mutate} />
@@ -69,9 +71,6 @@ export function MobileView() {
           </Card>
 
           <GrantItemCard teamId={team} />
-
-          <Timer />
-          <Questions />
         </>
       ) : (
         <QuestionManager />
