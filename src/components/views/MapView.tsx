@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { RewardButtons } from "@/components/RewardPanel";
 import { LotteryView } from "@/components/views/LotteryView";
 import { WheelView } from "@/components/views/WheelView";
 import { LuckDraw } from "@/components/views/LuckDraw";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num, EventBanner, HudTabs, TeamItemBadges } from "@/components/ui";
+import { Num, EventBanner, HudTabs, TeamItemBadges, FloatingDesc } from "@/components/ui";
 import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, EffectType, ITEM_GRADE_COLORS, stackEffects, applyToll, type UndoRecipe } from "@/lib/game";
 import { Map, CircleDollarSign, LoaderPinwheel } from "lucide-react";
 
@@ -19,6 +19,14 @@ export function MapView() {
   const [note, setNote] = useState("");
   const [tollRegion, setTollRegion] = useState("AURORA");
   const [tab, setTab] = useState<"map" | "lottery" | "wheel">("map");
+  const [openItemId, setOpenItemId] = useState<number | null>(null);
+  const [hoverItemId, setHoverItemId] = useState<number | null>(null);
+  // 點擊版本數秒後自動消失
+  useEffect(() => {
+    if (openItemId === null) return;
+    const t = setTimeout(() => setOpenItemId(null), 2000);
+    return () => clearTimeout(t);
+  }, [openItemId]);
 
   if (!snap) return <p className="text-sm text-slate-400">載入中…</p>;
   const teams = snap.teams;
@@ -60,7 +68,7 @@ export function MapView() {
                   </span>
                 </div>
               ) : (
-                <span className="text-xs text-amber-300/80">⚠ 請先選擇作用小隊</span>
+                <span className="text-xs text-amber-300/80">⚠ 請先選擇小隊</span>
               )}
               {event1 && (
                 <span className="breathe rounded-md border border-amber-400/40 bg-amber-400/10 px-2 py-1 text-xs font-semibold text-amber-200">
@@ -134,17 +142,31 @@ export function MapView() {
                         <div className="text-xs text-slate-400">
                           需付{" "}
                           <Num className={`font-bold ${tollChanged ? (toll > baseToll ? "text-rose-400" : "text-emerald-400") : "text-slate-200"}`}>{toll}</Num>
-                          {tollChanged && <span className="text-slate-500"> （基礎 {baseToll}）</span>}
+                          {tollChanged && <s className="ml-1.5 opacity-60">{baseToll}</s>}
+                           
                         </div>
                         {incomeItems.length > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1">
                             {incomeItems.map((i) => (
                               <span
                                 key={i.id}
-                                title={i.description}
-                                className={`rounded border px-1 py-0.5 text-[10px] font-medium ${ITEM_GRADE_COLORS[i.grade] ?? "chip"}`}
+                                className="relative inline-block"
+                                onMouseEnter={() => setHoverItemId(i.id)}
+                                onMouseLeave={() => setHoverItemId((cur) => (cur === i.id ? null : cur))}
                               >
-                                {i.name} <span className="text-emerald-400">+{(i.effectValue * 100).toFixed(0)}%</span>
+                                <span
+                                  role="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // 不要連帶選取該區
+                                    setOpenItemId((cur) => (cur === i.id ? null : i.id));
+                                  }}
+                                  className={`inline-block cursor-pointer rounded border px-1 py-0.5 text-[10px] font-medium ${ITEM_GRADE_COLORS[i.grade] ?? "chip"}`}
+                                >
+                                  {i.name} <span className="text-rose-400">+{(i.effectValue * 100).toFixed(0)}%</span>
+                                </span>
+                                {(openItemId === i.id || hoverItemId === i.id) && (
+                                  <FloatingDesc>{i.description}</FloatingDesc>
+                                )}
                               </span>
                             ))}
                           </div>
@@ -159,7 +181,7 @@ export function MapView() {
             </div>
 
             <ActionButton
-              label="向選定小隊收過路費"
+              label="支付過路費"
               className="w-full bg-cyan-500 text-slate-950 hover:bg-cyan-400"
               disabled={team === ""}
               onAction={async () => {
@@ -177,9 +199,7 @@ export function MapView() {
                 };
               }}
             />
-            <p className="mt-2 text-xs text-slate-500">
-              系統依獨佔隊伍現值自動計算（×10%、四捨五入至 50）。踩自己獨佔區或無獨佔則免收。
-            </p>
+
           </Card>
 
           {/* ── 快速加減 ──────────────────────────────────────── */}

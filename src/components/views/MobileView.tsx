@@ -52,7 +52,7 @@ export function MobileView() {
           <StickyTeam>
             <div className="flex flex-wrap items-center gap-3">
               <TeamSelect teams={snap.teams} value={team} onChange={setTeam} />
-              {!team && <span className="text-xs text-amber-300/80">⚠ 請先選擇作用小隊</span>}
+              {!team && <span className="text-xs text-amber-300/80">⚠ 請先選擇小隊</span>}
             </div>
             <TeamItemBadges
               items={snap.teams.find((t) => t.id === team)?.items ?? []}

@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useState, useEffect, type ReactNode } from "react";
 import { RadioTower } from "lucide-react";
 import { EVENTS, EffectType, ITEM_GRADE_COLORS } from "@/lib/game";
 import type { ActiveItemView } from "@/lib/snapshot";
@@ -107,6 +109,7 @@ export function BottomNav<T extends string>({
 }
 
 // 當前小隊與頁面相關的動產效果徽章（顯示在 StickyTeam 內）
+// 點擊（或滑鼠 hover）顯示說明 — 平板無 hover，故同時支援點擊展開。
 export function TeamItemBadges({
   items,
   relevantTypes,
@@ -114,30 +117,57 @@ export function TeamItemBadges({
   items: ActiveItemView[];
   relevantTypes: EffectType[];
 }) {
+  // 點擊（平板）或 hover（桌機）皆顯示浮動說明；點擊版本數秒後自動消失
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [hoverId, setHoverId] = useState<number | null>(null);
+  useEffect(() => {
+    if (openId === null) return;
+    const t = setTimeout(() => setOpenId(null), 2000);
+    return () => clearTimeout(t);
+  }, [openId]);
   const relevant = items.filter((i) => (relevantTypes as string[]).includes(i.effectType));
   if (!relevant.length) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
       {relevant.map((item) => (
-        <span
+        <div
           key={item.id}
-          title={item.description}
-          className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-xs font-medium ${ITEM_GRADE_COLORS[item.grade] ?? "chip"}`}
+          className="relative"
+          onMouseEnter={() => setHoverId(item.id)}
+          onMouseLeave={() => setHoverId((cur) => (cur === item.id ? null : cur))}
         >
-          <span className="font-bold opacity-70">{item.grade}</span>
-          <span>{item.name}</span>
-          {item.effectType !== EffectType.REMINDER && (
-            <span className={`font-mono ${item.effectValue >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-              {item.effectType === EffectType.COINS_PER_ROUND
-                ? `+${item.effectValue}/輪`
-                : `${item.effectValue >= 0 ? "+" : ""}${(item.effectValue * 100).toFixed(0)}%`}
-            </span>
+          <button
+            type="button"
+            onClick={() => setOpenId((cur) => (cur === item.id ? null : item.id))}
+            className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-xs font-medium transition active:scale-95 ${ITEM_GRADE_COLORS[item.grade] ?? "chip"} ${openId === item.id ? "ring-1 ring-white/50" : ""}`}
+          >
+            <span className="font-bold opacity-70">{item.grade}</span>
+            <span>{item.name}</span>
+            {item.effectType !== EffectType.REMINDER && (
+              <span className={`font-mono ${item.effectValue >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                {item.effectType === EffectType.COINS_PER_ROUND
+                  ? `+${item.effectValue}/輪`
+                  : `${item.effectValue >= 0 ? "+" : ""}${(item.effectValue * 100).toFixed(0)}%`}
+              </span>
+            )}
+            {item.usesRemaining !== null && (
+              <span className="text-slate-400">×{item.usesRemaining}</span>
+            )}
+          </button>
+          {(openId === item.id || hoverId === item.id) && (
+            <FloatingDesc>{item.description}</FloatingDesc>
           )}
-          {item.usesRemaining !== null && (
-            <span className="text-slate-400">×{item.usesRemaining}</span>
-          )}
-        </span>
+        </div>
       ))}
+    </div>
+  );
+}
+
+// 浮動說明卡：絕對定位，覆蓋於內容之上（不擠壓版面）。由父層控制顯示時機。
+export function FloatingDesc({ children }: { children: ReactNode }) {
+  return (
+    <div className="pointer-events-none absolute left-0 top-full z-50 mt-1 w-max max-w-[15rem] rounded-lg border border-white/15 bg-slate-900 px-2.5 py-1.5 text-xs leading-snug text-slate-200 shadow-xl shadow-black/50">
+      {children}
     </div>
   );
 }

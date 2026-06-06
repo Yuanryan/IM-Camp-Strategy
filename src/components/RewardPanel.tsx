@@ -54,7 +54,6 @@ export function CustomGive({
   return (
     <div className="flex flex-wrap items-end gap-2">
       <label className="text-xs text-slate-400">
-        <div className="mb-1">自訂金額（可負）</div>
         <input type="number" inputMode="numeric" value={amt}
           onChange={(e) => setAmt(Number(e.target.value) || 0)} className="fld w-28" />
       </label>
