@@ -1,15 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import useSWR from "swr";
-import {
-  fetcher,
-  useSnapshot,
-  postJson,
-  ActionButton,
-  TeamSelect,
-  toast,
-} from "@/components/client";
+import { fetcher, useSnapshot, postJson, ActionButton, toast } from "@/components/client";
 import { Card } from "@/components/Shell";
 import { Num } from "@/components/ui";
 
@@ -54,6 +48,7 @@ const LOT_TYPE_LABEL: Record<LotType, string> = { ITEM: "動產", PROPERTY: "不
 
 // 場次建立前，先在前端暫存的拍賣品（尚未進資料庫）
 type StagedLot = {
+  _id: string; // 前端穩定 key，供重新排序動畫（layout 動畫需穩定 key）
   title: string;
   description: string;
   lotType: LotType;
@@ -62,6 +57,11 @@ type StagedLot = {
   hiddenValue: number;
   startPrice: number;
 };
+// 產生穩定唯一 key（不用 module-level 計數器，避免 dev 熱重載重置造成重複 key）
+const newStagedId = () =>
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export function AuctionView() {
   const { snap, mutate: mutateSnap } = useSnapshot(1500);
@@ -100,6 +100,7 @@ export function AuctionView() {
     if (lotType === "ITEM" && lotAsset === "") throw new Error("請選擇動產");
     if (lotType === "PROPERTY" && lotProperty === "") throw new Error("請選擇不動產");
     const lot: StagedLot = {
+      _id: newStagedId(),
       title: lotTitle.trim(),
       description: lotDesc,
       lotType,
@@ -115,6 +116,17 @@ export function AuctionView() {
     setLotHidden("");
     setLotStart("");
     return lot;
+  };
+
+  // 調整籌備清單中拍賣品的順序（dir=-1 上移、+1 下移）
+  const moveStaged = (i: number, dir: -1 | 1) => {
+    setStaged((prev) => {
+      const j = i + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
   };
 
   if (!manage || !snap) return <p className="text-sm text-slate-400">載入中…</p>;
@@ -215,23 +227,53 @@ export function AuctionView() {
             </div>
           </div>
 
-          {/* 落槌：選得標隊伍 + 成交 */}
+          {/* 各隊光幣一覽：低於目前喊價者變暗（買不起），點一下即選為得標隊 */}
+          <div className="mt-5 border-t border-white/10 pt-4">
+            <div className="mb-2 text-center text-[11px] uppercase tracking-widest text-slate-400">
+              各隊光幣（點選即設為得標隊）
+            </div>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {manage.teams.map((t) => {
+                const broke = t.coins < live.currentBid;
+                const picked = winner === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setWinner(picked ? "" : t.id)}
+                    title={broke ? "光幣不足，無法得標" : "設為得標隊"}
+                    className={`rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
+                      picked
+                        ? "border-amber-400/60 bg-amber-400/20 text-amber-200 shadow-[0_0_10px_rgba(251,191,36,0.25)]"
+                        : broke
+                          ? "border-white/5 bg-white/3 text-slate-600"
+                          : "border-white/10 bg-white/5 text-slate-200 hover:border-cyan-400/40"
+                    }`}
+                  >
+                    {t.name}
+                    <span className={`ml-1.5 ${broke && !picked ? "text-slate-600" : "text-amber-300/90"}`}>
+                      {t.coins}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 落槌：上方點選得標隊 → 成交 */}
           <div className="mt-5 border-t border-white/10 pt-4">
             <div className="flex flex-wrap items-center justify-center gap-3">
-              <TeamSelect
-                teams={manage.teams}
-                value={winner}
-                onChange={setWinner}
-                placeholder="選擇得標小隊"
-              />
               {winner !== "" && (
-                <span
-                  className={`text-sm font-semibold ${
-                    coinOf(winner) < live.currentBid ? "text-rose-400" : "text-emerald-300"
-                  }`}
-                >
-                  該隊光幣 {coinOf(winner)}
-                  {coinOf(winner) < live.currentBid && "（不足）"}
+                <span className="text-sm font-semibold text-slate-300">
+                  得標隊：
+                  <span
+                    className={`ml-1 ${
+                      coinOf(winner) < live.currentBid ? "text-rose-400" : "text-amber-200"
+                    }`}
+                  >
+                    {manage.teams.find((t) => t.id === winner)?.name}（光幣 {coinOf(winner)}
+                    {coinOf(winner) < live.currentBid && "・不足"}）
+                  </span>
                 </span>
               )}
               <ActionButton
@@ -307,31 +349,58 @@ export function AuctionView() {
               <p className="text-sm text-slate-400">尚未加入任何拍賣品。</p>
             ) : (
               <ul className="space-y-2">
-                {staged.map((lot, i) => (
-                  <li
-                    key={i}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white/5 px-3 py-2.5"
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/10 text-[11px] font-black text-slate-400">
-                        {i + 1}
-                      </span>
-                      <div className="min-w-0">
-                        <span className="font-semibold">{lot.title}</span>
-                        <span className="ml-2 text-[11px] text-slate-500">
-                          {LOT_TYPE_LABEL[lot.lotType]}・起標 {lot.startPrice}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      className="chip rounded-xl px-3 py-2 text-xs font-semibold"
-                      onClick={() => setStaged((prev) => prev.filter((_, idx) => idx !== i))}
+                <AnimatePresence initial={false}>
+                  {staged.map((lot, i) => (
+                    <motion.li
+                      key={lot._id}
+                      layout
+                      initial={{ opacity: 0, y: -8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, x: 12 }}
+                      transition={{ duration: 0.2, ease: "easeOut" }}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white/5 px-3 py-2.5"
                     >
-                      移除
-                    </button>
-                  </li>
-                ))}
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-white/10 text-[11px] font-black text-slate-400">
+                          {i + 1}
+                        </span>
+                        <div className="min-w-0">
+                          <span className="font-semibold">{lot.title}</span>
+                          <span className="ml-2 text-[11px] text-slate-500">
+                            {LOT_TYPE_LABEL[lot.lotType]}・起標 {lot.startPrice}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={i === 0}
+                          title="上移"
+                          className="chip grid h-9 w-9 place-items-center rounded-lg text-sm font-bold disabled:opacity-30"
+                          onClick={() => moveStaged(i, -1)}
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          disabled={i === staged.length - 1}
+                          title="下移"
+                          className="chip grid h-9 w-9 place-items-center rounded-lg text-sm font-bold disabled:opacity-30"
+                          onClick={() => moveStaged(i, 1)}
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          className="chip rounded-lg px-3 py-2 text-xs font-semibold"
+                          onClick={() => setStaged((prev) => prev.filter((s) => s._id !== lot._id))}
+                        >
+                          移除
+                        </button>
+                      </div>
+                    </motion.li>
+                  ))}
+                </AnimatePresence>
               </ul>
             )}
           </Card>
