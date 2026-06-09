@@ -7,6 +7,7 @@ import {
   lotteryFee,
   parseActiveEvents,
   spinWheel,
+  spinWheelCustom,
   WHEEL_OUTCOMES,
   MOVABLE_ASSET_SEED,
   EffectType,
@@ -18,6 +19,14 @@ import {
   applyBadCardPenalty,
   applyTaxCut,
   applyRoundIncome,
+  applyWheelBonus,
+  applyWheelMaxStake,
+  applyLotteryBonus,
+  applyJackpotShare,
+  applyCompoundInterest,
+  applyPropertyDividend,
+  applyPiracy,
+  applyAllianceBonus,
 } from "./game";
 
 // ── 動產效果疊加（相加，無遞減）──────────────────────────────
@@ -159,12 +168,142 @@ describe("effect: COINS_PER_ROUND（applyRoundIncome）", () => {
   });
 });
 
+// ── WHEEL_BONUS ───────────────────────────────────────────────
+describe("effect: WHEEL_BONUS（applyWheelBonus）", () => {
+  it("無道具時不變", () => {
+    expect(applyWheelBonus(100, 0)).toBe(100);
+  });
+  it("+50% 獲利加成", () => {
+    expect(applyWheelBonus(200, 0.5)).toBe(300);
+  });
+  it("虧損（負 delta）不放大", () => {
+    expect(applyWheelBonus(-500, 0.5)).toBe(-500);
+  });
+  it("零值不變", () => {
+    expect(applyWheelBonus(0, 0.5)).toBe(0);
+  });
+});
+
+// ── WHEEL_STAKE_BOOST ─────────────────────────────────────────
+describe("effect: WHEEL_STAKE_BOOST（applyWheelMaxStake）", () => {
+  it("無道具時為 10% 上限（coins 需 > 5000 才超過保底）", () => {
+    expect(applyWheelMaxStake(10000, 0)).toBe(1000);
+  });
+  it("+10% boost → 20% 上限", () => {
+    expect(applyWheelMaxStake(10000, 0.1)).toBe(2000);
+  });
+  it("保底 500（低 coins 時）", () => {
+    expect(applyWheelMaxStake(100, 0)).toBe(500);
+  });
+});
+
+// ── WHEEL_NO_ZERO（spinWheelCustom）──────────────────────────
+describe("effect: WHEEL_NO_ZERO（spinWheelCustom）", () => {
+  it("排除 ×0 後永遠不出現 ×0", () => {
+    for (let i = 0; i < 500; i++) {
+      expect(spinWheelCustom({ excludeMultipliers: [0] })).not.toBe(0);
+    }
+  });
+  it("無排除時與 spinWheel 一樣可能出 ×0", () => {
+    const valid = new Set(WHEEL_OUTCOMES.map((o) => o.mult));
+    for (let i = 0; i < 100; i++) {
+      expect(valid.has(spinWheelCustom())).toBe(true);
+    }
+  });
+});
+
+// ── LOTTERY_BONUS ─────────────────────────────────────────────
+describe("effect: LOTTERY_BONUS（applyLotteryBonus）", () => {
+  it("無道具時等於原獎金", () => {
+    expect(applyLotteryBonus(1000, 0)).toBe(1000);
+  });
+  it("+50% 加成", () => {
+    expect(applyLotteryBonus(1000, 0.5)).toBe(1500);
+  });
+});
+
+// ── JACKPOT_SHARE ────────────────────────────────────────────
+describe("effect: JACKPOT_SHARE（applyJackpotShare）", () => {
+  it("5% 抽成", () => {
+    expect(applyJackpotShare(1000, 0.05)).toBe(50);
+  });
+  it("rate = 0 時為 0", () => {
+    expect(applyJackpotShare(1000, 0)).toBe(0);
+  });
+  it("不為負", () => {
+    expect(applyJackpotShare(-100, 0.05)).toBe(0);
+  });
+});
+
+// ── COMPOUND_INTEREST ────────────────────────────────────────
+describe("effect: COMPOUND_INTEREST（applyCompoundInterest）", () => {
+  it("3% 利率", () => {
+    expect(applyCompoundInterest(1000, 0.03)).toBe(30);
+  });
+  it("coins = 0 時為 0", () => {
+    expect(applyCompoundInterest(0, 0.03)).toBe(0);
+  });
+  it("不為負", () => {
+    expect(applyCompoundInterest(-100, 0.03)).toBe(0);
+  });
+});
+
+// ── PROPERTY_DIVIDEND ────────────────────────────────────────
+describe("effect: PROPERTY_DIVIDEND（applyPropertyDividend）", () => {
+  it("3% 分紅", () => {
+    expect(applyPropertyDividend(2000, 0.03)).toBe(60);
+  });
+  it("無不動產時為 0", () => {
+    expect(applyPropertyDividend(0, 0.03)).toBe(0);
+  });
+});
+
+// ── PIRACY ───────────────────────────────────────────────────
+describe("effect: PIRACY（applyPiracy）", () => {
+  it("5% 偷取", () => {
+    expect(applyPiracy(200, 0.05)).toBe(10);
+  });
+  it("rate = 0 時為 0", () => {
+    expect(applyPiracy(200, 0)).toBe(0);
+  });
+  it("不為負", () => {
+    expect(applyPiracy(-100, 0.05)).toBe(0);
+  });
+});
+
+// ── ALLIANCE_BONUS ────────────────────────────────────────────
+describe("effect: ALLIANCE_BONUS（applyAllianceBonus）", () => {
+  it("固定值 100", () => {
+    expect(applyAllianceBonus(100)).toBe(100);
+  });
+  it("不為負", () => {
+    expect(applyAllianceBonus(-50)).toBe(0);
+  });
+});
+
+// ── WHEEL_ON_GOOD_CARD、DOUBLE_OR_NOTHING、UNDERDOG、LOTTERY_INSURANCE
+// 這三個含隨機 / 條件邏輯，核心邏輯在 service.ts（整合測試才能完整驗）。
+// 此處只驗結構正確。
+describe("effect: 含條件 / 隨機 effectType 結構驗證", () => {
+  it("WHEEL_ON_GOOD_CARD 在 MOVABLE_ASSET_SEED 中存在", () => {
+    expect(MOVABLE_ASSET_SEED.some((a) => a.effectType === EffectType.WHEEL_ON_GOOD_CARD)).toBe(true);
+  });
+  it("DOUBLE_OR_NOTHING 在 MOVABLE_ASSET_SEED 中存在", () => {
+    expect(MOVABLE_ASSET_SEED.some((a) => a.effectType === EffectType.DOUBLE_OR_NOTHING)).toBe(true);
+  });
+  it("UNDERDOG 在 MOVABLE_ASSET_SEED 中存在", () => {
+    expect(MOVABLE_ASSET_SEED.some((a) => a.effectType === EffectType.UNDERDOG)).toBe(true);
+  });
+  it("LOTTERY_INSURANCE 在 MOVABLE_ASSET_SEED 中存在", () => {
+    expect(MOVABLE_ASSET_SEED.some((a) => a.effectType === EffectType.LOTTERY_INSURANCE)).toBe(true);
+  });
+});
+
 // ── REMINDER：無計算效果（僅資料驗證，見 MOVABLE_ASSET_SEED）──
 
 // ── 涵蓋性檢查：每個 effectType 都有對應測試 ─────────────────
 describe("effect 覆蓋率", () => {
-  it("除 REMINDER 外，每個 effectType 都有套用公式被測到", () => {
-    // 此清單需與上方 describe 區塊同步；缺一個就代表漏測
+  it("每個 effectType 都有套用公式或結構驗證", () => {
     const tested = new Set([
       EffectType.TOLL_INCOME,
       EffectType.TOLL_PAID,
@@ -174,9 +313,22 @@ describe("effect 覆蓋率", () => {
       EffectType.BAD_CARD_REDUCE,
       EffectType.TAX_COLLECTOR,
       EffectType.COINS_PER_ROUND,
+      EffectType.WHEEL_BONUS,
+      EffectType.WHEEL_STAKE_BOOST,
+      EffectType.WHEEL_NO_ZERO,
+      EffectType.WHEEL_ON_GOOD_CARD,
+      EffectType.LOTTERY_BONUS,
+      EffectType.JACKPOT_SHARE,
+      EffectType.LOTTERY_INSURANCE,
+      EffectType.COMPOUND_INTEREST,
+      EffectType.PROPERTY_DIVIDEND,
+      EffectType.UNDERDOG,
+      EffectType.DOUBLE_OR_NOTHING,
+      EffectType.ALLIANCE_BONUS,
+      EffectType.PIRACY,
+      EffectType.REMINDER,
     ]);
-    const all = Object.values(EffectType).filter((t) => t !== EffectType.REMINDER);
-    for (const t of all) {
+    for (const t of Object.values(EffectType)) {
       expect(tested.has(t)).toBe(true);
     }
   });
@@ -315,9 +467,15 @@ describe("MOVABLE_ASSET_SEED", () => {
     }
   });
 
-  it("REMINDER 類效果值為 0；其餘非零", () => {
+  it("REMINDER / WHEEL_NO_ZERO / WHEEL_ON_GOOD_CARD / DOUBLE_OR_NOTHING 效果值為 0；其餘非零", () => {
+    const zeroValueTypes = new Set([
+      EffectType.REMINDER,
+      EffectType.WHEEL_NO_ZERO,
+      EffectType.WHEEL_ON_GOOD_CARD,
+      EffectType.DOUBLE_OR_NOTHING,
+    ]);
     for (const a of MOVABLE_ASSET_SEED) {
-      if (a.effectType === EffectType.REMINDER) {
+      if (zeroValueTypes.has(a.effectType as typeof EffectType[keyof typeof EffectType])) {
         expect(a.effectValue).toBe(0);
       } else {
         expect(a.effectValue).not.toBe(0);

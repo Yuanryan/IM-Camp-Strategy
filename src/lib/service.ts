@@ -9,6 +9,15 @@ import {
   applyBadCardPenalty,
   applyTaxCut,
   applyRoundIncome,
+  applyWheelBonus,
+  applyWheelMaxStake,
+  applyLotteryBonus,
+  applyJackpotShare,
+  applyCompoundInterest,
+  applyPropertyDividend,
+  applyAllianceBonus,
+  applyPiracy,
+  spinWheelCustom,
   currentValue,
   lotteryFee,
   parseActiveEvents,
@@ -127,30 +136,52 @@ export async function adjustBalance(params: {
 }
 
 // ── 命運投資輪盤 ─────────────────────────────────────────────
+// mult 由此函式內部決定（含 WHEEL_NO_ZERO 保底邏輯），不再由路由傳入。
 export async function applyWheel(params: {
   teamId: number;
   stake: number;
-  mult: number;
   byToken?: string;
 }) {
-  const { teamId, stake, mult, byToken } = params;
+  const { teamId, stake, byToken } = params;
   if (stake <= 0) throw new Error("投入金額需大於 0");
-  const delta = Math.round(stake * mult) - stake; // 淨變動
   return prisma.$transaction(async (tx) => {
     const team = await tx.team.findUnique({ where: { id: teamId } });
     if (!team) throw new Error("找不到小隊");
-    const maxStake = Math.max(500, Math.floor(team.coins / 10));
+
+    // WHEEL_STAKE_BOOST：提高最大投入上限
+    const stakeBoostEffect = await loadActiveEffects(tx, teamId, "WHEEL_STAKE_BOOST");
+    const maxStake = applyWheelMaxStake(team.coins, stakeBoostEffect.delta);
     if (stake > maxStake) throw new Error(`投入上限為 ${maxStake} 光幣`);
+
+    // WHEEL_NO_ZERO：排除 ×0，並消耗一次
+    const noZeroItems = await tx.teamItem.findMany({
+      where: { teamId, active: true },
+      include: { asset: true },
+    });
+    const hasNoZero = noZeroItems.some((i) => i.asset.effectType === "WHEEL_NO_ZERO");
+    const mult = spinWheelCustom(hasNoZero ? { excludeMultipliers: [0] } : undefined);
+    const noZeroUsedIds = hasNoZero
+      ? noZeroItems.filter((i) => i.asset.effectType === "WHEEL_NO_ZERO").map((i) => i.id)
+      : [];
+
+    // 基礎淨變動
+    let delta = Math.round(stake * mult) - stake;
+
+    // WHEEL_BONUS：獲利加成（虧損不放大）
+    const bonusEffect = await loadActiveEffects(tx, teamId, "WHEEL_BONUS");
+    delta = applyWheelBonus(delta, bonusEffect.delta);
+
     if (team.coins + delta < 0) throw new Error("光幣不足以支付投入");
     const updated = await tx.team.update({
       where: { id: teamId },
       data: { coins: { increment: delta } },
     });
+    await decrementUses(tx, [...stakeBoostEffect.usedIds, ...bonusEffect.usedIds, ...noZeroUsedIds]);
     const lid = await logLedger(tx, {
       teamId,
       kind: "wheel",
       delta,
-      note: `輪盤 投入${stake} ×${mult}`,
+      note: `輪盤 投入${stake} ×${mult}${hasNoZero ? "（保底）" : ""}`,
       byToken,
     });
     const undo: UndoRecipe = { label: `輪盤 ×${mult}`, ledgerIds: [lid] };
@@ -350,6 +381,23 @@ export async function payToll(params: {
       ledgerIds.push(lTax);
     }
 
+    // PIRACY：額外從付款隊偷取比例（分給海盜隊）
+    for (const item of allItems) {
+      if (item.asset.effectType !== "PIRACY") continue;
+      if (item.teamId === payerTeamId) continue; // 不偷自己
+      const stolen = applyPiracy(baseToll, item.asset.effectValue);
+      if (stolen <= 0) continue;
+      // 確認付款方還扣得起
+      const payerNow = await tx.team.findUnique({ where: { id: payerTeamId }, select: { coins: true } });
+      if ((payerNow?.coins ?? 0) < stolen) continue;
+      await tx.team.update({ where: { id: payerTeamId }, data: { coins: { decrement: stolen } } });
+      await tx.team.update({ where: { id: item.teamId }, data: { coins: { increment: stolen } } });
+      const lFrom = await logLedger(tx, { teamId: payerTeamId, kind: "coins", delta: -stolen, note: `海盜稅 ${REGION_NAME[region]}`, byToken });
+      const lTo   = await logLedger(tx, { teamId: item.teamId,  kind: "coins", delta: stolen,  note: `海盜稅收入 ${REGION_NAME[region]}`, byToken });
+      ledgerIds.push(lFrom, lTo);
+    }
+    await decrementUses(tx, allItems.filter((i) => i.asset.effectType === "PIRACY" && i.teamId !== payerTeamId).map((i) => i.id));
+
     const undo: UndoRecipe = { label: `過路費 ${toll}`, ledgerIds };
     return { ok: true, baseToll, toll, monopolyId, undo };
   });
@@ -441,6 +489,24 @@ export async function respondTrade(params: {
     if (trade.cardPoints) ledgers.push({ teamId: target, kind: "cardPoints", delta: trade.cardPoints, note, byToken });
     if (ledgers.length) await tx.ledger.createMany({ data: ledgers });
 
+    // ALLIANCE_BONUS：交易接受時雙方各得固定光幣
+    if (action === "accept") {
+      const allItems = await tx.teamItem.findMany({
+        where: { teamId: { in: [trade.fromTeamId, trade.toTeamId] }, active: true },
+        include: { asset: true },
+      });
+      const allianceUsedIds: number[] = [];
+      for (const item of allItems) {
+        if (item.asset.effectType !== "ALLIANCE_BONUS") continue;
+        const bonus = applyAllianceBonus(item.asset.effectValue);
+        if (bonus <= 0) continue;
+        await tx.team.update({ where: { id: item.teamId }, data: { coins: { increment: bonus } } });
+        await logLedger(tx, { teamId: item.teamId, kind: "coins", delta: bonus, note: "交易聯盟紅利", byToken });
+        allianceUsedIds.push(item.id);
+      }
+      if (allianceUsedIds.length) await decrementUses(tx, allianceUsedIds);
+    }
+
     return { ok: true, action };
   });
 }
@@ -516,22 +582,73 @@ export async function drawLottery(params: { byToken?: string }) {
   return prisma.$transaction(async (tx) => {
     const state = await getState(tx);
     const number = Math.floor(Math.random() * 50) + 1;
-    const hit = await tx.lotteryNumber.findUnique({
-      where: { period_number: { period: state.lotteryPeriod, number } },
-    });
+
+    // 本期所有登記號碼（開獎前先抓，LOTTERY_INSURANCE 退費需要）
+    const allNumbers = await tx.lotteryNumber.findMany({ where: { period: state.lotteryPeriod } });
+    const hit = allNumbers.find((n) => n.number === number) ?? null;
+
+    // 未中獎：LOTTERY_INSURANCE 退還本期費用
     if (!hit) {
+      const insuranceItems = await tx.teamItem.findMany({
+        where: { active: true },
+        include: { asset: true },
+      });
+      const insuranceUsedIds: number[] = [];
+      for (const item of insuranceItems) {
+        if (item.asset.effectType !== "LOTTERY_INSURANCE") continue;
+        const teamNumbers = allNumbers.filter((n) => n.teamId === item.teamId);
+        if (!teamNumbers.length) continue;
+        // 計算本期實際支付的費用（第一個免費，之後每個 50×2^(n-1)）
+        let refund = 0;
+        for (let i = 1; i < teamNumbers.length; i++) refund += lotteryFee(i);
+        if (refund <= 0) continue;
+        await tx.team.update({ where: { id: item.teamId }, data: { coins: { increment: refund } } });
+        await logLedger(tx, { teamId: item.teamId, kind: "lottery", delta: refund, note: `大樂透保險退費 ${refund} 光幣`, byToken });
+        insuranceUsedIds.push(item.id);
+      }
+      if (insuranceUsedIds.length) await decrementUses(tx, insuranceUsedIds);
       return { number, winnerTeamId: null, pool: state.lotteryPool };
     }
-    const pool = state.lotteryPool;
-    await tx.team.update({ where: { id: hit.teamId }, data: { coins: { increment: pool } } });
-    await logLedger(tx, { teamId: hit.teamId, kind: "lottery", delta: pool, note: `大樂透中獎 ${number} 號`, byToken });
+
+    const basePool = state.lotteryPool;
+
+    // LOTTERY_BONUS：中獎者獎金加成
+    const bonusEffect = await loadActiveEffects(tx, hit.teamId, "LOTTERY_BONUS");
+    const finalPool = applyLotteryBonus(basePool, bonusEffect.delta);
+
+    await tx.team.update({ where: { id: hit.teamId }, data: { coins: { increment: finalPool } } });
+    await logLedger(tx, {
+      teamId: hit.teamId,
+      kind: "lottery",
+      delta: finalPool,
+      note: `大樂透中獎 ${number} 號${finalPool !== basePool ? `（原 ${basePool}，動產加成）` : ""}`,
+      byToken,
+    });
+    await decrementUses(tx, bonusEffect.usedIds);
+
+    // JACKPOT_SHARE：其他隊自動抽成（從銀行出，不影響中獎者）
+    const allItems = await tx.teamItem.findMany({
+      where: { active: true },
+      include: { asset: true },
+    });
+    const shareUsedIds: number[] = [];
+    for (const item of allItems) {
+      if (item.asset.effectType !== "JACKPOT_SHARE") continue;
+      const cut = applyJackpotShare(basePool, item.asset.effectValue);
+      if (cut <= 0) continue;
+      await tx.team.update({ where: { id: item.teamId }, data: { coins: { increment: cut } } });
+      await logLedger(tx, { teamId: item.teamId, kind: "lottery", delta: cut, note: `大樂透抽成 ${number} 號`, byToken });
+      shareUsedIds.push(item.id);
+    }
+    if (shareUsedIds.length) await decrementUses(tx, shareUsedIds);
+
     // 清空本期、開新一期、獎金池重設 1000
     await tx.lotteryNumber.deleteMany({ where: { period: state.lotteryPeriod } });
     await tx.gameState.update({
       where: { id: 1 },
       data: { lotteryPeriod: { increment: 1 }, lotteryPool: 1000 },
     });
-    return { number, winnerTeamId: hit.teamId, pool };
+    return { number, winnerTeamId: hit.teamId, basePool, finalPool };
   });
 }
 
@@ -662,14 +779,31 @@ export async function applyGoodCard(params: {
   const { teamId, baseReward, note, byToken } = params;
   return prisma.$transaction(async (tx) => {
     const bonusEffect = await loadActiveEffects(tx, teamId, "GOOD_CARD_BONUS");
-    const finalReward = applyGoodCardReward(baseReward, bonusEffect.delta);
+    let afterBonus = applyGoodCardReward(baseReward, bonusEffect.delta);
+
+    // WHEEL_ON_GOOD_CARD：好運卡獎勵 × 輪盤結果
+    const wheelItems = await tx.teamItem.findMany({
+      where: { teamId, active: true },
+      include: { asset: true },
+    });
+    const wheelOnCardItem = wheelItems.find((i) => i.asset.effectType === "WHEEL_ON_GOOD_CARD");
+    let wheelMult: number | null = null;
+    let wheelUsedIds: number[] = [];
+    if (wheelOnCardItem && afterBonus > 0) {
+      wheelMult = spinWheelCustom();
+      afterBonus = Math.round(afterBonus * wheelMult);
+      wheelUsedIds = [wheelOnCardItem.id];
+    }
+
+    const finalReward = Math.max(0, afterBonus);
     if (finalReward > 0) {
       await tx.team.update({ where: { id: teamId }, data: { coins: { increment: finalReward } } });
     }
-    await decrementUses(tx, bonusEffect.usedIds);
-    const lid = await logLedger(tx, { teamId, kind: "coins", delta: finalReward, note, byToken });
-    const undo: UndoRecipe = { label: note, ledgerIds: [lid] };
-    return { ok: true, baseReward, finalReward, undo };
+    await decrementUses(tx, [...bonusEffect.usedIds, ...wheelUsedIds]);
+    const noteWithWheel = wheelMult !== null ? `${note}（輪盤 ×${wheelMult}）` : note;
+    const lid = await logLedger(tx, { teamId, kind: "coins", delta: finalReward, note: noteWithWheel, byToken });
+    const undo: UndoRecipe = { label: noteWithWheel, ledgerIds: [lid] };
+    return { ok: true, baseReward, finalReward, wheelMult, undo };
   });
 }
 
@@ -691,6 +825,53 @@ export async function applyBadCard(params: {
     const lid = await logLedger(tx, { teamId, kind: "coins", delta: -finalPenalty, note, byToken });
     const undo: UndoRecipe = { label: note, ledgerIds: [lid] };
     return { ok: true, basePenalty, finalPenalty, undo };
+  });
+}
+
+// ── 流動關主獎勵（含 DOUBLE_OR_NOTHING）────────────────────────
+export async function applyMobileReward(params: {
+  teamId: number;
+  coins?: number;
+  cardPoints?: number;
+  note?: string;
+  byToken?: string;
+}) {
+  const { teamId, coins = 0, cardPoints = 0, note, byToken } = params;
+  if (coins === 0 && cardPoints === 0) throw new Error("沒有任何變動");
+  return prisma.$transaction(async (tx) => {
+    const team = await tx.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new Error("找不到小隊");
+
+    // DOUBLE_OR_NOTHING：50/50 雙倍或歸零（僅影響光幣）
+    let finalCoins = coins;
+    let doubled: boolean | null = null;
+    if (coins > 0) {
+      const dItems = await tx.teamItem.findMany({
+        where: { teamId, active: true },
+        include: { asset: true },
+      });
+      const dItem = dItems.find((i) => i.asset.effectType === "DOUBLE_OR_NOTHING");
+      if (dItem) {
+        doubled = Math.random() < 0.5;
+        finalCoins = doubled ? coins * 2 : 0;
+        await decrementUses(tx, [dItem.id]);
+      }
+    }
+
+    if (team.coins + finalCoins < 0) throw new Error("光幣不足");
+    if (team.cardPoints + cardPoints < 0) throw new Error("卡牌點數不足");
+    await tx.team.update({
+      where: { id: teamId },
+      data: { coins: { increment: finalCoins }, cardPoints: { increment: cardPoints } },
+    });
+    const noteOut = doubled !== null
+      ? `${note ?? "流動獎勵"}（${doubled ? "雙倍！" : "歸零…"}）`
+      : (note ?? "流動獎勵");
+    const ledgerIds: number[] = [];
+    if (finalCoins !== 0) ledgerIds.push(await logLedger(tx, { teamId, kind: "coins", delta: finalCoins, note: noteOut, byToken }));
+    if (cardPoints !== 0) ledgerIds.push(await logLedger(tx, { teamId, kind: "cardPoints", delta: cardPoints, note: noteOut, byToken }));
+    const undo: UndoRecipe = { label: noteOut, ledgerIds };
+    return { ok: true, baseCoins: coins, finalCoins, cardPoints, doubled, undo };
   });
 }
 
@@ -760,30 +941,65 @@ export async function deactivateItem(params: { itemId: number; byToken?: string 
 export async function distributeRoundIncome(params: { byToken?: string }) {
   const { byToken } = params;
   return prisma.$transaction(async (tx) => {
-    const items = await tx.teamItem.findMany({
-      where: { active: true },
-      include: { asset: true },
-    });
-    // 按隊伍合計（無遞減）
-    const incomeItems = items.filter((i) => i.asset.effectType === "COINS_PER_ROUND");
-    if (incomeItems.length === 0) throw new Error("目前無隊伍持有每輪收益動產");
+    const items = await tx.teamItem.findMany({ where: { active: true }, include: { asset: true } });
 
-    // 按隊伍合計（COINS_PER_ROUND 不套遞減，全加）
-    const incomeMap = new Map<number, { total: number; ids: number[] }>();
-    for (const item of incomeItems) {
-      const cur = incomeMap.get(item.teamId) ?? { total: 0, ids: [] };
-      cur.total += item.asset.effectValue;
-      cur.ids.push(item.id);
-      incomeMap.set(item.teamId, cur);
+    const ROUND_TYPES = new Set(["COINS_PER_ROUND", "COMPOUND_INTEREST", "PROPERTY_DIVIDEND", "UNDERDOG"]);
+    const roundItems = items.filter((i) => ROUND_TYPES.has(i.asset.effectType));
+    if (!roundItems.length) throw new Error("目前無隊伍持有每輪收益動產");
+
+    // 額外資料：COMPOUND_INTEREST 需要 coins；PROPERTY_DIVIDEND + UNDERDOG 需要不動產現值 + 排名
+    const teams = await tx.team.findMany();
+    const state = await getState(tx);
+    const activeEvents = parseActiveEvents(state.activeEvents);
+    const properties = await tx.property.findMany();
+
+    const teamPropValue = new Map<number, number>();
+    for (const p of properties) {
+      if (p.ownerTeamId == null) continue;
+      const v = currentValue(p, activeEvents, state.event4Penalty);
+      teamPropValue.set(p.ownerTeamId, (teamPropValue.get(p.ownerTeamId) ?? 0) + v);
     }
+
+    const teamNetWorth = new Map<number, number>();
+    for (const t of teams) {
+      teamNetWorth.set(t.id, t.coins + (teamPropValue.get(t.id) ?? 0));
+    }
+    const minNW = Math.min(...teamNetWorth.values());
+    const lastPlaceIds = new Set([...teamNetWorth.entries()].filter(([, nw]) => nw === minNW).map(([id]) => id));
+
+    const incomeMap = new Map<number, { total: number; ids: number[] }>();
+    const addIncome = (teamId: number, amount: number, itemId: number) => {
+      if (amount <= 0) return;
+      const cur = incomeMap.get(teamId) ?? { total: 0, ids: [] };
+      cur.total += amount;
+      cur.ids.push(itemId);
+      incomeMap.set(teamId, cur);
+    };
+
+    for (const item of roundItems) {
+      const type = item.asset.effectType;
+      const val = item.asset.effectValue;
+      const team = teams.find((t) => t.id === item.teamId);
+      if (!team) continue;
+
+      if (type === "COINS_PER_ROUND") {
+        addIncome(item.teamId, applyRoundIncome(val), item.id);
+      } else if (type === "COMPOUND_INTEREST") {
+        addIncome(item.teamId, applyCompoundInterest(team.coins, val), item.id);
+      } else if (type === "PROPERTY_DIVIDEND") {
+        addIncome(item.teamId, applyPropertyDividend(teamPropValue.get(item.teamId) ?? 0, val), item.id);
+      } else if (type === "UNDERDOG") {
+        if (lastPlaceIds.has(item.teamId)) addIncome(item.teamId, Math.round(val), item.id);
+        // 未末位時效果不觸發，不消耗次數
+      }
+    }
+
     const results: { teamId: number; income: number }[] = [];
     for (const [teamId, { total, ids }] of incomeMap) {
-      const amount = applyRoundIncome(total);
-      if (amount <= 0) continue;
-      await tx.team.update({ where: { id: teamId }, data: { coins: { increment: amount } } });
-      await logLedger(tx, { teamId, kind: "coins", delta: amount, note: "每輪動產收益", byToken });
+      await tx.team.update({ where: { id: teamId }, data: { coins: { increment: total } } });
+      await logLedger(tx, { teamId, kind: "coins", delta: total, note: "每輪動產收益", byToken });
       await decrementUses(tx, ids);
-      results.push({ teamId, income: amount });
+      results.push({ teamId, income: total });
     }
     return { ok: true, results };
   });

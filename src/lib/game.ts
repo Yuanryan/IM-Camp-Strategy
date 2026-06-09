@@ -217,28 +217,54 @@ export function spinWheel(): number {
 // ── 動產效果系統 ─────────────────────────────────────────────────
 // const 物件 enum 模式：值即字串，與 Prisma String 欄位直接比較
 export const EffectType = {
-  TOLL_INCOME:     "TOLL_INCOME",     // 收取過路費加成（+0.15 → +15%）
-  TOLL_PAID:       "TOLL_PAID",       // 支付過路費減免（-0.10 → -10%）
-  SHOP_PRICE:      "SHOP_PRICE",      // 購買 / 升級折扣（-0.10 → -10%）
-  PROPERTY_VALUE:  "PROPERTY_VALUE",  // 持有不動產淨值加成（+0.10 → +10%）
-  COINS_PER_ROUND: "COINS_PER_ROUND", // 每輪固定光幣（50 → +50/輪）
-  TAX_COLLECTOR:   "TAX_COLLECTOR",   // 全場每筆過路費抽成（0.02 → 2%）
-  GOOD_CARD_BONUS: "GOOD_CARD_BONUS", // 好運卡獎勵加成（+0.20 → +20%）
-  BAD_CARD_REDUCE: "BAD_CARD_REDUCE", // 厄運卡懲罰減免（-0.50 → -50%；-1.0 → 免疫）
-  REMINDER:        "REMINDER",        // 無計算，僅提醒關主
+  TOLL_INCOME:       "TOLL_INCOME",       // 收取過路費加成（+0.15 → +15%）
+  TOLL_PAID:         "TOLL_PAID",         // 支付過路費減免（-0.10 → -10%）
+  SHOP_PRICE:        "SHOP_PRICE",        // 購買 / 升級折扣（-0.10 → -10%）
+  PROPERTY_VALUE:    "PROPERTY_VALUE",    // 持有不動產淨值加成（+0.10 → +10%）
+  COINS_PER_ROUND:   "COINS_PER_ROUND",   // 每輪固定光幣（50 → +50/輪）
+  TAX_COLLECTOR:     "TAX_COLLECTOR",     // 全場每筆過路費抽成（0.02 → 2%）
+  GOOD_CARD_BONUS:   "GOOD_CARD_BONUS",   // 好運卡獎勵加成（+0.20 → +20%）
+  BAD_CARD_REDUCE:   "BAD_CARD_REDUCE",   // 厄運卡懲罰減免（-0.50 → -50%；-1.0 → 免疫）
+  WHEEL_BONUS:       "WHEEL_BONUS",       // 輪盤淨獲利加成（+0.50 → 獲利 ×1.5）
+  WHEEL_NO_ZERO:     "WHEEL_NO_ZERO",     // 移除輪盤 ×0 結果（保底不輸本）
+  WHEEL_STAKE_BOOST: "WHEEL_STAKE_BOOST", // 輪盤投入上限提升（+0.10 → 最多押 20% 資金）
+  WHEEL_ON_GOOD_CARD:"WHEEL_ON_GOOD_CARD",// 好運卡獎勵 × 輪盤結果
+  LOTTERY_BONUS:     "LOTTERY_BONUS",     // 大樂透中獎倍率加成（+0.50 → 獎金 ×1.5）
+  JACKPOT_SHARE:     "JACKPOT_SHARE",     // 任意隊中獎時自動抽成（0.05 → 5% 獎金池）
+  LOTTERY_INSURANCE: "LOTTERY_INSURANCE", // 未中獎時退還本期登記費用（一次性）
+  COMPOUND_INTEREST: "COMPOUND_INTEREST", // 每輪賺取現有光幣 X%（0.02 → 2%/輪）
+  PROPERTY_DIVIDEND: "PROPERTY_DIVIDEND", // 每輪賺取不動產現值 X%（0.03 → 3%/輪）
+  UNDERDOG:          "UNDERDOG",          // 末位時每輪獲得固定補貼（200 → 末位時 +200/輪）
+  DOUBLE_OR_NOTHING: "DOUBLE_OR_NOTHING", // 流動關主發獎時 50/50：雙倍或歸零
+  ALLIANCE_BONUS:    "ALLIANCE_BONUS",    // 交易接受時雙方各獲固定光幣（50 → 各 +50）
+  PIRACY:            "PIRACY",            // 任意過路費發生時偷取付款隊比例（0.05 → 5%）
+  REMINDER:          "REMINDER",          // 無計算，僅提醒關主
 } as const;
 export type EffectType = typeof EffectType[keyof typeof EffectType];
 
 export const EFFECT_TYPE_LABELS: Record<EffectType, string> = {
-  TOLL_INCOME:     "收路費加成",
-  TOLL_PAID:       "付路費減免",
-  SHOP_PRICE:      "購買折扣",
-  PROPERTY_VALUE:  "不動產增值",
-  COINS_PER_ROUND: "每輪收益",
-  TAX_COLLECTOR:   "全場稅收",
-  GOOD_CARD_BONUS: "好運卡加成",
-  BAD_CARD_REDUCE: "厄運卡減免",
-  REMINDER:        "提醒（無計算）",
+  TOLL_INCOME:       "收路費加成",
+  TOLL_PAID:         "付路費減免",
+  SHOP_PRICE:        "購買折扣",
+  PROPERTY_VALUE:    "不動產增值",
+  COINS_PER_ROUND:   "每輪收益",
+  TAX_COLLECTOR:     "全場稅收",
+  GOOD_CARD_BONUS:   "好運卡加成",
+  BAD_CARD_REDUCE:   "厄運卡減免",
+  WHEEL_BONUS:       "輪盤加成",
+  WHEEL_NO_ZERO:     "輪盤保底",
+  WHEEL_STAKE_BOOST: "輪盤上限提升",
+  WHEEL_ON_GOOD_CARD:"好運卡輪盤",
+  LOTTERY_BONUS:     "樂透加成",
+  JACKPOT_SHARE:     "樂透抽成",
+  LOTTERY_INSURANCE: "樂透保險",
+  COMPOUND_INTEREST: "複利收益",
+  PROPERTY_DIVIDEND: "不動產分紅",
+  UNDERDOG:          "末位補貼",
+  DOUBLE_OR_NOTHING: "雙倍或歸零",
+  ALLIANCE_BONUS:    "交易紅利",
+  PIRACY:            "海盜稅",
+  REMINDER:          "提醒（無計算）",
 };
 
 export const ITEM_GRADE_COLORS: Record<string, string> = {
@@ -291,6 +317,63 @@ export function applyRoundIncome(total: number): number {
   return Math.round(total);
 }
 
+// WHEEL_BONUS：輪盤淨獲利加成（delta > 0 才套；虧損不放大）
+export function applyWheelBonus(delta: number, bonusDelta: number): number {
+  if (delta <= 0) return delta;
+  return Math.round(delta * (1 + bonusDelta));
+}
+
+// WHEEL_STAKE_BOOST：提高輪盤最大投入上限
+// baseRate = 0.1（10%）；boostDelta = +0.10 → 允許押 20% 資金
+export function applyWheelMaxStake(coins: number, boostDelta: number): number {
+  return Math.max(500, Math.floor(coins * (0.1 + boostDelta)));
+}
+
+// LOTTERY_BONUS：中獎時放大獎金
+export function applyLotteryBonus(pool: number, bonusDelta: number): number {
+  return Math.round(pool * (1 + bonusDelta));
+}
+
+// JACKPOT_SHARE：按比例抽取獎金池
+export function applyJackpotShare(pool: number, rate: number): number {
+  return Math.max(0, Math.round(pool * rate));
+}
+
+// COMPOUND_INTEREST：按現有光幣計算利息
+export function applyCompoundInterest(coins: number, rate: number): number {
+  return Math.max(0, Math.round(coins * rate));
+}
+
+// PROPERTY_DIVIDEND：按不動產現值計算分紅
+export function applyPropertyDividend(propertyValue: number, rate: number): number {
+  return Math.max(0, Math.round(propertyValue * rate));
+}
+
+// PIRACY：從過路費付款方偷取比例
+export function applyPiracy(baseToll: number, rate: number): number {
+  return Math.max(0, Math.round(baseToll * rate));
+}
+
+// ALLIANCE_BONUS：交易接受時雙方各得固定光幣（effectValue 即光幣數）
+export function applyAllianceBonus(effectValue: number): number {
+  return Math.max(0, Math.round(effectValue));
+}
+
+// spinWheelCustom：支援排除指定倍率（WHEEL_NO_ZERO 用）
+export function spinWheelCustom(options?: { excludeMultipliers?: number[] }): number {
+  const outcomes = options?.excludeMultipliers?.length
+    ? WHEEL_OUTCOMES.filter((o) => !options.excludeMultipliers!.includes(o.mult))
+    : WHEEL_OUTCOMES;
+  if (!outcomes.length) return 1; // 全排除的極端情況
+  const total = outcomes.reduce((s, o) => s + o.weight, 0);
+  let r = Math.random() * total;
+  for (const o of outcomes) {
+    if (r < o.weight) return o.mult;
+    r -= o.weight;
+  }
+  return outcomes[outcomes.length - 1].mult;
+}
+
 // 動產模板種子資料（seeded to DB via prisma/seed.ts）
 // defaultUses: null=永久；n=效果觸發 n 次後失效
 export const MOVABLE_ASSET_SEED: {
@@ -327,6 +410,23 @@ export const MOVABLE_ASSET_SEED: {
   // ── 詛咒道具（偽裝成普通 B 級，實際為負面效果）──
   { name: "詛咒稅單",     grade: "B", effectType: "TOLL_INCOME",    effectValue: -0.15, condition: null, defaultUses: 3,    description: "收取過路費時反而少收 15%（詛咒，3 次）" },
   { name: "黑市合約",     grade: "B", effectType: "SHOP_PRICE",      effectValue:  0.10, condition: null, defaultUses: 2,    description: "購買或升級費用 +10%（詛咒，2 次）" },
+  // ── 輪盤系列 ──
+  { name: "幸運女神眷顧", grade: "S", effectType: "WHEEL_BONUS",      effectValue:  0.50, condition: null, defaultUses: 3,    description: "輪盤淨獲利 +50%（3 次，虧損不放大）" },
+  { name: "保底護符",     grade: "A", effectType: "WHEEL_NO_ZERO",    effectValue:  0,    condition: null, defaultUses: 2,    description: "輪盤保底，×0 結果不會出現（2 次）" },
+  { name: "槓桿王牌",     grade: "A", effectType: "WHEEL_STAKE_BOOST",effectValue:  0.10, condition: null, defaultUses: null, description: "輪盤最大投入上限從 10% 提升至 20%（永久）" },
+  { name: "抽卡輪盤",     grade: "S", effectType: "WHEEL_ON_GOOD_CARD",effectValue: 0,    condition: null, defaultUses: 2,    description: "好運卡獎勵再乘以輪盤結果（大起大落！2 次）" },
+  // ── 大樂透系列 ──
+  { name: "彩票加倍咒",   grade: "S", effectType: "LOTTERY_BONUS",    effectValue:  0.50, condition: null, defaultUses: null, description: "中獎時獎金 ×1.5（永久）" },
+  { name: "彩票抽成令",   grade: "S", effectType: "JACKPOT_SHARE",    effectValue:  0.05, condition: null, defaultUses: null, description: "任意隊中獎時自動獲得 5% 獎金池（永久）" },
+  { name: "彩票保險單",   grade: "A", effectType: "LOTTERY_INSURANCE", effectValue: 1,    condition: null, defaultUses: 1,    description: "本期未中獎時退還所有登記費用（一次性）" },
+  // ── 每輪收益系列 ──
+  { name: "複利魔方",     grade: "S", effectType: "COMPOUND_INTEREST", effectValue: 0.03, condition: null, defaultUses: null, description: "每輪賺取現有光幣 3%（永久）" },
+  { name: "不動產分紅",   grade: "A", effectType: "PROPERTY_DIVIDEND", effectValue: 0.03, condition: null, defaultUses: null, description: "每輪賺取不動產現值 3%（永久）" },
+  { name: "末位補貼金",   grade: "A", effectType: "UNDERDOG",          effectValue: 200,  condition: null, defaultUses: null, description: "每輪若為末位，獲得 200 光幣補貼（永久）" },
+  // ── 特殊系列 ──
+  { name: "雙倍或歸零",   grade: "S", effectType: "DOUBLE_OR_NOTHING", effectValue: 0,    condition: null, defaultUses: null, description: "流動關主發獎時 50/50：光幣雙倍或歸零（永久）" },
+  { name: "交易紅利卡",   grade: "B", effectType: "ALLIANCE_BONUS",    effectValue: 100,  condition: null, defaultUses: 3,    description: "交易接受時雙方各獲 100 光幣（3 次）" },
+  { name: "海盜旗",       grade: "S", effectType: "PIRACY",            effectValue: 0.05, condition: null, defaultUses: null, description: "全場每筆過路費偷取付款隊 5% 光幣（永久）" },
 ];
 
 // ── 好運卡 / 厄運卡（光源點 / 迷霧區抽卡）─────────────────────

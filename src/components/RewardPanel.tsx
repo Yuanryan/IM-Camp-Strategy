@@ -31,17 +31,19 @@ export function CustomGive({
   teamId,
   onDone,
   points = true,
+  endpoint = "/api/balance",
 }: {
   teamId: number | "";
   onDone?: () => void | Promise<unknown>;
   points?: boolean;
+  endpoint?: string;
 }) {
   const [amt, setAmt] = useState(0);
   const give = async (kind: "coins" | "cardPoints", label: string) => {
     if (teamId === "") return "請先選小隊";
     if (amt === 0) return "請先輸入金額";
     const msg = `自訂${label} ${amt >= 0 ? "+" : ""}${amt}`;
-    const r = await giveReward({
+    const r = await postJson(endpoint, {
       teamId,
       coins: kind === "coins" ? amt : 0,
       cardPoints: kind === "cardPoints" ? amt : 0,
@@ -49,7 +51,7 @@ export function CustomGive({
     });
     await onDone?.();
     setAmt(0);
-    return { message: msg, undo: r.undo as UndoRecipe | undefined };
+    return { message: endpoint === "/api/balance" ? msg : `${msg}${r.doubled !== null ? `（${r.doubled ? "雙倍！" : "歸零…"}）` : ""}`, undo: r.undo as UndoRecipe | undefined };
   };
   return (
     <div className="flex flex-wrap items-end gap-2">
@@ -73,11 +75,13 @@ export function RewardButtons({
   presets,
   onDone,
   disabled,
+  endpoint = "/api/balance",
 }: {
   teamId: number | "";
   presets: RewardPreset[];
   onDone?: () => void | Promise<unknown>;
   disabled?: boolean;
+  endpoint?: string;
 }) {
   return (
     <div className="flex flex-wrap gap-2">
@@ -89,14 +93,17 @@ export function RewardButtons({
           disabled={disabled || teamId === ""}
           onAction={async () => {
             if (teamId === "") return "請先選小隊";
-            const r = await giveReward({
+            const r = await postJson(endpoint, {
               teamId,
-              coins: p.coins,
-              cardPoints: p.cardPoints,
+              coins: p.coins ?? 0,
+              cardPoints: p.cardPoints ?? 0,
               note: p.note ?? p.label,
             });
             await onDone?.();
-            return { message: p.label, undo: r.undo as UndoRecipe | undefined };
+            const msg = r.doubled !== null && r.doubled !== undefined
+              ? `${p.label}（${r.doubled ? "雙倍！" : "歸零…"}）`
+              : p.label;
+            return { message: msg, undo: r.undo as UndoRecipe | undefined };
           }}
         />
       ))}

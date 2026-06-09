@@ -63,9 +63,9 @@ export function MobileView() {
           <Timer />
 
           <Card title="發放獎勵（光幣 / 卡牌點數）">
-            <RewardButtons teamId={team} presets={MOBILE_REWARD_PRESETS} onDone={mutate} />
+            <RewardButtons teamId={team} presets={MOBILE_REWARD_PRESETS} onDone={mutate} endpoint="/api/mobile/reward" />
             <div className="mt-3 border-t border-white/10 pt-3">
-              <CustomGive teamId={team} onDone={mutate} />
+              <CustomGive teamId={team} onDone={mutate} endpoint="/api/mobile/reward" />
             </div>
             <p className="mt-2 text-xs text-slate-500">骰子、情報牌、特殊骰、功能卡兌換券為實體發放，請隊輔記錄，不在系統登記。</p>
           </Card>
