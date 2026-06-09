@@ -135,6 +135,17 @@ body {
   box-shadow: 0 0 16px rgba(34, 211, 238, 0.14);
 }
 
+.btn-gold {
+  background: rgba(251, 191, 36, 0.10);
+  border: 1px solid rgba(251, 191, 36, 0.38);
+  color: #fcd34d;
+}
+.btn-gold:not(:disabled):hover {
+  background: rgba(251, 191, 36, 0.18);
+  border-color: rgba(251, 191, 36, 0.65);
+  box-shadow: 0 0 16px rgba(251, 191, 36, 0.16);
+}
+
 .btn-rose {
   background: rgba(251, 113, 133, 0.09);
   border: 1px solid rgba(251, 113, 133, 0.36);

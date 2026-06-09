@@ -1062,3 +1062,301 @@ export async function undoAction(params: {
     return { ok: true, undone: ids.length };
   });
 }
+
+// ── 拍賣系統 ─────────────────────────────────────────────────
+// 主持喊價式英式拍賣：小隊在現場喊價，拍賣官是唯一輸入價格的人（手機端不出價）。
+// AuctionEvent（場次，建立即顯示公告橫幅）→ AuctionLot（逐件拍賣，一次一件 LIVE）。
+
+// 建立拍賣場次：建立即顯示公告（announcement）給小隊。
+export async function createAuctionEvent(params: {
+  name: string;
+  announcement?: string;
+  byToken?: string;
+}) {
+  const { name, announcement = "", byToken } = params;
+  const event = await prisma.auctionEvent.create({
+    data: { name, announcement, status: "OPEN" },
+  });
+  await prisma.ledger.create({
+    data: { kind: "auction", delta: 0, note: `建立拍賣場次：${name}`, byToken },
+  });
+  return { ok: true, event };
+}
+
+// 更新公告文字（空字串＝清除橫幅但場次仍在）。
+export async function updateAnnouncement(params: {
+  eventId: number;
+  announcement: string;
+  byToken?: string;
+}) {
+  const { eventId, announcement } = params;
+  const event = await prisma.auctionEvent.findUnique({ where: { id: eventId } });
+  if (!event) throw new Error("找不到拍賣場次");
+  if (event.status === "ENDED") throw new Error("場次已結束");
+  const updated = await prisma.auctionEvent.update({
+    where: { id: eventId },
+    data: { announcement },
+  });
+  return { ok: true, event: updated };
+}
+
+// 結束場次：清掉公告橫幅；若仍有 LIVE 拍賣品則擋下，要求先成交 / 流標。
+export async function endAuctionEvent(params: { eventId: number; byToken?: string }) {
+  const { eventId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const event = await tx.auctionEvent.findUnique({ where: { id: eventId } });
+    if (!event) throw new Error("找不到拍賣場次");
+    const live = await tx.auctionLot.findFirst({
+      where: { eventId, status: "LIVE" },
+    });
+    if (live) throw new Error("仍有拍賣品進行中，請先成交或流標");
+    await tx.auctionEvent.update({
+      where: { id: eventId },
+      data: { status: "ENDED", announcement: "", endedAt: new Date() },
+    });
+    await logLedger(tx, { kind: "auction", delta: 0, note: `結束拍賣場次：${event.name}`, byToken });
+    return { ok: true };
+  });
+}
+
+// 建立拍賣品（DRAFT）。ITEM 需有效動產模板；PROPERTY 需未售出不動產。
+export async function createAuctionLot(params: {
+  eventId: number;
+  title: string;
+  description?: string;
+  lotType?: string;
+  assetId?: number | null;
+  propertyId?: number | null;
+  hiddenValue?: number;
+  startPrice?: number;
+  orderIndex?: number;
+  byToken?: string;
+}) {
+  const {
+    eventId,
+    title,
+    description = "",
+    lotType = "CUSTOM",
+    assetId = null,
+    propertyId = null,
+    hiddenValue = 0,
+    startPrice = 0,
+    orderIndex = 0,
+  } = params;
+  return prisma.$transaction(async (tx) => {
+    const event = await tx.auctionEvent.findUnique({ where: { id: eventId } });
+    if (!event) throw new Error("找不到拍賣場次");
+    if (event.status === "ENDED") throw new Error("場次已結束，無法新增拍賣品");
+
+    if (lotType === "ITEM") {
+      if (assetId == null) throw new Error("動產拍賣品需指定動產模板");
+      const asset = await tx.movableAsset.findUnique({ where: { id: assetId } });
+      if (!asset) throw new Error("找不到動產模板");
+    } else if (lotType === "PROPERTY") {
+      if (propertyId == null) throw new Error("不動產拍賣品需指定不動產");
+      const prop = await tx.property.findUnique({ where: { id: propertyId } });
+      if (!prop) throw new Error("找不到不動產");
+      if (prop.ownerTeamId != null) throw new Error("該不動產已售出，無法拍賣");
+    } else if (lotType !== "CUSTOM") {
+      throw new Error("不支援的拍賣品類型");
+    }
+
+    const lot = await tx.auctionLot.create({
+      data: {
+        eventId,
+        title,
+        description,
+        lotType,
+        assetId: lotType === "ITEM" ? assetId : null,
+        propertyId: lotType === "PROPERTY" ? propertyId : null,
+        hiddenValue: lotType === "ITEM" ? hiddenValue : 0,
+        startPrice,
+        currentBid: startPrice,
+        orderIndex,
+        status: "DRAFT",
+      },
+    });
+    return { ok: true, lot };
+  });
+}
+
+// 開始拍賣某件：全場僅能有一件 LIVE。
+export async function openAuctionLot(params: { lotId: number; byToken?: string }) {
+  const { lotId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const lot = await tx.auctionLot.findUnique({ where: { id: lotId } });
+    if (!lot) throw new Error("找不到拍賣品");
+    if (lot.status !== "DRAFT") throw new Error("此拍賣品已開始或已結束");
+    const event = await tx.auctionEvent.findUnique({ where: { id: lot.eventId } });
+    if (!event || event.status === "ENDED") throw new Error("所屬場次未開放");
+    const live = await tx.auctionLot.findFirst({ where: { status: "LIVE" } });
+    if (live) throw new Error("已有拍賣品進行中，請先成交或流標");
+    const updated = await tx.auctionLot.update({
+      where: { id: lotId },
+      data: { status: "LIVE", currentBid: lot.startPrice },
+    });
+    await logLedger(tx, { kind: "auction", delta: 0, note: `開始拍賣：${lot.title}`, byToken });
+    return { ok: true, lot: updated };
+  });
+}
+
+// 喊價：拍賣官把目前價提高（小隊喊、拍賣官輸入）。不記名、不記帳，落槌才扣款。
+export async function bumpBid(params: { lotId: number; amount: number; byToken?: string }) {
+  const { lotId, amount } = params;
+  return prisma.$transaction(async (tx) => {
+    const lot = await tx.auctionLot.findUnique({ where: { id: lotId } });
+    if (!lot) throw new Error("找不到拍賣品");
+    if (lot.status !== "LIVE") throw new Error("此拍賣品尚未開始或已結束");
+    if (amount <= lot.currentBid) throw new Error(`出價需高於目前價 ${lot.currentBid}`);
+    const updated = await tx.auctionLot.update({
+      where: { id: lotId },
+      data: { currentBid: amount },
+    });
+    return { ok: true, currentBid: updated.currentBid };
+  });
+}
+
+// 落槌成交：以目前價賣給指定小隊，自動扣光幣（餘額不足則擋下），並依類型交付。
+export async function hammerLot(params: {
+  lotId: number;
+  winnerTeamId: number;
+  byToken?: string;
+}) {
+  const { lotId, winnerTeamId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const lot = await tx.auctionLot.findUnique({ where: { id: lotId } });
+    if (!lot) throw new Error("找不到拍賣品");
+    if (lot.status !== "LIVE") throw new Error("此拍賣品尚未開始或已結束");
+    const price = lot.currentBid;
+    const winner = await tx.team.findUnique({ where: { id: winnerTeamId } });
+    if (!winner) throw new Error("找不到得標小隊");
+    if (winner.coins < price) throw new Error(`${winner.name} 光幣不足（需 ${price}，僅有 ${winner.coins}）`);
+
+    const ledgerIds: number[] = [];
+    // 扣款
+    await tx.team.update({ where: { id: winnerTeamId }, data: { coins: { decrement: price } } });
+    ledgerIds.push(
+      await logLedger(tx, {
+        teamId: winnerTeamId,
+        kind: "auction",
+        delta: -price,
+        note: `拍得 ${lot.title}`,
+        byToken,
+      }),
+    );
+
+    // 依類型交付
+    if (lot.lotType === "ITEM" && lot.assetId != null) {
+      const asset = await tx.movableAsset.findUnique({ where: { id: lot.assetId } });
+      if (!asset) throw new Error("找不到動產模板");
+      await tx.teamItem.create({
+        data: {
+          teamId: winnerTeamId,
+          assetId: lot.assetId,
+          hiddenValue: lot.hiddenValue,
+          usesRemaining: asset.defaultUses ?? null,
+          note: `拍賣取得：${lot.title}`,
+        },
+      });
+    } else if (lot.lotType === "PROPERTY" && lot.propertyId != null) {
+      const prop = await tx.property.findUnique({ where: { id: lot.propertyId } });
+      if (!prop) throw new Error("找不到不動產");
+      if (prop.ownerTeamId != null) throw new Error("該不動產已售出");
+      await tx.property.update({ where: { id: lot.propertyId }, data: { ownerTeamId: winnerTeamId } });
+    }
+
+    await tx.auctionLot.update({
+      where: { id: lotId },
+      data: {
+        status: "SOLD",
+        winnerTeamId,
+        finalPrice: price,
+        soldAt: new Date(),
+        ledgerIds: ledgerIds.join(","),
+      },
+    });
+
+    const undo: UndoRecipe = { label: `落槌 ${lot.title}`, ledgerIds };
+    return { ok: true, price, undo };
+  });
+}
+
+// 撤銷落槌：退款、收回交付的動產 / 不動產、把拍賣品退回 LIVE。
+export async function undoHammer(params: { lotId: number; byToken?: string; isAdmin?: boolean }) {
+  const { lotId, byToken, isAdmin } = params;
+  return prisma.$transaction(async (tx) => {
+    const lot = await tx.auctionLot.findUnique({ where: { id: lotId } });
+    if (!lot) throw new Error("找不到拍賣品");
+    if (lot.status !== "SOLD" || lot.winnerTeamId == null) throw new Error("此拍賣品尚未成交");
+
+    const ids = lot.ledgerIds
+      .split(",")
+      .map((s) => parseInt(s, 10))
+      .filter((n) => Number.isInteger(n));
+    const rows = await tx.ledger.findMany({ where: { id: { in: ids } } });
+    const now = Date.now();
+    for (const r of rows) {
+      if (r.reversed) throw new Error("此成交已撤銷");
+      if (!isAdmin && r.byToken !== byToken) throw new Error("只能撤銷本站的操作");
+      if (now - r.createdAt.getTime() > UNDO_WINDOW_MS) throw new Error("已超過可撤銷時限");
+    }
+
+    // 退款（照 -delta 回沖）
+    for (const r of rows) {
+      if (r.teamId && r.delta !== 0) {
+        await tx.team.update({ where: { id: r.teamId }, data: { coins: { increment: -r.delta } } });
+        await logLedger(tx, {
+          teamId: r.teamId,
+          kind: "auction",
+          delta: -r.delta,
+          note: `撤銷落槌 #${r.id}：${r.note ?? ""}`,
+          byToken,
+        });
+      }
+      await tx.ledger.update({ where: { id: r.id }, data: { reversed: true } });
+    }
+
+    // 收回交付物
+    if (lot.lotType === "ITEM" && lot.assetId != null) {
+      const granted = await tx.teamItem.findFirst({
+        where: { teamId: lot.winnerTeamId, assetId: lot.assetId, note: `拍賣取得：${lot.title}` },
+        orderBy: { id: "desc" },
+      });
+      if (granted) await tx.teamItem.delete({ where: { id: granted.id } });
+    } else if (lot.lotType === "PROPERTY" && lot.propertyId != null) {
+      await tx.property.update({ where: { id: lot.propertyId }, data: { ownerTeamId: null } });
+    }
+
+    // 退回 LIVE，重新喊價
+    await tx.auctionLot.update({
+      where: { id: lotId },
+      data: { status: "LIVE", winnerTeamId: null, finalPrice: null, soldAt: null, ledgerIds: "" },
+    });
+    return { ok: true };
+  });
+}
+
+// 流標：無人出價時結束此件（不成交）。
+export async function passLot(params: { lotId: number; byToken?: string }) {
+  const { lotId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const lot = await tx.auctionLot.findUnique({ where: { id: lotId } });
+    if (!lot) throw new Error("找不到拍賣品");
+    if (lot.status !== "LIVE") throw new Error("此拍賣品尚未開始或已結束");
+    await tx.auctionLot.update({ where: { id: lotId }, data: { status: "PASSED" } });
+    await logLedger(tx, { kind: "auction", delta: 0, note: `流標：${lot.title}`, byToken });
+    return { ok: true };
+  });
+}
+
+// 取消未開始的拍賣品（DRAFT 才能取消）。
+export async function cancelLot(params: { lotId: number; byToken?: string }) {
+  const { lotId } = params;
+  return prisma.$transaction(async (tx) => {
+    const lot = await tx.auctionLot.findUnique({ where: { id: lotId } });
+    if (!lot) throw new Error("找不到拍賣品");
+    if (lot.status !== "DRAFT") throw new Error("只能取消尚未開始的拍賣品");
+    await tx.auctionLot.update({ where: { id: lotId }, data: { status: "CANCELLED" } });
+    return { ok: true };
+  });
+}

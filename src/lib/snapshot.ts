@@ -55,6 +55,22 @@ export type RegionView = {
   toll: number; // 過路費（已含四捨五入到 50）
 };
 
+export type AuctionLotView = {
+  id: number;
+  title: string;
+  description: string;
+  lotType: string;
+  startPrice: number;
+  currentBid: number;
+};
+
+export type AuctionSnapshot = {
+  announcement: string | null; // 來自未結束場次；team page 用它顯示發光橫幅
+  eventName: string | null;
+  live: AuctionLotView | null;
+  recentlySold: { title: string; winnerTeamName: string; finalPrice: number }[];
+};
+
 export type Snapshot = {
   phase: string;
   activeEvents: number[];
@@ -67,6 +83,7 @@ export type Snapshot = {
   teams: TeamView[];
   properties: PropertyView[];
   regions: RegionView[];
+  auction: AuctionSnapshot;
 };
 
 // 計算某區獨佔隊伍：最多三級 → 再比總持有數 → 平手則無
@@ -95,13 +112,21 @@ function findMonopoly(
 }
 
 export async function getSnapshot(): Promise<Snapshot> {
-  const [state, teams, properties, lotteryNumbers, teamItems] = await Promise.all([
-    prisma.gameState.findUnique({ where: { id: 1 } }),
-    prisma.team.findMany({ orderBy: { id: "asc" } }),
-    prisma.property.findMany({ orderBy: { id: "asc" } }),
-    prisma.lotteryNumber.findMany(),
-    prisma.teamItem.findMany({ where: { active: true }, include: { asset: true } }),
-  ]);
+  const [state, teams, properties, lotteryNumbers, teamItems, auctionEvent, liveLot, soldLots] =
+    await Promise.all([
+      prisma.gameState.findUnique({ where: { id: 1 } }),
+      prisma.team.findMany({ orderBy: { id: "asc" } }),
+      prisma.property.findMany({ orderBy: { id: "asc" } }),
+      prisma.lotteryNumber.findMany(),
+      prisma.teamItem.findMany({ where: { active: true }, include: { asset: true } }),
+      prisma.auctionEvent.findFirst({ where: { status: "OPEN" }, orderBy: { id: "desc" } }),
+      prisma.auctionLot.findFirst({ where: { status: "LIVE" }, orderBy: { id: "desc" } }),
+      prisma.auctionLot.findMany({
+        where: { status: "SOLD" },
+        orderBy: { soldAt: "desc" },
+        take: 5,
+      }),
+    ]);
 
   const activeEvents = parseActiveEvents(state?.activeEvents ?? "");
   const event4Penalty = state?.event4Penalty ?? null;
@@ -189,6 +214,26 @@ export async function getSnapshot(): Promise<Snapshot> {
     };
   });
 
+  const auction: AuctionSnapshot = {
+    announcement: auctionEvent?.announcement ? auctionEvent.announcement : null,
+    eventName: auctionEvent?.name ?? null,
+    live: liveLot
+      ? {
+          id: liveLot.id,
+          title: liveLot.title,
+          description: liveLot.description,
+          lotType: liveLot.lotType,
+          startPrice: liveLot.startPrice,
+          currentBid: liveLot.currentBid,
+        }
+      : null,
+    recentlySold: soldLots.map((l) => ({
+      title: l.title,
+      winnerTeamName: l.winnerTeamId ? (teamName.get(l.winnerTeamId) ?? `#${l.winnerTeamId}`) : "—",
+      finalPrice: l.finalPrice ?? 0,
+    })),
+  };
+
   return {
     phase: state?.phase ?? "SETUP",
     activeEvents,
@@ -207,5 +252,6 @@ export async function getSnapshot(): Promise<Snapshot> {
     teams: teamViews,
     properties: propViews,
     regions: regionViews,
+    auction,
   };
 }

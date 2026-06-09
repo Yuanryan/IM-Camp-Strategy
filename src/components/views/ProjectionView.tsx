@@ -1,7 +1,7 @@
 "use client";
 
 import { useSnapshot } from "@/components/client";
-import { Num, PriceTag, LevelDots, EventBanner } from "@/components/ui";
+import { Num, PriceTag, LevelDots, EventBanner, AuctionBanner } from "@/components/ui";
 import { REGIONS, REGION_UI } from "@/lib/game";
 
 const MEDAL = ["🥇", "🥈", "🥉"];
@@ -46,8 +46,23 @@ export function ProjectionView() {
       </div>
 
       {/* 事件呼吸橫幅 */}
-      <div className="mb-4">
+      <div className="mb-4 space-y-3">
         <EventBanner events={snap.activeEvents} />
+        <AuctionBanner auction={snap.auction} />
+        {snap.auction.recentlySold.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-sm text-slate-400">
+            <span className="font-semibold text-amber-300/80">近期成交：</span>
+            {snap.auction.recentlySold.map((s, i) => (
+              <span
+                key={i}
+                className="rounded-lg border border-white/5 bg-slate-800/40 px-2.5 py-1"
+              >
+                {s.title} → <span className="text-sky-300">{s.winnerTeamName}</span>
+                <Num className="ml-1 text-amber-200">{s.finalPrice}</Num>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-12 gap-4">

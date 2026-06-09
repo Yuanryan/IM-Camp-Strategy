@@ -38,7 +38,45 @@ model Team {
   ledgers        Ledger[]
   tokens         AccessToken[]
   items          TeamItem[]
+  auctionsWon    AuctionLot[]
   createdAt      DateTime        @default(now())
+}
+
+// 拍賣場次：一個事件包含多件拍賣品，並承載對小隊的公告橫幅。
+// 建立即顯示公告橫幅（不需主持人額外操作），ENDED 後不再顯示。
+model AuctionEvent {
+  id           Int          @id @default(autoincrement())
+  name         String // 場次名稱，例如「期中大拍賣」
+  announcement String       @default("") // 給小隊看的公告（例如「5 分鐘後開始拍賣」）
+  status       String       @default("OPEN") // OPEN | ENDED
+  lots         AuctionLot[]
+  createdAt    DateTime     @default(now())
+  endedAt      DateTime?
+}
+
+// 拍賣品：場次內逐件拍賣（英式喊價、一次一件）。
+model AuctionLot {
+  id           Int          @id @default(autoincrement())
+  eventId      Int // 所屬拍賣場次
+  event        AuctionEvent @relation(fields: [eventId], references: [id])
+  orderIndex   Int          @default(0) // 場次內拍賣順序
+  title        String // 自由文字標題（custom lot 一定有）
+  description  String       @default("")
+  lotType      String       @default("CUSTOM") // CUSTOM | ITEM | PROPERTY
+  assetId      Int? // lotType=ITEM → MovableAsset.id
+  propertyId   Int? // lotType=PROPERTY → Property.id
+  hiddenValue  Int          @default(0) // ITEM lot 結算秘密幣值（沿用動產規則）
+  startPrice   Int          @default(0)
+  currentBid   Int          @default(0) // 目前喊到的價（無人出價時 = startPrice）
+  status       String       @default("DRAFT") // DRAFT | LIVE | SOLD | PASSED | CANCELLED
+  winnerTeamId Int? // 落槌後填
+  winnerTeam   Team?        @relation(fields: [winnerTeamId], references: [id])
+  finalPrice   Int? // 落槌成交價
+  ledgerIds    String       @default("") // CSV：成交時寫入的 ledger ids，供撤銷
+  createdAt    DateTime     @default(now())
+  soldAt       DateTime?
+
+  @@index([eventId, orderIndex])
 }
 
 enum ItemEffectType {

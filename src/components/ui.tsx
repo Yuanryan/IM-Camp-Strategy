@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useEffect, type ReactNode } from "react";
-import { RadioTower } from "lucide-react";
+import { RadioTower, Gavel } from "lucide-react";
 import { EVENTS, EffectType, ITEM_GRADE_COLORS } from "@/lib/game";
-import type { ActiveItemView } from "@/lib/snapshot";
+import type { ActiveItemView, AuctionSnapshot } from "@/lib/snapshot";
 
 // 等寬霓虹數字
 export function Num({
@@ -65,6 +65,51 @@ export function EventBanner({ events }: { events: number[] }) {
       <span className="text-cyan-300/90">
         {events.map((i) => EVENTS[i]?.name).filter(Boolean).join("　|　")}
       </span>
+    </div>
+  );
+}
+
+// 拍賣公告 / 現場喊價橫幅（小隊端純顯示，無出價鈕——大家用喊的）。
+// myCoins 傳入時，拍賣中會提示自身光幣餘額（讓小隊知道喊到哪裡會買不起）。
+export function AuctionBanner({
+  auction,
+  myCoins,
+}: {
+  auction: AuctionSnapshot;
+  myCoins?: number;
+}) {
+  const { announcement, live } = auction;
+  if (!announcement && !live) return null;
+  return (
+    <div className="breathe overflow-hidden rounded-xl border border-amber-400/50 bg-amber-400/10 shadow-[0_0_18px_rgba(251,191,36,0.25)]">
+      {announcement && (
+        <div className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold tracking-wide text-amber-200">
+          <Gavel className="h-4 w-4 shrink-0 text-amber-300" />
+          <span>{announcement}</span>
+        </div>
+      )}
+      {live && (
+        <div
+          className={`flex items-center justify-between gap-3 px-4 py-3 ${
+            announcement ? "border-t border-amber-400/20" : ""
+          }`}
+        >
+          <div className="min-w-0">
+            <div className="text-[10px] uppercase tracking-widest text-amber-300/70">拍賣中</div>
+            <div className="truncate text-base font-bold text-slate-100">{live.title}</div>
+            {myCoins != null && (
+              <div className="text-[11px] text-slate-400">
+                你目前光幣 <span className="font-semibold text-amber-200">{myCoins}</span>
+                ｜舉手喊價，別用按的！
+              </div>
+            )}
+          </div>
+          <div className="shrink-0 text-right">
+            <div className="text-[10px] uppercase tracking-widest text-amber-300/70">目前喊價</div>
+            <Num className="neon-gold text-4xl font-black leading-none">{live.currentBid}</Num>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

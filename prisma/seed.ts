@@ -26,6 +26,7 @@ const STATION_COUNTS: Partial<Record<Exclude<Role, "TEAM">, number>> = {
   MAP: 1,
   MOBILE: 1,
   CARDSHOP: 1,
+  AUCTION: 1,
   PROJECTION: 1,
   ADMIN: 1,
 };

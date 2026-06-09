@@ -4,7 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { fetcher, useSnapshot } from "@/components/client";
 import { Card } from "@/components/Shell";
-import { Num, PriceTag, LevelDots, EventBanner, BottomNav } from "@/components/ui";
+import { Num, PriceTag, LevelDots, EventBanner, AuctionBanner, BottomNav } from "@/components/ui";
 import { TradeView } from "@/components/views/TradeView";
 import { InstructionsView } from "@/components/views/InstructionsView";
 import { Wallet, ArrowLeftRight, Trophy, BookOpen } from "lucide-react";
@@ -67,6 +67,7 @@ export function TeamView({ teamId }: { teamId: number }) {
       ) : (
         <>
           <EventBanner events={snap.activeEvents} />
+          <AuctionBanner auction={snap.auction} myCoins={me.coins} />
 
           {/* ── Hero: Coins + Rank ─────────────────────────────── */}
           <div className="slide-up relative overflow-hidden rounded-2xl border border-amber-400/20 bg-gradient-to-br from-amber-400/8 to-slate-900/40 shadow-lg shadow-amber-400/5">
