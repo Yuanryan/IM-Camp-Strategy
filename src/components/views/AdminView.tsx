@@ -161,7 +161,7 @@ function ItemEditor({ snap }: { snap: Snapshot }) {
             </select>
           </label>
           <label className="text-xs text-slate-400">
-            <div className="mb-1">動產模板</div>
+            <div className="mb-1">動產</div>
             <select value={gAsset} onChange={(e) => setGAsset(e.target.value ? Number(e.target.value) : "")} className="fld min-w-48">
               <option value="">選擇動產</option>
               {assets?.map((a) => <option key={a.id} value={a.id}>[{a.grade}] {a.name}</option>)}

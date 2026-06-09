@@ -888,7 +888,7 @@ export async function grantItem(params: {
     const team = await tx.team.findUnique({ where: { id: teamId } });
     if (!team) throw new Error("找不到小隊");
     const asset = await tx.movableAsset.findUnique({ where: { id: assetId } });
-    if (!asset) throw new Error("找不到動產模板");
+    if (!asset) throw new Error("找不到動產");
     const item = await tx.teamItem.create({
       data: { teamId, assetId, hiddenValue, note, usesRemaining: asset.defaultUses ?? null },
       include: { asset: true },
@@ -1068,12 +1068,16 @@ export async function undoAction(params: {
 // AuctionEvent（場次，建立即顯示公告橫幅）→ AuctionLot（逐件拍賣，一次一件 LIVE）。
 
 // 建立拍賣場次：建立即顯示公告（announcement）給小隊。
+// 未指定 announcement 時，預設顯示「5 分鐘後開始」的提醒橫幅。
+export const DEFAULT_AUCTION_ANNOUNCEMENT = "拍賣將於 5 分鐘後開始，請準備！";
 export async function createAuctionEvent(params: {
   name: string;
   announcement?: string;
   byToken?: string;
 }) {
-  const { name, announcement = "", byToken } = params;
+  const { name, byToken } = params;
+  // undefined → 用預設；明確傳空字串 "" → 尊重「不顯示橫幅」
+  const announcement = params.announcement ?? DEFAULT_AUCTION_ANNOUNCEMENT;
   const event = await prisma.auctionEvent.create({
     data: { name, announcement, status: "OPEN" },
   });
@@ -1100,7 +1104,7 @@ export async function updateAnnouncement(params: {
   return { ok: true, event: updated };
 }
 
-// 結束場次：清掉公告橫幅；若仍有 LIVE 拍賣品則擋下，要求先成交 / 流標。
+// 結束拍賣：清掉公告橫幅；若仍有 LIVE 拍賣品則擋下，要求先成交 / 流標。
 export async function endAuctionEvent(params: { eventId: number; byToken?: string }) {
   const { eventId, byToken } = params;
   return prisma.$transaction(async (tx) => {
@@ -1149,9 +1153,9 @@ export async function createAuctionLot(params: {
     if (event.status === "ENDED") throw new Error("場次已結束，無法新增拍賣品");
 
     if (lotType === "ITEM") {
-      if (assetId == null) throw new Error("動產拍賣品需指定動產模板");
+      if (assetId == null) throw new Error("動產拍賣品需指定動產");
       const asset = await tx.movableAsset.findUnique({ where: { id: assetId } });
-      if (!asset) throw new Error("找不到動產模板");
+      if (!asset) throw new Error("找不到動產");
     } else if (lotType === "PROPERTY") {
       if (propertyId == null) throw new Error("不動產拍賣品需指定不動產");
       const prop = await tx.property.findUnique({ where: { id: propertyId } });
@@ -1196,6 +1200,29 @@ export async function openAuctionLot(params: { lotId: number; byToken?: string }
       data: { status: "LIVE", currentBid: lot.startPrice },
     });
     await logLedger(tx, { kind: "auction", delta: 0, note: `開始拍賣：${lot.title}`, byToken });
+    return { ok: true, lot: updated };
+  });
+}
+
+// 開始「下一件」：依 orderIndex 取場次中第一個尚未拍賣（DRAFT）的拍賣品並開拍。
+// 拍賣官只要一顆按鈕跑完整個清單，不必逐件點開。全場仍僅能有一件 LIVE。
+export async function openNextLot(params: { eventId: number; byToken?: string }) {
+  const { eventId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const event = await tx.auctionEvent.findUnique({ where: { id: eventId } });
+    if (!event || event.status === "ENDED") throw new Error("所屬場次未開放");
+    const live = await tx.auctionLot.findFirst({ where: { status: "LIVE" } });
+    if (live) throw new Error("已有拍賣品進行中，請先成交或流標");
+    const next = await tx.auctionLot.findFirst({
+      where: { eventId, status: "DRAFT" },
+      orderBy: [{ orderIndex: "asc" }, { id: "asc" }],
+    });
+    if (!next) throw new Error("清單已無待拍的拍賣品");
+    const updated = await tx.auctionLot.update({
+      where: { id: next.id },
+      data: { status: "LIVE", currentBid: next.startPrice },
+    });
+    await logLedger(tx, { kind: "auction", delta: 0, note: `開始拍賣：${next.title}`, byToken });
     return { ok: true, lot: updated };
   });
 }
@@ -1248,7 +1275,7 @@ export async function hammerLot(params: {
     // 依類型交付
     if (lot.lotType === "ITEM" && lot.assetId != null) {
       const asset = await tx.movableAsset.findUnique({ where: { id: lot.assetId } });
-      if (!asset) throw new Error("找不到動產模板");
+      if (!asset) throw new Error("找不到動產");
       await tx.teamItem.create({
         data: {
           teamId: winnerTeamId,

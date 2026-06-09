@@ -55,7 +55,7 @@ export function ActionButton({
       type="button"
       disabled={busy || disabled}
       onClick={async () => {
-        if (confirmText && !window.confirm(confirmText)) return;
+        if (confirmText && !(await confirmDialog(confirmText))) return;
         setBusy(true);
         try {
           const res = await onAction();
@@ -146,6 +146,76 @@ export function toast(message: string, kind: "ok" | "err" = "ok", undo?: UndoRec
   } else {
     hideAfter(2600);
   }
+}
+
+// 樣式化確認對話框（取代 window.confirm）。回傳 Promise<boolean>：確定=true、取消=false。
+// 與 toast 一樣用命令式 DOM 建立，故任何地方都可呼叫、不需 React 掛載點。
+export function confirmDialog(message: string): Promise<boolean> {
+  if (typeof document === "undefined") return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.style.cssText =
+      "position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;" +
+      "padding:20px;background:rgba(2,6,23,.7);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);" +
+      "animation:appFadeIn .12s ease-out;";
+
+    const card = document.createElement("div");
+    card.style.cssText =
+      "width:100%;max-width:380px;border-radius:16px;padding:22px;" +
+      "background:rgba(15,23,42,.92);border:1px solid rgba(255,255,255,.12);" +
+      "box-shadow:0 20px 60px rgba(0,0,0,.5),inset 0 1px 0 0 rgba(255,255,255,.06);" +
+      "animation:appPopIn .14s ease-out;";
+
+    const msg = document.createElement("p");
+    msg.textContent = message;
+    msg.style.cssText =
+      "margin:0 0 20px;font-size:15px;line-height:1.6;font-weight:600;color:#e2e8f0;white-space:pre-wrap;";
+
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:10px;justify-content:flex-end;";
+
+    const baseBtn =
+      "min-height:2.75rem;padding:8px 18px;border-radius:12px;font-size:14px;font-weight:700;" +
+      "cursor:pointer;transition:all .12s;";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.textContent = "取消";
+    cancelBtn.style.cssText =
+      baseBtn +
+      "background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);color:#cbd5e1;";
+    const okBtn = document.createElement("button");
+    okBtn.type = "button";
+    okBtn.textContent = "確定";
+    okBtn.style.cssText =
+      baseBtn +
+      "background:rgba(34,211,238,.12);border:1px solid rgba(34,211,238,.45);color:#67e8f9;";
+
+    let done = false;
+    const close = (result: boolean) => {
+      if (done) return;
+      done = true;
+      document.removeEventListener("keydown", onKey);
+      overlay.remove();
+      resolve(result);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close(false);
+      else if (e.key === "Enter") close(true);
+    };
+
+    cancelBtn.onclick = () => close(false);
+    okBtn.onclick = () => close(true);
+    overlay.onclick = (e) => {
+      if (e.target === overlay) close(false); // 點背景＝取消
+    };
+    document.addEventListener("keydown", onKey);
+
+    row.append(cancelBtn, okBtn);
+    card.append(msg, row);
+    overlay.append(card);
+    document.body.appendChild(overlay);
+    okBtn.focus(); // Enter 直接確定
+  });
 }
 
 // 小隊下拉選擇
