@@ -56,7 +56,7 @@ export function MobileView() {
             </div>
             <TeamItemBadges
               items={snap.teams.find((t) => t.id === team)?.items ?? []}
-              relevantTypes={[EffectType.GOOD_CARD_BONUS, EffectType.BAD_CARD_REDUCE, EffectType.REMINDER]}
+              relevantTypes={[EffectType.GOOD_CARD_BONUS, EffectType.BAD_CARD_REDUCE, EffectType.WHEEL_ON_GOOD_CARD, EffectType.DOUBLE_OR_NOTHING, EffectType.REMINDER]}
             />
           </StickyTeam>
           <Questions />

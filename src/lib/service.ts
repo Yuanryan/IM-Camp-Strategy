@@ -165,18 +165,19 @@ export async function applyWheel(params: {
       : [];
 
     // 基礎淨變動
-    let delta = Math.round(stake * mult) - stake;
+    const baseDelta = Math.round(stake * mult) - stake;
 
-    // WHEEL_BONUS：獲利加成（虧損不放大）
+    // WHEEL_BONUS：獲利加成（虧損不放大）。僅在實際加成（淨利 > 0）時消耗次數。
     const bonusEffect = await loadActiveEffects(tx, teamId, "WHEEL_BONUS");
-    delta = applyWheelBonus(delta, bonusEffect.delta);
+    const delta = applyWheelBonus(baseDelta, bonusEffect.delta);
+    const bonusUsedIds = delta > baseDelta ? bonusEffect.usedIds : [];
 
     if (team.coins + delta < 0) throw new Error("光幣不足以支付投入");
     const updated = await tx.team.update({
       where: { id: teamId },
       data: { coins: { increment: delta } },
     });
-    await decrementUses(tx, [...stakeBoostEffect.usedIds, ...bonusEffect.usedIds, ...noZeroUsedIds]);
+    await decrementUses(tx, [...stakeBoostEffect.usedIds, ...bonusUsedIds, ...noZeroUsedIds]);
     const lid = await logLedger(tx, {
       teamId,
       kind: "wheel",

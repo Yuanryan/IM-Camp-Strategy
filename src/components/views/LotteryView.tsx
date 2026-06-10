@@ -3,8 +3,8 @@
 import { useState } from "react";
 import { useSnapshot, postJson, ActionButton, TeamSelect, toast } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num } from "@/components/ui";
-import { lotteryFee } from "@/lib/game";
+import { Num, TeamItemBadges } from "@/components/ui";
+import { lotteryFee, EffectType } from "@/lib/game";
 
 export function LotteryView() {
   const { snap, mutate } = useSnapshot(2500);
@@ -60,7 +60,7 @@ export function LotteryView() {
               onAction={async () => {
                 const r = await postJson("/api/lottery/draw", {});
                 await mutate();
-                if (r.winnerTeamId) toast(`中獎號碼 ${r.number}！得主獲得 ${r.pool}`, "ok");
+                if (r.winnerTeamId) toast(`中獎號碼 ${r.number}！得主獲得 ${r.finalPool}`, "ok");
                 else toast(`開出 ${r.number}，無人中獎，獎金池保留`, "err");
               }}
             />
@@ -81,6 +81,10 @@ export function LotteryView() {
             <span className="text-xs text-amber-300/80">⚠ 請先選擇登記小隊</span>
           )}
         </div>
+        <TeamItemBadges
+          items={team === "" ? [] : snap.teams.find((t) => t.id === team)?.items ?? []}
+          relevantTypes={[EffectType.LOTTERY_BONUS, EffectType.JACKPOT_SHARE, EffectType.LOTTERY_INSURANCE]}
+        />
       </StickyTeam>
 
       <Card title="登記號碼">

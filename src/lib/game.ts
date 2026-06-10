@@ -243,8 +243,8 @@ export const EffectType = {
 export type EffectType = typeof EffectType[keyof typeof EffectType];
 
 export const EFFECT_TYPE_LABELS: Record<EffectType, string> = {
-  TOLL_INCOME:       "收路費加成",
-  TOLL_PAID:         "付路費減免",
+  TOLL_INCOME:       "過路費加成",
+  TOLL_PAID:         "過路費減免",
   SHOP_PRICE:        "購買折扣",
   PROPERTY_VALUE:    "不動產增值",
   COINS_PER_ROUND:   "每輪收益",

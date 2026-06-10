@@ -78,7 +78,7 @@ export function MapView() {
             </div>
             <TeamItemBadges
               items={cur?.items ?? []}
-              relevantTypes={[EffectType.GOOD_CARD_BONUS, EffectType.BAD_CARD_REDUCE, EffectType.TOLL_PAID, EffectType.REMINDER]}
+              relevantTypes={[EffectType.GOOD_CARD_BONUS, EffectType.BAD_CARD_REDUCE, EffectType.WHEEL_ON_GOOD_CARD, EffectType.TOLL_PAID, EffectType.PIRACY, EffectType.REMINDER]}
             />
           </StickyTeam>
 

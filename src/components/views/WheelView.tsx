@@ -3,8 +3,9 @@
 import { useState, useEffect } from "react";
 import { postJson, TeamSelect, toast } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num } from "@/components/ui";
-import { WHEEL_OUTCOMES, type UndoRecipe } from "@/lib/game";
+import { Num, TeamItemBadges } from "@/components/ui";
+import { WHEEL_OUTCOMES, applyWheelMaxStake, applyWheelBonus, EffectType, type UndoRecipe } from "@/lib/game";
+import type { ActiveItemView } from "@/lib/snapshot";
 
 // 依權重比例切出每一段（x5 權重最低 → 最窄）
 const TOTAL = WHEEL_OUTCOMES.reduce((s, o) => s + o.weight, 0);
@@ -33,7 +34,7 @@ function arcPath(cx: number, cy: number, r: number, start: number, sweep: number
   return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
 }
 
-type TeamLite = { id: number; name: string; coins: number };
+type TeamLite = { id: number; name: string; coins: number; items: ActiveItemView[] };
 
 export function WheelView({
   teams,
@@ -51,13 +52,26 @@ export function WheelView({
   const [stake, setStake] = useState(100);
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
-  const [last, setLast] = useState<{ mult: number; delta: number; stake: number } | null>(null);
+  const [last, setLast] = useState<{ mult: number; delta: number; baseDelta: number; stake: number } | null>(null);
   // Freeze the coins display at spin-start so mid-animation SWR refreshes
   // don't update the balance or max-stake while the wheel is still moving.
   const [frozenCoins, setFrozenCoins] = useState<number | null>(null);
+  const [frozenEffects, setFrozenEffects] = useState<{ hasNoZero: boolean; bonusDelta: number } | null>(null);
 
   const displayCoins = spinning && frozenCoins !== null ? frozenCoins : (cur?.coins ?? 0);
-  const maxStake = Math.max(500, Math.floor(displayCoins / 10));
+  const boostDelta = (cur?.items ?? [])
+    .filter((i) => i.effectType === "WHEEL_STAKE_BOOST")
+    .reduce((s, i) => s + i.effectValue, 0);
+  const maxStake = applyWheelMaxStake(displayCoins, boostDelta);
+
+  // 道具效果（鏡像 service.applyWheel）：用於視覺化
+  // 旋轉時使用凍結值，避免 SWR 刷新改變輪盤外觀
+  const liveBonusDelta = (cur?.items ?? [])
+    .filter((i) => i.effectType === "WHEEL_BONUS")
+    .reduce((s, i) => s + i.effectValue, 0);
+  const liveHasNoZero = (cur?.items ?? []).some((i) => i.effectType === "WHEEL_NO_ZERO");
+  const bonusDelta = spinning && frozenEffects !== null ? frozenEffects.bonusDelta : liveBonusDelta;
+  const hasNoZero = spinning && frozenEffects !== null ? frozenEffects.hasNoZero : liveHasNoZero;
 
   // Clamp stake only after the animation ends (maxStake is stable during spinning)
   useEffect(() => {
@@ -72,6 +86,7 @@ export function WheelView({
       return;
     }
     setFrozenCoins(cur?.coins ?? 0);
+    setFrozenEffects({ hasNoZero: liveHasNoZero, bonusDelta: liveBonusDelta });
     setSpinning(true);
     setLast(null);
     try {
@@ -87,7 +102,9 @@ export function WheelView({
         return prev + 360 * 6 + add; // 轉 6 圈再對準
       });
       window.setTimeout(async () => {
-        setLast({ mult: r.mult, delta: r.delta, stake });
+        // 還原加成前的淨變動（base = round(stake×mult) − stake），讓面板顯示加成計算
+        const baseDelta = Math.round(stake * r.mult) - stake;
+        setLast({ mult: r.mult, delta: r.delta, baseDelta, stake });
         toast(
           `×${r.mult}！${r.delta >= 0 ? "賺" : "賠"} ${Math.abs(r.delta)} 光幣`,
           r.delta >= 0 ? "ok" : "err",
@@ -95,6 +112,7 @@ export function WheelView({
         );
         await onDone();
         setFrozenCoins(null);
+        setFrozenEffects(null);
         setSpinning(false);
       }, 4200);
     } catch (e) {
@@ -116,6 +134,10 @@ export function WheelView({
             <span className="text-xs text-amber-300/80">⚠ 請先選擇小隊</span>
           )}
         </div>
+        <TeamItemBadges
+          items={cur?.items ?? []}
+          relevantTypes={[EffectType.WHEEL_BONUS, EffectType.WHEEL_NO_ZERO, EffectType.WHEEL_STAKE_BOOST]}
+        />
       </StickyTeam>
 
       <Card title="命運投資輪盤">
@@ -145,17 +167,26 @@ export function WheelView({
             <circle cx={100} cy={100} r={99} fill="#020617" stroke="rgba(255,255,255,0.18)" strokeWidth={2} />
             {SEGMENTS.map((s, i) => {
               const [lx, ly] = polar(100, 100, 66, s.center);
+              // WHEEL_NO_ZERO：×0 區段被保底道具移除 → 變灰、降透明、打叉提示
+              const removed = hasNoZero && s.mult === 0;
               return (
-                <g key={i}>
-                  <path d={arcPath(100, 100, 96, s.start, s.sweep)} fill={COLORS[i]} stroke="rgba(2,6,23,0.55)" strokeWidth={1} />
+                <g key={i} opacity={removed ? 0.28 : 1}>
+                  <path
+                    d={arcPath(100, 100, 96, s.start, s.sweep)}
+                    fill={removed ? "#1e293b" : COLORS[i]}
+                    stroke={removed ? "rgba(248,113,113,0.5)" : "rgba(2,6,23,0.55)"}
+                    strokeWidth={removed ? 1.5 : 1}
+                    strokeDasharray={removed ? "3 2" : undefined}
+                  />
                   <text
                     x={lx}
                     y={ly}
-                    fill={s.mult === 10 ? "#020617" : "#e2e8f0"}
+                    fill={removed ? "#94a3b8" : s.mult === 10 ? "#020617" : "#e2e8f0"}
                     fontSize={s.sweep < 16 ? (s.mult === 10 ? 4 : 9) : 13}
                     fontWeight="bold"
                     textAnchor="middle"
                     dominantBaseline="middle"
+                    textDecoration={removed ? "line-through" : undefined}
                     transform={`rotate(${s.center} ${lx} ${ly})`}
                   >
                     ×{s.mult}
@@ -166,6 +197,7 @@ export function WheelView({
             <circle cx={100} cy={100} r={15} fill="#0f172a" stroke="#facc15" strokeWidth={2} />
           </svg>
         </div>
+
 
         {last && (
           <div
@@ -194,6 +226,14 @@ export function WheelView({
                 {"  →  "}
                 拿回 <Num className="font-bold text-slate-200">{last.stake + last.delta}</Num>
               </div>
+              {/* WHEEL_BONUS：顯示加成計算（淨利 ×(1+加成)）*/}
+              {last.baseDelta > 0 && last.delta !== last.baseDelta && (
+                <div className="mt-0.5 text-xs text-emerald-300/90">
+                  <Num className="font-bold">{last.baseDelta}</Num>
+                  {" × "}
+                  <Num className="font-bold">{(last.delta / last.baseDelta).toFixed(2)}</Num>
+                </div>
+              )}
               <div
                 className={`num mt-0.5 text-2xl font-black ${
                   last.delta > 0
