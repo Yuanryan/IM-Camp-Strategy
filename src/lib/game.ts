@@ -180,6 +180,10 @@ export function roundTo50(n: number): number {
   return Math.round(n / 50) * 50;
 }
 
+// 過路費基礎費率：獨佔隊該區不動產現值總和 × TOLL_RATE（再四捨五入到 50）。
+// 調整此值即可整體升降全場過路費（道具 TOLL_INCOME / TOLL_PAID 仍以此為基準疊加）。
+export const TOLL_RATE = 0.15;
+
 // 升級費用：購買=base；1級=base×20%；2級=40%；3級=60%（四捨五入到 50）
 // 傳入「目前等級」回傳升到下一級的費用；level 3 不可再升
 export function upgradeFee(basePrice: number, currentLevel: number): number | null {

@@ -468,14 +468,14 @@ describe("MOVABLE_ASSET_SEED", () => {
   });
 
   it("REMINDER / WHEEL_NO_ZERO / WHEEL_ON_GOOD_CARD / DOUBLE_OR_NOTHING 效果值為 0；其餘非零", () => {
-    const zeroValueTypes = new Set([
+    const zeroValueTypes = new Set<string>([
       EffectType.REMINDER,
       EffectType.WHEEL_NO_ZERO,
       EffectType.WHEEL_ON_GOOD_CARD,
       EffectType.DOUBLE_OR_NOTHING,
     ]);
     for (const a of MOVABLE_ASSET_SEED) {
-      if (zeroValueTypes.has(a.effectType as typeof EffectType[keyof typeof EffectType])) {
+      if (zeroValueTypes.has(a.effectType)) {
         expect(a.effectValue).toBe(0);
       } else {
         expect(a.effectValue).not.toBe(0);

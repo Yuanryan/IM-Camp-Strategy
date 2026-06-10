@@ -24,6 +24,7 @@ import {
   roundTo50,
   stackEffects,
   upgradeFee,
+  TOLL_RATE,
   type EffectType,
   type RegionCode,
   type UndoRecipe,
@@ -344,7 +345,7 @@ export async function payToll(params: {
     const totalValue = regionProps
       .filter((p) => p.ownerTeamId === monopolyId)
       .reduce((s, p) => s + currentValue(p, activeEvents, state.event4Penalty), 0);
-    const baseToll = roundTo50(totalValue * 0.1);
+    const baseToll = roundTo50(totalValue * TOLL_RATE);
     if (baseToll <= 0) throw new Error("過路費為 0");
 
     // 動產效果：獨佔隊 TOLL_INCOME 提高過路費、付款隊 TOLL_PAID 降低過路費。
@@ -395,7 +396,7 @@ export async function payToll(params: {
       const target = await tx.team.findUnique({ where: { id: monopolyId }, select: { coins: true } });
       if (!pirate || !target) continue;
       if (pirate.coins >= target.coins) continue; // 海盜較富 → 標記無效
-      const stolen = applyPiracy(toll, item.asset.effectValue);
+      const stolen = applyPiracy(baseToll, item.asset.effectValue);
       if (stolen <= 0) continue;
       await tx.team.update({ where: { id: monopolyId   }, data: { coins: { decrement: stolen } } });
       await tx.team.update({ where: { id: item.teamId  }, data: { coins: { increment: stolen } } });
