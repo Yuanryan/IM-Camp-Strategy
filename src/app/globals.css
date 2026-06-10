@@ -235,6 +235,56 @@ select:focus {
   }
 }
 
+/* 大樂透開獎：滾動中的球體微微脈動 */
+@keyframes drawRoll {
+  0%,
+  100% {
+    transform: scale(1) rotate(-3deg);
+  }
+  50% {
+    transform: scale(1.06) rotate(3deg);
+  }
+}
+.draw-roll {
+  animation: drawRoll 0.18s ease-in-out infinite;
+}
+
+/* 大樂透開獎：定號瞬間的彈跳定格 */
+@keyframes drawLand {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+  72% {
+    transform: scale(0.92);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+.draw-land {
+  animation: drawLand 0.6s cubic-bezier(0.18, 0.72, 0.3, 1.4) both;
+}
+
+/* 大樂透開獎：結果文字上浮 */
+@keyframes drawResultIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.draw-result-in {
+  animation: drawResultIn 0.45s ease-out 0.25s both;
+}
+
 /* 隱藏數字輸入箭頭 */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {

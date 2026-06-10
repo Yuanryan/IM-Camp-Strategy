@@ -572,7 +572,7 @@ export async function registerLottery(params: { teamId: number; number: number; 
       await logLedger(tx, { teamId, kind: "lottery", delta: -fee, note: `大樂透加購 ${number} 號`, byToken });
     }
     await tx.lotteryNumber.create({ data: { period: state.lotteryPeriod, number, teamId } });
-    const poolAdd = 100 + fee; // 停留 +100，加購費也入池
+    const poolAdd = fee * 2; // 加購費 *2 入池
     await tx.gameState.update({ where: { id: 1 }, data: { lotteryPool: { increment: poolAdd } } });
     return { ok: true, fee, poolAdd };
   });
@@ -584,31 +584,12 @@ export async function drawLottery(params: { byToken?: string }) {
     const state = await getState(tx);
     const number = Math.floor(Math.random() * 50) + 1;
 
-    // 本期所有登記號碼（開獎前先抓，LOTTERY_INSURANCE 退費需要）
     const allNumbers = await tx.lotteryNumber.findMany({ where: { period: state.lotteryPeriod } });
     const hit = allNumbers.find((n) => n.number === number) ?? null;
 
-    // 未中獎：LOTTERY_INSURANCE 退還本期費用
     if (!hit) {
-      const insuranceItems = await tx.teamItem.findMany({
-        where: { active: true },
-        include: { asset: true },
-      });
-      const insuranceUsedIds: number[] = [];
-      for (const item of insuranceItems) {
-        if (item.asset.effectType !== "LOTTERY_INSURANCE") continue;
-        const teamNumbers = allNumbers.filter((n) => n.teamId === item.teamId);
-        if (!teamNumbers.length) continue;
-        // 計算本期實際支付的費用（第一個免費，之後每個 50×2^(n-1)）
-        let refund = 0;
-        for (let i = 1; i < teamNumbers.length; i++) refund += lotteryFee(i);
-        if (refund <= 0) continue;
-        await tx.team.update({ where: { id: item.teamId }, data: { coins: { increment: refund } } });
-        await logLedger(tx, { teamId: item.teamId, kind: "lottery", delta: refund, note: `大樂透保險退費 ${refund} 光幣`, byToken });
-        insuranceUsedIds.push(item.id);
-      }
-      if (insuranceUsedIds.length) await decrementUses(tx, insuranceUsedIds);
-      return { number, winnerTeamId: null, pool: state.lotteryPool };
+      await tx.gameState.update({ where: { id: 1 }, data: { lotteryPool: { increment: 1000 } } });
+      return { number, winnerTeamId: null, basePool: state.lotteryPool, finalPool: state.lotteryPool + 1000 };
     }
 
     const basePool = state.lotteryPool;
@@ -642,6 +623,23 @@ export async function drawLottery(params: { byToken?: string }) {
       shareUsedIds.push(item.id);
     }
     if (shareUsedIds.length) await decrementUses(tx, shareUsedIds);
+
+    // LOTTERY_INSURANCE：有人中獎時，其他持有保險的隊退還本期登記費用（一次性）
+    const insuranceItems = allItems.filter(
+      (i) => i.asset.effectType === "LOTTERY_INSURANCE" && i.teamId !== hit.teamId,
+    );
+    const insuranceUsedIds: number[] = [];
+    for (const item of insuranceItems) {
+      const teamNumbers = allNumbers.filter((n) => n.teamId === item.teamId);
+      if (!teamNumbers.length) continue;
+      let refund = 0;
+      for (let i = 1; i < teamNumbers.length; i++) refund += lotteryFee(i);
+      if (refund <= 0) continue;
+      await tx.team.update({ where: { id: item.teamId }, data: { coins: { increment: refund } } });
+      await logLedger(tx, { teamId: item.teamId, kind: "lottery", delta: refund, note: `大樂透保險退費 ${refund} 光幣`, byToken });
+      insuranceUsedIds.push(item.id);
+    }
+    if (insuranceUsedIds.length) await decrementUses(tx, insuranceUsedIds);
 
     // 清空本期、開新一期、獎金池重設 1000
     await tx.lotteryNumber.deleteMany({ where: { period: state.lotteryPeriod } });

@@ -231,7 +231,7 @@ export const EffectType = {
   WHEEL_ON_GOOD_CARD:"WHEEL_ON_GOOD_CARD",// 好運卡獎勵 × 輪盤結果
   LOTTERY_BONUS:     "LOTTERY_BONUS",     // 大樂透中獎倍率加成（+0.50 → 獎金 ×1.5）
   JACKPOT_SHARE:     "JACKPOT_SHARE",     // 任意隊中獎時自動抽成（0.05 → 5% 獎金池）
-  LOTTERY_INSURANCE: "LOTTERY_INSURANCE", // 未中獎時退還本期登記費用（一次性）
+  LOTTERY_INSURANCE: "LOTTERY_INSURANCE", // 他隊中獎時退還本期登記費用（一次性）
   COMPOUND_INTEREST: "COMPOUND_INTEREST", // 每輪賺取現有光幣 X%（0.02 → 2%/輪）
   PROPERTY_DIVIDEND: "PROPERTY_DIVIDEND", // 每輪賺取不動產現值 X%（0.03 → 3%/輪）
   UNDERDOG:          "UNDERDOG",          // 末位時每輪獲得固定補貼（200 → 末位時 +200/輪）
@@ -416,9 +416,9 @@ export const MOVABLE_ASSET_SEED: {
   { name: "槓桿王牌",     grade: "A", effectType: "WHEEL_STAKE_BOOST",effectValue:  0.10, condition: null, defaultUses: null, description: "輪盤最大投入上限從 10% 提升至 20%（永久）" },
   { name: "抽卡輪盤",     grade: "S", effectType: "WHEEL_ON_GOOD_CARD",effectValue: 0,    condition: null, defaultUses: 2,    description: "好運卡獎勵再乘以輪盤結果（大起大落！2 次）" },
   // ── 大樂透系列 ──
-  { name: "彩票加倍咒",   grade: "S", effectType: "LOTTERY_BONUS",    effectValue:  0.50, condition: null, defaultUses: null, description: "中獎時獎金 ×1.5（永久）" },
-  { name: "彩票抽成令",   grade: "S", effectType: "JACKPOT_SHARE",    effectValue:  0.05, condition: null, defaultUses: null, description: "任意隊中獎時自動獲得 5% 獎金池（永久）" },
-  { name: "彩票保險單",   grade: "A", effectType: "LOTTERY_INSURANCE", effectValue: 1,    condition: null, defaultUses: 1,    description: "本期未中獎時退還所有登記費用（一次性）" },
+  { name: "彩票加倍咒",   grade: "S", effectType: "LOTTERY_BONUS",    effectValue:  0.50, condition: null, defaultUses: null, description: "大樂透中獎時獎金 ×1.5（永久）" },
+  { name: "彩票抽成令",   grade: "S", effectType: "JACKPOT_SHARE",    effectValue:  0.05, condition: null, defaultUses: null, description: "大樂透任意隊中獎時自動獲得 5% 獎金池（永久）" },
+  { name: "彩票保險單",   grade: "A", effectType: "LOTTERY_INSURANCE", effectValue: 1,    condition: null, defaultUses: 1,    description: "大樂透他隊中獎時退還本期所有登記費用（一次性）" },
   // ── 每輪收益系列 ──
   { name: "複利魔方",     grade: "S", effectType: "COMPOUND_INTEREST", effectValue: 0.03, condition: null, defaultUses: null, description: "每輪賺取現有光幣 3%（永久）" },
   { name: "不動產分紅",   grade: "A", effectType: "PROPERTY_DIVIDEND", effectValue: 0.03, condition: null, defaultUses: null, description: "每輪賺取不動產現值 3%（永久）" },

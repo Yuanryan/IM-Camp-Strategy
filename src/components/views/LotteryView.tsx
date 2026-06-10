@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { useSnapshot, postJson, ActionButton, TeamSelect, toast } from "@/components/client";
+import { useState, useEffect, useRef } from "react";
+import { useSnapshot, postJson, TeamSelect, toast, confirmDialog } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, TeamItemBadges } from "@/components/ui";
 import { lotteryFee, EffectType } from "@/lib/game";
+
+type DrawResult = { number: number; winnerName: string | null; finalPool: number };
 
 export function LotteryView() {
   const { snap, mutate } = useSnapshot(2500);
@@ -12,6 +14,48 @@ export function LotteryView() {
   const [pending, setPending] = useState<number | null>(null);
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [highlight, setHighlight] = useState<number | null>(null);
+
+  // 開獎動畫：rolling=快速翻號中；revealed=定號 + 結果
+  const [draw, setDraw] = useState<{
+    phase: "rolling" | "revealed";
+    rollNum: number;
+    result: DrawResult | null;
+  } | null>(null);
+  const rollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // rolling 階段：每 70ms 翻一個隨機號碼，定號後清除
+  useEffect(() => {
+    if (draw?.phase === "rolling") {
+      rollTimer.current = setInterval(() => {
+        setDraw((d) => (d ? { ...d, rollNum: Math.floor(Math.random() * 50) + 1 } : d));
+      }, 70);
+      return () => {
+        if (rollTimer.current) clearInterval(rollTimer.current);
+      };
+    }
+  }, [draw?.phase]);
+
+  const runDraw = async () => {
+    if (draw) return;
+    if (!(await confirmDialog("確定開獎？"))) return;
+    setDraw({ phase: "rolling", rollNum: Math.floor(Math.random() * 50) + 1, result: null });
+    try {
+      const r = await postJson("/api/lottery/draw", {});
+      const winnerName = r.winnerTeamId
+        ? snap?.teams.find((t) => t.id === r.winnerTeamId)?.name ?? "得獎隊伍"
+        : null;
+      const res: DrawResult = { number: r.number, winnerName, finalPool: r.finalPool };
+      // 讓滾動至少跑滿 ~2.1s 的戲劇張力，再定號
+      window.setTimeout(() => {
+        setDraw({ phase: "revealed", rollNum: res.number, result: res });
+        mutate();
+      }, 2100);
+    } catch (e) {
+      if (rollTimer.current) clearInterval(rollTimer.current);
+      setDraw(null);
+      toast(e instanceof Error ? e.message : "開獎失敗", "err");
+    }
+  };
 
   if (!snap) return <p className="text-sm text-slate-400">載入中…</p>;
   const taken = new Map(snap.lottery.numbers.map((n) => [n.number, n.teamName]));
@@ -53,17 +97,13 @@ export function LotteryView() {
             <Num className="neon-emerald text-2xl font-black">{snap.lottery.pool}</Num>
           </div>
           <div className="px-4 py-4">
-            <ActionButton
-              label="開獎"
-              className="btn-rose px-5 py-3 text-base font-black"
-              confirmText="確定開獎？"
-              onAction={async () => {
-                const r = await postJson("/api/lottery/draw", {});
-                await mutate();
-                if (r.winnerTeamId) toast(`中獎號碼 ${r.number}！得主獲得 ${r.finalPool}`, "ok");
-                else toast(`開出 ${r.number}，無人中獎，獎金池保留`, "err");
-              }}
-            />
+            <button
+              onClick={runDraw}
+              disabled={!!draw}
+              className="btn-rose rounded-xl px-5 py-3 text-base font-black transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {draw ? "開獎中…" : "開獎"}
+            </button>
           </div>
         </div>
       </div>
@@ -159,6 +199,92 @@ export function LotteryView() {
           </div>
         )}
       </Card>
+
+      {draw && (
+        <DrawReveal
+          draw={draw}
+          onClose={() => setDraw(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── 開獎動畫覆蓋層 ──────────────────────────────────────────────
+function DrawReveal({
+  draw,
+  onClose,
+}: {
+  draw: { phase: "rolling" | "revealed"; rollNum: number; result: DrawResult | null };
+  onClose: () => void;
+}) {
+  const revealed = draw.phase === "revealed";
+  const res = draw.result;
+  const isWin = !!res?.winnerName;
+
+  return (
+    <div
+      onClick={revealed ? onClose : undefined}
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/85 backdrop-blur-sm"
+      style={{ animation: "appFadeIn 0.2s ease-out both" }}
+    >
+      <div className="mb-6 text-sm font-semibold uppercase tracking-[0.3em] text-emerald-300/80">
+        {revealed ? "開獎結果" : "開獎中…"}
+      </div>
+
+      {/* 開獎球 */}
+      <div
+        key={revealed ? "land" : "roll"}
+        className={`flex h-40 w-40 items-center justify-center rounded-full ${
+          revealed ? "draw-land" : "draw-roll"
+        }`}
+        style={{
+          background: revealed
+            ? "radial-gradient(circle at 35% 30%, rgba(52,211,153,0.45) 0%, rgba(16,185,129,0.12) 100%)"
+            : "radial-gradient(circle at 35% 30%, rgba(34,211,238,0.4) 0%, rgba(6,182,212,0.1) 100%)",
+          border: revealed ? "3px solid rgba(52,211,153,0.7)" : "3px solid rgba(34,211,238,0.55)",
+          boxShadow: revealed
+            ? "0 0 50px rgba(52,211,153,0.55), inset 0 2px 0 rgba(255,255,255,0.18)"
+            : "0 0 32px rgba(34,211,238,0.4), inset 0 2px 0 rgba(255,255,255,0.14)",
+        }}
+      >
+        <Num
+          className={`text-7xl font-black ${revealed ? "neon-emerald" : "text-cyan-200"}`}
+        >
+          {draw.rollNum}
+        </Num>
+      </div>
+
+      {/* 結果文字 */}
+      {revealed && res && (
+        <div className="draw-result-in mt-8 flex flex-col items-center gap-2 px-6 text-center">
+          {isWin ? (
+            <>
+              <div className="text-2xl font-black text-emerald-200">
+                🎉 {res.winnerName} 中獎！
+              </div>
+              <div className="text-sm text-slate-300">
+                獲得獎金{" "}
+                <Num className="neon-gold text-lg font-black">{res.finalPool}</Num> 光幣
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-2xl font-black text-rose-200">無人中獎</div>
+              <div className="text-sm text-slate-300">
+                獎金池累積至{" "}
+                <Num className="neon-emerald text-lg font-black">{res.finalPool}</Num> 光幣
+              </div>
+            </>
+          )}
+          <button
+            onClick={onClose}
+            className="chip mt-4 rounded-lg px-6 py-2 text-sm font-semibold"
+          >
+            關閉
+          </button>
+        </div>
+      )}
     </div>
   );
 }
