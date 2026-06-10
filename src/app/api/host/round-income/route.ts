@@ -1,6 +1,6 @@
-import { apiRoute } from "@/lib/api";
+import { apiRoute, num } from "@/lib/api";
 import { distributeRoundIncome } from "@/lib/service";
 
-export const POST = apiRoute(["HOST", "ADMIN"], async ({ session }) =>
-  distributeRoundIncome({ byToken: session.label }),
+export const POST = apiRoute(["HOST", "MAP", "ADMIN"], async ({ body, session }) =>
+  distributeRoundIncome({ teamId: num(body, "teamId"), byToken: session.label }),
 );

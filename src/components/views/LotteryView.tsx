@@ -8,9 +8,18 @@ import { lotteryFee, EffectType } from "@/lib/game";
 
 type DrawResult = { number: number; winnerName: string | null; finalPool: number };
 
-export function LotteryView() {
+export function LotteryView({
+  team: teamProp,
+  setTeam: setTeamProp,
+}: {
+  team?: number | "";
+  setTeam?: (id: number | "") => void;
+} = {}) {
   const { snap, mutate } = useSnapshot(2500);
-  const [team, setTeam] = useState<number | "">("");
+  // 受控（由 MapView 共用 team）或自管（/lottery 獨立頁）
+  const [teamInner, setTeamInner] = useState<number | "">("");
+  const team = teamProp ?? teamInner;
+  const setTeam = setTeamProp ?? setTeamInner;
   const [pending, setPending] = useState<number | null>(null);
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [highlight, setHighlight] = useState<number | null>(null);

@@ -967,15 +967,22 @@ export async function setPiracyMark(params: { itemId: number; markTeamId: number
   });
 }
 
-// 由主持人手動觸發：發放所有隊伍的每輪固定收益（COINS_PER_ROUND 效果）
-export async function distributeRoundIncome(params: { byToken?: string }) {
-  const { byToken } = params;
+// 由關主手動觸發（一回合一次・單一小隊）：發放該隊每輪收益，並消耗其有次數的提醒（REMINDER）。
+export async function distributeRoundIncome(params: { teamId: number; byToken?: string }) {
+  const { teamId, byToken } = params;
   return prisma.$transaction(async (tx) => {
-    const items = await tx.teamItem.findMany({ where: { active: true }, include: { asset: true } });
+    // 只處理選定小隊的道具（UNDERDOG 排名仍需全場淨值，於下方另計）
+    const items = await tx.teamItem.findMany({ where: { teamId, active: true }, include: { asset: true } });
 
     const ROUND_TYPES = new Set(["COINS_PER_ROUND", "COMPOUND_INTEREST", "PROPERTY_DIVIDEND", "UNDERDOG"]);
     const roundItems = items.filter((i) => ROUND_TYPES.has(i.asset.effectType));
-    if (!roundItems.length) throw new Error("目前無隊伍持有每輪收益動產");
+    const reminderItems = items.filter((i) => i.asset.effectType === "REMINDER");
+    // 有次數的提醒道具：每結算一回合 −1 次（永久型 usesRemaining=null 不受影響）
+    const reminderUsedIds = reminderItems.filter((i) => i.usesRemaining != null).map((i) => i.id);
+    // 永久提醒也算「有道具」，按下結算仍視為成功（僅無動作）
+    if (!roundItems.length && !reminderItems.length) {
+      throw new Error("該小隊無每輪收益或提醒道具");
+    }
 
     // 額外資料：COMPOUND_INTEREST 需要 coins；PROPERTY_DIVIDEND + UNDERDOG 需要不動產現值 + 排名
     const teams = await tx.team.findMany();
@@ -1031,7 +1038,9 @@ export async function distributeRoundIncome(params: { byToken?: string }) {
       await decrementUses(tx, ids);
       results.push({ teamId, income: total });
     }
-    return { ok: true, results };
+    // 消耗有次數的提醒（與發放收益同一次按鈕）
+    if (reminderUsedIds.length) await decrementUses(tx, reminderUsedIds);
+    return { ok: true, results, remindersTicked: reminderUsedIds.length };
   });
 }
 
