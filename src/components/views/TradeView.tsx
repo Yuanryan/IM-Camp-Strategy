@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import useSWR from "swr";
 import { fetcher, useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { Card } from "@/components/Shell";
-import { Num } from "@/components/ui";
+import { Num, TeamItemBadges } from "@/components/ui";
+import { EffectType } from "@/lib/game";
 import { TransactionAnimation, type TxResult } from "@/components/TransactionAnimation";
 
 type Resolved = { id: number; toTeamName: string; coins: number; cardPoints: number };
@@ -107,6 +108,7 @@ export function TradeView({ teamId }: { teamId: number }) {
             你的餘額：光幣 <Num className="neon-gold">{me?.coins}</Num>　點數 <Num className="text-cyan-300">{me?.cardPoints}</Num>
           </span>
         </div>
+        <TeamItemBadges items={me?.items ?? []} relevantTypes={[EffectType.ALLIANCE_BONUS]} />
         <p className="mt-2 text-xs text-slate-500">發起後資源立即凍結；對方接受才轉出，拒絕或你取消則退回。</p>
       </Card>
 

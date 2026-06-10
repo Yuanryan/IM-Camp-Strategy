@@ -4,7 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { fetcher, useSnapshot, postJson, ActionButton } from "@/components/client";
 import { Card } from "@/components/Shell";
-import { Num } from "@/components/ui";
+import { Num, AssetPicker } from "@/components/ui";
 import { REGIONS, REGION_UI, EFFECT_TYPE_LABELS, ITEM_GRADE_COLORS } from "@/lib/game";
 import type { Snapshot } from "@/lib/snapshot";
 
@@ -160,12 +160,9 @@ function ItemEditor({ snap }: { snap: Snapshot }) {
               {snap.teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
           </label>
-          <label className="text-xs text-slate-400">
+          <label className="min-w-0 flex-1 text-xs text-slate-400">
             <div className="mb-1">動產</div>
-            <select value={gAsset} onChange={(e) => setGAsset(e.target.value ? Number(e.target.value) : "")} className="fld min-w-48">
-              <option value="">選擇動產</option>
-              {assets?.map((a) => <option key={a.id} value={a.id}>[{a.grade}] {a.name}{a.description ? ` — ${a.description}` : ""}</option>)}
-            </select>
+            <AssetPicker assets={assets ?? []} value={gAsset} onChange={setGAsset} />
           </label>
           <label className="text-xs text-slate-400">
             <div className="mb-1">秘密幣值</div>

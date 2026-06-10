@@ -237,7 +237,7 @@ export const EffectType = {
   UNDERDOG:          "UNDERDOG",          // 末位時每輪獲得固定補貼（200 → 末位時 +200/輪）
   DOUBLE_OR_NOTHING: "DOUBLE_OR_NOTHING", // 流動關主發獎時 50/50：雙倍或歸零
   ALLIANCE_BONUS:    "ALLIANCE_BONUS",    // 交易接受時雙方各獲固定光幣（50 → 各 +50）
-  PIRACY:            "PIRACY",            // 任意過路費發生時偷取付款隊比例（0.05 → 5%）
+  PIRACY:            "PIRACY",            // 俠盜印記・懸賞標記：被標記隊收過路費時抽成（僅當俠盜較窮才生效）
   REMINDER:          "REMINDER",          // 無計算，僅提醒關主
 } as const;
 export type EffectType = typeof EffectType[keyof typeof EffectType];
@@ -263,7 +263,7 @@ export const EFFECT_TYPE_LABELS: Record<EffectType, string> = {
   UNDERDOG:          "末位補貼",
   DOUBLE_OR_NOTHING: "雙倍或歸零",
   ALLIANCE_BONUS:    "交易紅利",
-  PIRACY:            "海盜稅",
+  PIRACY:            "海盜旗",
   REMINDER:          "提醒（無計算）",
 };
 
@@ -349,9 +349,9 @@ export function applyPropertyDividend(propertyValue: number, rate: number): numb
   return Math.max(0, Math.round(propertyValue * rate));
 }
 
-// PIRACY：從過路費付款方偷取比例
-export function applyPiracy(baseToll: number, rate: number): number {
-  return Math.max(0, Math.round(baseToll * rate));
+// PIRACY：海盜旗抽成（從被標記隊收到的過路費抽走比例）
+export function applyPiracy(toll: number, rate: number): number {
+  return Math.max(0, Math.round(toll * rate));
 }
 
 // ALLIANCE_BONUS：交易接受時雙方各得固定光幣（effectValue 即光幣數）
@@ -426,7 +426,7 @@ export const MOVABLE_ASSET_SEED: {
   // ── 特殊系列 ──
   { name: "雙倍或歸零",   grade: "S", effectType: "DOUBLE_OR_NOTHING", effectValue: 0,    condition: null, defaultUses: null, description: "流動關主發獎時 50/50：光幣雙倍或歸零（永久）" },
   { name: "交易紅利卡",   grade: "B", effectType: "ALLIANCE_BONUS",    effectValue: 100,  condition: null, defaultUses: 3,    description: "交易接受時雙方各獲 100 光幣（3 次）" },
-  { name: "海盜旗",       grade: "S", effectType: "PIRACY",            effectValue: 0.05, condition: null, defaultUses: null, description: "全場每筆過路費偷取付款隊 5% 光幣（永久）" },
+  { name: "俠盜印記",       grade: "S", effectType: "PIRACY",            effectValue: 0.10, condition: null, defaultUses: null, description: "懸賞標記一支敵隊；其收過路費時抽 10%（僅當你較窮才生效・永久）" },
 ];
 
 // ── 好運卡 / 厄運卡（光源點 / 迷霧區抽卡）─────────────────────

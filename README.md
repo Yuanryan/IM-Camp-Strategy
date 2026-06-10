@@ -67,7 +67,7 @@ npm run dev             # http://localhost:3000
 | PROPERTY_DIVIDEND | 不動產分紅 | 主持人觸發每輪收益 | 賺取不動產現值 effectValue% |
 | UNDERDOG | 末位補貼 | 主持人觸發每輪收益 | 淨資產末位時獲得 effectValue 光幣 |
 | TAX_COLLECTOR | 全場稅收 | 任意過路費發生時 | 從銀行獲得 effectValue% 過路費（不影響付/收款方） |
-| PIRACY | 海盜稅 | 任意過路費發生時 | 從付款隊額外偷取 effectValue% |
+| PIRACY | 俠盜印記 | 被標記隊收過路費時 | 對一支敵方隊伍施加懸賞標記（選定後不可更改）。當該隊伍收取過路費時，從中抽取 effectValue% 的光幣。若目標持有的光幣少於我方，則此效果不生效。 |
 | GOOD_CARD_BONUS | 好運卡加成 | 抽好運卡結算時 | 獎勵光幣 × (1 + delta) |
 | BAD_CARD_REDUCE | 厄運卡減免 | 抽厄運卡結算時 | 懲罰光幣 × (1 + delta)，-1.0 = 完全免疫 |
 | WHEEL_BONUS | 輪盤加成 | 輪盤淨獲利為正時 | 獲利 × (1 + delta)，虧損不放大 |

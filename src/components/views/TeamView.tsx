@@ -2,18 +2,19 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { fetcher, useSnapshot } from "@/components/client";
+import { fetcher, useSnapshot, postJson, toast, confirmDialog } from "@/components/client";
 import { Card } from "@/components/Shell";
 import { Num, PriceTag, LevelDots, EventBanner, AuctionBanner, BottomNav } from "@/components/ui";
 import { TradeView } from "@/components/views/TradeView";
 import { InstructionsView } from "@/components/views/InstructionsView";
 import { Wallet, ArrowLeftRight, Trophy, BookOpen } from "lucide-react";
-import { REGIONS, REGION_UI } from "@/lib/game";
+import { REGIONS, REGION_UI, ITEM_GRADE_COLORS, EFFECT_TYPE_LABELS } from "@/lib/game";
+import type { Snapshot } from "@/lib/snapshot";
 
 const LEVEL_TAG = ["已購", "1級", "2級", "3級"];
 
 export function TeamView({ teamId }: { teamId: number }) {
-  const { snap, error } = useSnapshot(3000);
+  const { snap, error, mutate } = useSnapshot(3000);
   const { data: trades } = useSWR<{ incoming: unknown[] }>("/api/trade", fetcher, {
     refreshInterval: 3000,
   });
@@ -188,7 +189,10 @@ export function TeamView({ teamId }: { teamId: number }) {
               </div>
             )}
           </Card>
-
+          
+          {/* ── 我的道具 ────────────────────────────────────────── */}
+          <ItemsCard me={me} teams={snap.teams} onDone={mutate} />
+          
           {/* ── Lottery ────────────────────────────────────────── */}
           <Card title={`大樂透號碼（第 ${snap.lottery.period} 期）`}>
             {myNumbers.length === 0 ? (
@@ -207,6 +211,8 @@ export function TeamView({ teamId }: { teamId: number }) {
               <Num className="font-bold text-emerald-300">{snap.lottery.pool}</Num> 光幣
             </div>
           </Card>
+
+
         </>
       )}
 
@@ -220,6 +226,114 @@ export function TeamView({ teamId }: { teamId: number }) {
           ["guide", "說明書", <BookOpen key="g" className="h-5 w-5" />],
         ] as const}
       />
+    </div>
+  );
+}
+
+// ── 我的道具列表（含海盜旗目標設定）──────────────────────────────
+function ItemsCard({
+  me,
+  teams,
+  onDone,
+}: {
+  me: Snapshot["teams"][number];
+  teams: Snapshot["teams"];
+  onDone: () => void | Promise<unknown>;
+}) {
+  const items = me.items ?? [];
+  return (
+    <Card title={`持有動產（${items.length}）`}>
+      {items.length === 0 ? (
+        <p className="text-sm text-slate-400">尚無動產</p>
+      ) : (
+        <ul className="space-y-2">
+          {items.map((item) => (
+            <li
+              key={item.id}
+              className={`rounded-lg border px-3 py-2.5 ${ITEM_GRADE_COLORS[item.grade] ?? "border-white/10 bg-white/3"}`}
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${ITEM_GRADE_COLORS[item.grade] ?? "chip"}`}>
+                  {item.grade}
+                </span>
+                <span className="text-sm font-semibold text-slate-100">{item.name}</span>
+                <span className="text-[11px] text-slate-400">
+                  {EFFECT_TYPE_LABELS[item.effectType as keyof typeof EFFECT_TYPE_LABELS] ?? item.effectType}
+                </span>
+                {item.usesRemaining !== null && (
+                  <span className="text-[10px] text-slate-500">剩 {item.usesRemaining} 次</span>
+                )}
+              </div>
+              <p className="mt-1 text-xs text-slate-400">{item.description}</p>
+              {item.effectType === "PIRACY" && (
+                <PiracyTarget item={item} myId={me.id} teams={teams} onDone={onDone} />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+// 海盜旗：一次性鎖定目標。未鎖定 → 顯示隊伍 chips；已鎖定 → 顯示目標（不可更改）。
+function PiracyTarget({
+  item,
+  myId,
+  teams,
+  onDone,
+}: {
+  item: Snapshot["teams"][number]["items"][number];
+  myId: number;
+  teams: Snapshot["teams"];
+  onDone: () => void | Promise<unknown>;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  if (item.markTeamId != null) {
+    const target = teams.find((t) => t.id === item.markTeamId);
+    return (
+      <div className="mt-2 rounded-md border border-rose-400/30 bg-rose-500/10 px-2.5 py-1.5 text-xs">
+        <span className="text-rose-200">🏴‍☠️ 已鎖定目標：</span>
+        <span className="font-bold text-rose-100">{target?.name ?? `#${item.markTeamId}`}</span>
+      </div>
+    );
+  }
+
+  const setMark = async (targetId: number, targetName: string) => {
+    if (busy) return;
+    if (!(await confirmDialog(`鎖定「${targetName}」為印記目標？此選擇無法更改。`))) return;
+    setBusy(true);
+    try {
+      await postJson("/api/items/mark", { itemId: item.id, markTeamId: targetId });
+      await onDone();
+      toast(`俠盜印記已鎖定 ${targetName}`, "ok");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "鎖定失敗", "err");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-2">
+      <div className="mb-1.5 text-[11px] font-semibold text-rose-300/90">
+        🏴‍☠️ 選擇懸賞目標（一次性，僅在目標光幣高於我方時生效）
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {teams
+          .filter((t) => t.id !== myId)
+          .map((t) => (
+            <button
+              key={t.id}
+              disabled={busy}
+              onClick={() => setMark(t.id, t.name)}
+              className="rounded-md border border-rose-400/30 bg-rose-500/5 px-2.5 py-1 text-xs font-medium text-rose-200 transition hover:bg-rose-500/15 active:scale-95 disabled:opacity-40"
+            >
+              {t.name}
+            </button>
+          ))}
+      </div>
     </div>
   );
 }

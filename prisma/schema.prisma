@@ -128,6 +128,7 @@ model TeamItem {
   usesRemaining Int?                       // null=永久；0=已耗盡（active 同步設 false）
   active        Boolean      @default(true) // false = 已失效（耗盡 / 手動撤銷）
   note          String?      // 取得方式備註
+  markTeamId    Int?                       // 鎖定目標小隊（海盜旗 PIRACY：被標記隊收過路費時抽成）
   obtainedAt    DateTime     @default(now())
 }
 

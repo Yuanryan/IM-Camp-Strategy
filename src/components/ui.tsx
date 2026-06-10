@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, type ReactNode } from "react";
-import { RadioTower, Gavel } from "lucide-react";
+import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { RadioTower, Gavel, ChevronDown } from "lucide-react";
 import { EVENTS, EffectType, ITEM_GRADE_COLORS } from "@/lib/game";
 import type { ActiveItemView, AuctionSnapshot } from "@/lib/snapshot";
 
@@ -188,11 +189,13 @@ export function TeamItemBadges({
           >
             <span className="font-bold opacity-70">{item.grade}</span>
             <span>{item.name}</span>
-            {item.effectType !== EffectType.REMINDER && (
+            {item.effectType !== EffectType.REMINDER && item.effectType !== EffectType.WHEEL_NO_ZERO && (
               <span className={`font-mono ${item.effectValue >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                 {item.effectType === EffectType.COINS_PER_ROUND
                   ? `+${item.effectValue}/輪`
-                  : `${item.effectValue >= 0 ? "+" : ""}${(item.effectValue * 100).toFixed(0)}%`}
+                  : item.effectType === EffectType.ALLIANCE_BONUS || item.effectType === EffectType.UNDERDOG
+                    ? `+${item.effectValue}光幣`
+                    : `${item.effectValue >= 0 ? "+" : ""}${(item.effectValue * 100).toFixed(0)}%`}
               </span>
             )}
             {item.usesRemaining !== null && (
@@ -246,6 +249,115 @@ export function HudTabs<T extends string>({
           )}
         </button>
       ))}
+    </div>
+  );
+}
+
+// 動產選擇器：自訂下拉，trigger 維持窄寬，清單列可換行顯示完整說明。
+// 取代原生 <select>（option 無法換行/裁切，長說明會撐爆版面）。
+type AssetOption = { id: number; name: string; grade: string; description?: string };
+export function AssetPicker({
+  assets,
+  value,
+  onChange,
+  placeholder = "選擇動產",
+  className = "",
+}: {
+  assets: AssetOption[];
+  value: number | "";
+  onChange: (id: number | "") => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState<{ left: number; top: number; width: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const selected = value === "" ? undefined : assets.find((a) => a.id === value);
+
+  // 量測 trigger 位置 → 以 fixed 定位 portal 內的清單（脫離 overflow/stacking 限制）
+  const measure = useCallback(() => {
+    const el = triggerRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setRect({ left: r.left, top: r.bottom + 4, width: r.width });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    measure();
+    const onDocClick = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t) || popRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const onReflow = () => measure();
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onEsc);
+    window.addEventListener("scroll", onReflow, true); // capture：含內層捲動容器
+    window.addEventListener("resize", onReflow);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onEsc);
+      window.removeEventListener("scroll", onReflow, true);
+      window.removeEventListener("resize", onReflow);
+    };
+  }, [open, measure]);
+
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="fld flex w-full items-center justify-between gap-2 text-left"
+      >
+        <span className={`truncate ${selected ? "text-slate-100" : "text-slate-500"}`}>
+          {selected ? `[${selected.grade}] ${selected.name}` : placeholder}
+        </span>
+        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+
+      {open && rect && typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={popRef}
+            style={{ position: "fixed", left: rect.left, top: rect.top, width: rect.width, zIndex: 9999 }}
+            className="max-h-72 overflow-y-auto rounded-xl border border-white/15 bg-slate-900 shadow-xl shadow-black/50"
+          >
+            <button
+              type="button"
+              onClick={() => { onChange(""); setOpen(false); }}
+              className="block w-full px-3 py-2 text-left text-sm text-slate-400 hover:bg-white/5"
+            >
+              {placeholder}
+            </button>
+            {assets.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => { onChange(a.id); setOpen(false); }}
+                className={`block w-full border-t border-white/5 px-3 py-2 text-left transition hover:bg-white/8 ${
+                  a.id === value ? "bg-cyan-400/10" : ""
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${ITEM_GRADE_COLORS[a.grade] ?? "chip"}`}>
+                    {a.grade}
+                  </span>
+                  <span className="text-sm font-semibold text-slate-100">{a.name}</span>
+                </div>
+                {a.description && (
+                  <p className="mt-0.5 text-xs leading-snug text-slate-400">{a.description}</p>
+                )}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

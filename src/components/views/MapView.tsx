@@ -28,10 +28,31 @@ export function MapView() {
     return () => clearTimeout(t);
   }, [openItemId]);
 
+  // 若目前選取的收費區不可付（無獨佔，或付款隊自己就是獨佔），自動跳到第一個可付區
+  const tollRegionRi = snap?.regions.find((x) => x.code === tollRegion);
+  const tollRegionPayable =
+    !!tollRegionRi?.monopolyTeamName && !(team !== "" && tollRegionRi.monopolyTeamId === team);
+  useEffect(() => {
+    if (!snap || tollRegionPayable) return;
+    const firstPayable = REGIONS.find((r) => {
+      const ri = snap.regions.find((x) => x.code === r.code);
+      return !!ri?.monopolyTeamName && !(team !== "" && ri.monopolyTeamId === team);
+    });
+    if (firstPayable) setTollRegion(firstPayable.code);
+  }, [snap, tollRegion, team, tollRegionPayable]);
+
   if (!snap) return <p className="text-sm text-slate-400">載入中…</p>;
   const teams = snap.teams;
   const cur = teams.find((t) => t.id === team);
   const event1 = snap.activeEvents.includes(1);
+  // 有任一區可收過路費（有獨佔且付款隊不是該區獨佔）才需付費；否則整張卡顯示「不需過路費」
+  const anyMonopoly = REGIONS.some(
+    (r) => !!snap.regions.find((x) => x.code === r.code)?.monopolyTeamName,
+  );
+  const anyPayable = REGIONS.some((r) => {
+    const ri = snap.regions.find((x) => x.code === r.code);
+    return !!ri?.monopolyTeamName && !(team !== "" && ri.monopolyTeamId === team);
+  });
 
   return (
     <div className="space-y-4">
@@ -103,6 +124,9 @@ export function MapView() {
                 const ui = REGION_UI[r.code];
                 const selected = tollRegion === r.code;
                 const hasMonopoly = !!ri?.monopolyTeamName;
+                // 付款隊本身就是該區獨佔 → 免過路費，不可選
+                const isOwnMonopoly = team !== "" && ri?.monopolyTeamId === team;
+                const payable = hasMonopoly && !isOwnMonopoly;
                 const baseToll = ri?.toll ?? 0;
 
                 // 獨佔隊的 TOLL_INCOME 提高過路費；付款隊的 TOLL_PAID 降低過路費。
@@ -125,7 +149,8 @@ export function MapView() {
                   <button
                     key={r.code}
                     onClick={() => setTollRegion(r.code)}
-                    className={`rounded-xl border p-3 text-left transition active:scale-[0.98] ${
+                    disabled={!payable}
+                    className={`rounded-xl border p-3 text-left transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100 ${
                       selected
                         ? `${ui.border} bg-white/8 ring-1 ${ui.border}`
                         : "border-white/8 bg-white/3 hover:bg-white/8"
@@ -180,25 +205,33 @@ export function MapView() {
               })}
             </div>
 
-            <ActionButton
-              label="支付過路費"
-              className="w-full bg-cyan-500 text-slate-950 hover:bg-cyan-400"
-              disabled={team === ""}
-              onAction={async () => {
-                if (team === "") return "請先選付款小隊";
-                const prop = snap.properties.find((p) => p.region === tollRegion);
-                if (!prop) return "該區尚無資本據點";
-                const r = await postJson("/api/exchange/toll", {
-                  propertyId: prop.id,
-                  payerTeamId: team,
-                });
-                await mutate();
-                return {
-                  message: `${cur?.name} 付款 ${r.toll}${r.toll !== r.baseToll ? `（基礎 ${r.baseToll}）` : ""}`,
-                  undo: r.undo as UndoRecipe | undefined,
-                };
-              }}
-            />
+            {anyPayable ? (
+              <ActionButton
+                label="支付過路費"
+                className="w-full bg-cyan-500 text-slate-950 hover:bg-cyan-400"
+                disabled={team === ""}
+                onAction={async () => {
+                  if (team === "") return "請先選付款小隊";
+                  const prop = snap.properties.find((p) => p.region === tollRegion);
+                  if (!prop) return "該區尚無資本據點";
+                  const r = await postJson("/api/exchange/toll", {
+                    propertyId: prop.id,
+                    payerTeamId: team,
+                  });
+                  await mutate();
+                  return {
+                    message: `${cur?.name} 付款 ${r.toll}`,
+                    undo: r.undo as UndoRecipe | undefined,
+                  };
+                }}
+              />
+            ) : (
+              <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 py-3 text-center text-sm font-semibold text-emerald-300">
+                {anyMonopoly && team !== ""
+                  ? "該隊為唯一獨佔者・不需過路費"
+                  : "目前無可付費的獨佔區・不需過路費"}
+              </div>
+            )}
 
           </Card>
 

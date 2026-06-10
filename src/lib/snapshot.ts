@@ -33,6 +33,7 @@ export type ActiveItemView = {
   condition: string | null;
   description: string;
   usesRemaining: number | null; // null = 永久
+  markTeamId: number | null;    // 海盜旗鎖定目標（PIRACY）
 };
 
 export type TeamView = {
@@ -159,6 +160,7 @@ export async function getSnapshot(): Promise<Snapshot> {
       condition: item.asset.condition,
       description: item.asset.description,
       usesRemaining: item.usesRemaining,
+      markTeamId: item.markTeamId,
     });
     teamItemsMap.set(item.teamId, list);
   }

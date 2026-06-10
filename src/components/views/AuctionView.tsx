@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import useSWR from "swr";
 import { fetcher, useSnapshot, postJson, ActionButton, toast } from "@/components/client";
 import { Card } from "@/components/Shell";
-import { Num } from "@/components/ui";
+import { Num, AssetPicker } from "@/components/ui";
 
 type LotType = "CUSTOM" | "ITEM" | "PROPERTY";
 
@@ -707,10 +707,10 @@ function LotForm({
 
       {lotType === "ITEM" && (
         <div className="flex flex-col gap-2 sm:flex-row">
-          <select
+          <AssetPicker
+            assets={assets}
             value={lotAsset}
-            onChange={(e) => {
-              const id = e.target.value ? Number(e.target.value) : "";
+            onChange={(id) => {
               setLotAsset(id);
               // 自動帶入該動產的名稱與說明（拍賣官仍可手動修改）
               const a = id === "" ? undefined : assets.find((x) => x.id === id);
@@ -719,16 +719,8 @@ function LotForm({
                 setLotDesc(a.description);
               }
             }}
-            className="fld flex-1"
-          >
-            <option value="">選擇動產</option>
-            {assets.map((a) => (
-              <option key={a.id} value={a.id}>
-                [{a.grade}] {a.name}
-                {a.description ? `— ${a.description}` : ""}
-              </option>
-            ))}
-          </select>
+            className="flex-1"
+          />
           <input
             type="number"
             value={lotHidden}

@@ -382,22 +382,27 @@ export async function payToll(params: {
       ledgerIds.push(lTax);
     }
 
-    // PIRACY：額外從付款隊偷取比例（分給海盜隊）
-    for (const item of allItems) {
-      if (item.asset.effectType !== "PIRACY") continue;
-      if (item.teamId === payerTeamId) continue; // 不偷自己
-      const stolen = applyPiracy(baseToll, item.asset.effectValue);
+    // PIRACY（海盜旗・懸賞標記）：被標記的隊「收」過路費時，海盜抽成。
+    // 反滾雪球：僅當海盜隊比目標窮才生效（海盜較富 → 標記失效）。
+    // 抽成從目標剛收到的過路費扣回，分給海盜隊。永久型，不消耗次數。
+    const piracyItems = await tx.teamItem.findMany({
+      where: { active: true, markTeamId: monopolyId, asset: { effectType: "PIRACY" } },
+      include: { asset: true },
+    });
+    for (const item of piracyItems) {
+      if (item.teamId === monopolyId) continue; // 不抽自己
+      const pirate = await tx.team.findUnique({ where: { id: item.teamId }, select: { coins: true } });
+      const target = await tx.team.findUnique({ where: { id: monopolyId }, select: { coins: true } });
+      if (!pirate || !target) continue;
+      if (pirate.coins >= target.coins) continue; // 海盜較富 → 標記無效
+      const stolen = applyPiracy(toll, item.asset.effectValue);
       if (stolen <= 0) continue;
-      // 確認付款方還扣得起
-      const payerNow = await tx.team.findUnique({ where: { id: payerTeamId }, select: { coins: true } });
-      if ((payerNow?.coins ?? 0) < stolen) continue;
-      await tx.team.update({ where: { id: payerTeamId }, data: { coins: { decrement: stolen } } });
-      await tx.team.update({ where: { id: item.teamId }, data: { coins: { increment: stolen } } });
-      const lFrom = await logLedger(tx, { teamId: payerTeamId, kind: "coins", delta: -stolen, note: `海盜稅 ${REGION_NAME[region]}`, byToken });
-      const lTo   = await logLedger(tx, { teamId: item.teamId,  kind: "coins", delta: stolen,  note: `海盜稅收入 ${REGION_NAME[region]}`, byToken });
+      await tx.team.update({ where: { id: monopolyId   }, data: { coins: { decrement: stolen } } });
+      await tx.team.update({ where: { id: item.teamId  }, data: { coins: { increment: stolen } } });
+      const lFrom = await logLedger(tx, { teamId: monopolyId,  kind: "coins", delta: -stolen, note: `俠盜抽成 ${REGION_NAME[region]}`, byToken });
+      const lTo   = await logLedger(tx, { teamId: item.teamId, kind: "coins", delta: stolen,  note: `俠盜抽成收入 ${REGION_NAME[region]}`, byToken });
       ledgerIds.push(lFrom, lTo);
     }
-    await decrementUses(tx, allItems.filter((i) => i.asset.effectType === "PIRACY" && i.teamId !== payerTeamId).map((i) => i.id));
 
     const undo: UndoRecipe = { label: `過路費 ${toll}`, ledgerIds };
     return { ok: true, baseToll, toll, monopolyId, undo };
@@ -490,19 +495,21 @@ export async function respondTrade(params: {
     if (trade.cardPoints) ledgers.push({ teamId: target, kind: "cardPoints", delta: trade.cardPoints, note, byToken });
     if (ledgers.length) await tx.ledger.createMany({ data: ledgers });
 
-    // ALLIANCE_BONUS：交易接受時雙方各得固定光幣
+    // ALLIANCE_BONUS：交易接受時，只要任一方持有，交易雙方「各」得固定光幣
     if (action === "accept") {
-      const allItems = await tx.teamItem.findMany({
-        where: { teamId: { in: [trade.fromTeamId, trade.toTeamId] }, active: true },
+      const allianceItems = await tx.teamItem.findMany({
+        where: { teamId: { in: [trade.fromTeamId, trade.toTeamId] }, active: true, asset: { effectType: "ALLIANCE_BONUS" } },
         include: { asset: true },
       });
       const allianceUsedIds: number[] = [];
-      for (const item of allItems) {
-        if (item.asset.effectType !== "ALLIANCE_BONUS") continue;
+      for (const item of allianceItems) {
         const bonus = applyAllianceBonus(item.asset.effectValue);
         if (bonus <= 0) continue;
-        await tx.team.update({ where: { id: item.teamId }, data: { coins: { increment: bonus } } });
-        await logLedger(tx, { teamId: item.teamId, kind: "coins", delta: bonus, note: "交易聯盟紅利", byToken });
+        // 雙方各得一份（持有者的這張道具同時惠及對方）
+        for (const teamId of [trade.fromTeamId, trade.toTeamId]) {
+          await tx.team.update({ where: { id: teamId }, data: { coins: { increment: bonus } } });
+          await logLedger(tx, { teamId, kind: "coins", delta: bonus, note: "交易聯盟紅利", byToken });
+        }
         allianceUsedIds.push(item.id);
       }
       if (allianceUsedIds.length) await decrementUses(tx, allianceUsedIds);
@@ -933,6 +940,30 @@ export async function deactivateItem(params: { itemId: number; byToken?: string 
     await tx.teamItem.update({ where: { id: itemId }, data: { active: false } });
     await logLedger(tx, { teamId: item.teamId, kind: "items", delta: 0, note: `動產失效：${item.asset.name}`, byToken });
     return { ok: true };
+  });
+}
+
+// 海盜旗：鎖定目標（markTeamId）。一次性 —— 一旦鎖定即不可更改。
+export async function setPiracyMark(params: { itemId: number; markTeamId: number; byToken?: string }) {
+  const { itemId, markTeamId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const item = await tx.teamItem.findUnique({ where: { id: itemId }, include: { asset: true } });
+    if (!item) throw new Error("找不到動產");
+    if (!item.active) throw new Error("該動產已失效");
+    if (item.asset.effectType !== "PIRACY") throw new Error("此動產無法鎖定目標");
+    if (item.markTeamId != null) throw new Error("印記已鎖定目標，無法更改");
+    if (markTeamId === item.teamId) throw new Error("不能標記自己");
+    const target = await tx.team.findUnique({ where: { id: markTeamId } });
+    if (!target) throw new Error("找不到目標小隊");
+    await tx.teamItem.update({ where: { id: itemId }, data: { markTeamId } });
+    await logLedger(tx, {
+      teamId: item.teamId,
+      kind: "items",
+      delta: 0,
+      note: `俠盜印記鎖定：${target.name}`,
+      byToken,
+    });
+    return { ok: true, markTeamId };
   });
 }
 

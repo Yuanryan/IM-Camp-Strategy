@@ -258,16 +258,16 @@ describe("effect: PROPERTY_DIVIDEND（applyPropertyDividend）", () => {
   });
 });
 
-// ── PIRACY ───────────────────────────────────────────────────
+// ── PIRACY（海盜旗：從被標記隊收到的過路費抽成）─────────────────
 describe("effect: PIRACY（applyPiracy）", () => {
-  it("5% 偷取", () => {
-    expect(applyPiracy(200, 0.05)).toBe(10);
+  it("從過路費抽 10% 成", () => {
+    expect(applyPiracy(200, 0.1)).toBe(20);
   });
   it("rate = 0 時為 0", () => {
     expect(applyPiracy(200, 0)).toBe(0);
   });
   it("不為負", () => {
-    expect(applyPiracy(-100, 0.05)).toBe(0);
+    expect(applyPiracy(-100, 0.1)).toBe(0);
   });
 });
 
