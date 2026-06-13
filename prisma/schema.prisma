@@ -129,7 +129,10 @@ model TeamItem {
   active        Boolean      @default(true) // false = 已失效（耗盡 / 手動撤銷）
   note          String?      // 取得方式備註
   markTeamId    Int?                       // 鎖定目標小隊（海盜旗 PIRACY：被標記隊收過路費時抽成）
+  lockedTradeId Int?                       // 非 null = 凍結於某筆 PENDING 交易中（暫不生效、不可重複交易）
   obtainedAt    DateTime     @default(now())
+
+  @@index([lockedTradeId])
 }
 
 model Property {

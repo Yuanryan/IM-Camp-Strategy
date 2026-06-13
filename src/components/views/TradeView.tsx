@@ -1,27 +1,42 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import useSWR from "swr";
 import { fetcher, useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { Card } from "@/components/Shell";
 import { Num, TeamItemBadges } from "@/components/ui";
-import { EffectType } from "@/lib/game";
+import { EffectType, ITEM_GRADE_COLORS } from "@/lib/game";
 import { TransactionAnimation, type TxResult } from "@/components/TransactionAnimation";
 
+type TradeItem = { id: number; name: string; grade: string };
 type Resolved = { id: number; toTeamName: string; coins: number; cardPoints: number };
+type PendingTrade = { id: number; coins: number; cardPoints: number; items: TradeItem[] };
 type TradeData = {
-  incoming: { id: number; fromTeamName: string; coins: number; cardPoints: number }[];
-  outgoing: { id: number; toTeamName: string; coins: number; cardPoints: number }[];
+  incoming: (PendingTrade & { fromTeamName: string })[];
+  outgoing: (PendingTrade & { toTeamName: string })[];
   justAccepted: Resolved[];
   justRejected: Resolved[];
 };
 
-function TradeAmt({ coins, points }: { coins: number; points: number }) {
+function TradeAmt({ coins, points, items }: { coins: number; points: number; items?: TradeItem[] }) {
+  const parts: ReactNode[] = [];
+  if (coins > 0) parts.push(<span key="c" className="neon-gold">{coins} 光幣</span>);
+  if (points > 0) parts.push(<span key="p" className="text-cyan-300">{points} 點數</span>);
+  (items ?? []).forEach((it) =>
+    parts.push(
+      <span key={`i${it.id}`} className={`rounded px-1 py-0.5 text-[11px] ${ITEM_GRADE_COLORS[it.grade] ?? "chip"}`}>
+        {it.name}
+      </span>,
+    ),
+  );
   return (
-    <span className="font-bold">
-      {coins > 0 && <span className="neon-gold">{coins} 光幣</span>}
-      {coins > 0 && points > 0 && <span className="text-slate-400"> + </span>}
-      {points > 0 && <span className="text-cyan-300">{points} 點數</span>}
+    <span className="inline-flex flex-wrap items-center gap-x-1 gap-y-0.5 font-bold align-middle">
+      {parts.map((node, i) => (
+        <span key={i} className="inline-flex items-center gap-1">
+          {i > 0 && <span className="text-slate-400">+</span>}
+          {node}
+        </span>
+      ))}
     </span>
   );
 }
@@ -32,6 +47,7 @@ export function TradeView({ teamId }: { teamId: number }) {
   const [to, setTo] = useState<number | "">("");
   const [coins, setCoins] = useState(0);
   const [points, setPoints] = useState(0);
+  const [itemIds, setItemIds] = useState<number[]>([]);
   const [result, setResult] = useState<TxResult>(null);
   const [busyId, setBusyId] = useState<number | null>(null); // 該列處理中：接受/拒絕互鎖
   const celebrated = useRef<Set<number>>(new Set());
@@ -62,6 +78,10 @@ export function TradeView({ teamId }: { teamId: number }) {
   if (!snap || !data) return <p className="text-sm text-slate-400">載入中…</p>;
   const me = snap.teams.find((t) => t.id === teamId);
   const others = snap.teams.filter((t) => t.id !== teamId);
+  const myItems = me?.items ?? []; // 快照已排除凍結中動產，故清單即「可交易」
+  const toggleItem = (id: number) =>
+    setItemIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const nothingToSend = coins === 0 && points === 0 && itemIds.length === 0;
 
   // 拒絕（收受方按）— 自己餘額不變，只需刷新列表
   const act = async (tradeId: number, action: string, ok: string) => {
@@ -75,7 +95,7 @@ export function TradeView({ teamId }: { teamId: number }) {
       <TransactionAnimation result={result} onClose={() => setResult(null)} />
 
       {/* 發起交易 */}
-      <Card title="發起交易（送出光幣 / 卡牌點數）">
+      <Card title="發起交易（送出光幣 / 卡牌點數 / 動產）">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label className="text-xs text-slate-400 sm:col-span-2">
             <div className="mb-1">對象小隊</div>
@@ -92,15 +112,37 @@ export function TradeView({ teamId }: { teamId: number }) {
               onChange={(e) => setPoints(Math.max(0, Number(e.target.value) || 0))} className="fld w-full" />
           </label>
         </div>
+
+        {/* 我的動產：可勾選一併送出 */}
+        <div className="mt-3">
+          <div className="mb-1 text-xs text-slate-400">我的動產{itemIds.length > 0 && `（已選 ${itemIds.length}）`}</div>
+          {myItems.length === 0 ? (
+            <p className="text-xs text-slate-500">目前沒有可交易的動產</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {myItems.map((it) => {
+                const on = itemIds.includes(it.id);
+                return (
+                  <button key={it.id} type="button" onClick={() => toggleItem(it.id)}
+                    className={`rounded-lg border px-2 py-1 text-xs font-medium transition active:scale-95 ${ITEM_GRADE_COLORS[it.grade] ?? "chip"} ${on ? "ring-2 ring-white/70" : "opacity-70"}`}>
+                    <span className="font-bold opacity-70">{it.grade}</span> {it.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <ActionButton label="發起交易" disabled={to === "" || (coins === 0 && points === 0)}
+          <ActionButton label="發起交易" disabled={to === "" || nothingToSend}
             onAction={async () => {
               if (to === "") return "請先選對象";
-              if (coins === 0 && points === 0) return "請輸入交易內容";
-              await postJson("/api/trade", { toTeamId: to, coins, cardPoints: points });
+              if (nothingToSend) return "請輸入交易內容";
+              await postJson("/api/trade", { toTeamId: to, coins, cardPoints: points, itemIds });
               await mutate();
               setCoins(0);
               setPoints(0);
+              setItemIds([]);
               setTo("");
               return "已發起交易（資源已凍結，待對方接受）";
             }} />
@@ -108,8 +150,8 @@ export function TradeView({ teamId }: { teamId: number }) {
             你的餘額：光幣 <Num className="neon-gold">{me?.coins}</Num>　點數 <Num className="text-cyan-300">{me?.cardPoints}</Num>
           </span>
         </div>
-        <TeamItemBadges items={me?.items ?? []} relevantTypes={[EffectType.ALLIANCE_BONUS]} />
-        <p className="mt-2 text-xs text-slate-500">發起後資源立即凍結；對方接受才轉出，拒絕或你取消則退回。</p>
+        <TeamItemBadges items={myItems} relevantTypes={[EffectType.ALLIANCE_BONUS]} />
+        <p className="mt-2 text-xs text-slate-500">發起後資源 / 動產立即凍結（動產暫停生效）；對方接受才轉出，拒絕或你取消則退回。</p>
       </Card>
 
       {/* 收到的交易 */}
@@ -121,7 +163,7 @@ export function TradeView({ teamId }: { teamId: number }) {
             {data.incoming.map((t) => (
               <li key={t.id} className="rounded-xl border border-cyan-400/30 bg-cyan-400/5 p-3">
                 <div className="text-sm">
-                  <b className="text-cyan-300">{t.fromTeamName}</b> 要給你 <TradeAmt coins={t.coins} points={t.cardPoints} />
+                  <b className="text-cyan-300">{t.fromTeamName}</b> 要給你 <TradeAmt coins={t.coins} points={t.cardPoints} items={t.items} />
                 </div>
                 <div className="mt-2 flex gap-2">
                   <ActionButton label="接受" className="btn-emerald"
@@ -133,7 +175,7 @@ export function TradeView({ teamId }: { teamId: number }) {
                         await mutate();
                         setResult({
                           status: "success",
-                          detail: <span>收到 {t.fromTeamName} <TradeAmt coins={t.coins} points={t.cardPoints} /></span>,
+                          detail: <span>收到 {t.fromTeamName} <TradeAmt coins={t.coins} points={t.cardPoints} items={t.items} /></span>,
                         });
                       } catch (e) {
                         await mutate();
@@ -168,7 +210,7 @@ export function TradeView({ teamId }: { teamId: number }) {
             {data.outgoing.map((t) => (
               <li key={t.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
                 <div className="text-sm">
-                  給 <b>{t.toTeamName}</b> <TradeAmt coins={t.coins} points={t.cardPoints} />
+                  給 <b>{t.toTeamName}</b> <TradeAmt coins={t.coins} points={t.cardPoints} items={t.items} />
                   <span className="ml-2 text-xs text-amber-300">待對方接受</span>
                 </div>
                 <ActionButton label="取消" className="chip"

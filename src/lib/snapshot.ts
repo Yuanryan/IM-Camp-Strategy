@@ -119,7 +119,8 @@ export async function getSnapshot(): Promise<Snapshot> {
       prisma.team.findMany({ orderBy: { id: "asc" } }),
       prisma.property.findMany({ orderBy: { id: "asc" } }),
       prisma.lotteryNumber.findMany(),
-      prisma.teamItem.findMany({ where: { active: true }, include: { asset: true } }),
+      // 凍結於 PENDING 交易中的動產（lockedTradeId 非 null）不算擁有者有效持有，排除
+      prisma.teamItem.findMany({ where: { active: true, lockedTradeId: null }, include: { asset: true } }),
       prisma.auctionEvent.findFirst({ where: { status: "OPEN" }, orderBy: { id: "desc" } }),
       prisma.auctionLot.findFirst({ where: { status: "LIVE" }, orderBy: { id: "desc" } }),
       prisma.auctionLot.findMany({

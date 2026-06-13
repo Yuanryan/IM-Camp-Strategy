@@ -32,6 +32,11 @@ import {
 
 type Tx = Prisma.TransactionClient;
 
+// 「有效動產」的共用條件：active 且未被凍結於 PENDING 交易中。
+// 所有會讀取擁有者有效動產（效果計算 / 清單）的查詢都應併入此條件，
+// 否則凍結中的動產仍會生效（等同一物兩用）。新增效果查詢時務必沿用。
+const ACTIVE_ITEM = { active: true, lockedTradeId: null } as const;
+
 // 寫一筆總帳並回傳其 id（撤銷配方需要這些 id 才能精準回沖）。
 async function logLedger(
   tx: Tx,
@@ -71,7 +76,7 @@ async function loadActiveEffects(
   context?: { region?: string },
 ): Promise<EffectLoad> {
   const items = await tx.teamItem.findMany({
-    where: { teamId, active: true },
+    where: { teamId, ...ACTIVE_ITEM },
     include: { asset: true },
   });
   const matched = items.filter((item) => {
@@ -156,7 +161,7 @@ export async function applyWheel(params: {
 
     // WHEEL_NO_ZERO：排除 ×0，並消耗一次
     const noZeroItems = await tx.teamItem.findMany({
-      where: { teamId, active: true },
+      where: { teamId, ...ACTIVE_ITEM },
       include: { asset: true },
     });
     const hasNoZero = noZeroItems.some((i) => i.asset.effectType === "WHEEL_NO_ZERO");
@@ -368,7 +373,7 @@ export async function payToll(params: {
 
     // 全場稅收：TAX_COLLECTOR 效果（永久型，不計入 decrementUses）
     const allItems = await tx.teamItem.findMany({
-      where: { active: true, asset: { effectType: "TAX_COLLECTOR" } },
+      where: { ...ACTIVE_ITEM, asset: { effectType: "TAX_COLLECTOR" } },
       include: { asset: true },
     });
     const taxMap = new Map<number, number>();
@@ -387,7 +392,7 @@ export async function payToll(params: {
     // 反滾雪球：僅當海盜隊比目標窮才生效（海盜較富 → 標記失效）。
     // 抽成從目標剛收到的過路費扣回，分給海盜隊。永久型，不消耗次數。
     const piracyItems = await tx.teamItem.findMany({
-      where: { active: true, markTeamId: monopolyId, asset: { effectType: "PIRACY" } },
+      where: { ...ACTIVE_ITEM, markTeamId: monopolyId, asset: { effectType: "PIRACY" } },
       include: { asset: true },
     });
     for (const item of piracyItems) {
@@ -416,12 +421,14 @@ export async function createTrade(params: {
   toTeamId: number;
   coins: number;
   cardPoints: number;
+  itemIds?: number[];
   byToken?: string;
 }) {
   const { fromTeamId, toTeamId, coins, cardPoints, byToken } = params;
+  const itemIds = [...new Set(params.itemIds ?? [])];
   if (fromTeamId === toTeamId) throw new Error("不能跟自己交易");
   if (coins < 0 || cardPoints < 0) throw new Error("數量需為正");
-  if (coins === 0 && cardPoints === 0) throw new Error("請輸入交易內容");
+  if (coins === 0 && cardPoints === 0 && itemIds.length === 0) throw new Error("請輸入交易內容");
   return prisma.$transaction(async (tx) => {
     // 一次抓兩隊（少一次往返）
     const teams = await tx.team.findMany({ where: { id: { in: [fromTeamId, toTeamId] } } });
@@ -431,7 +438,18 @@ export async function createTrade(params: {
     if (from.coins < coins) throw new Error(`光幣不足（需 ${coins}）`);
     if (from.cardPoints < cardPoints) throw new Error(`卡牌點數不足（需 ${cardPoints}）`);
 
-    // 凍結：發起當下先從發起方扣除
+    // 驗證動產：必須屬於發起方、有效（active）、且未被凍結於其他交易中
+    const items = itemIds.length
+      ? await tx.teamItem.findMany({ where: { id: { in: itemIds } }, include: { asset: true } })
+      : [];
+    if (items.length !== itemIds.length) throw new Error("部分動產不存在");
+    for (const it of items) {
+      if (it.teamId !== fromTeamId) throw new Error(`動產不屬於你：${it.asset.name}`);
+      if (!it.active) throw new Error(`動產已失效：${it.asset.name}`);
+      if (it.lockedTradeId != null) throw new Error(`動產已在其他交易凍結中：${it.asset.name}`);
+    }
+
+    // 凍結：發起當下先從發起方扣除光幣 / 點數
     await tx.team.update({
       where: { id: fromTeamId },
       data: { coins: { decrement: coins }, cardPoints: { decrement: cardPoints } },
@@ -439,11 +457,18 @@ export async function createTrade(params: {
     const trade = await tx.trade.create({
       data: { fromTeamId, toTeamId, coins, cardPoints, status: "PENDING" },
     });
-    // 兩筆 ledger 一次寫（少一次往返）
+    // 凍結動產：標記 lockedTradeId（暫不生效、不可被其他交易再選）
+    if (itemIds.length) {
+      await tx.teamItem.updateMany({ where: { id: { in: itemIds } }, data: { lockedTradeId: trade.id } });
+    }
+    // ledger 一次寫（少一次往返）
     const note = `發起交易給 ${to.name}（凍結）`;
     const ledgers: Prisma.LedgerCreateManyInput[] = [];
     if (coins) ledgers.push({ teamId: fromTeamId, kind: "coins", delta: -coins, note, byToken });
     if (cardPoints) ledgers.push({ teamId: fromTeamId, kind: "cardPoints", delta: -cardPoints, note, byToken });
+    for (const it of items) {
+      ledgers.push({ teamId: fromTeamId, kind: "items", delta: 0, note: `動產凍結於交易：${it.asset.name} → ${to.name}`, byToken });
+    }
     if (ledgers.length) await tx.ledger.createMany({ data: ledgers });
     return { ok: true, tradeId: trade.id };
   });
@@ -496,10 +521,36 @@ export async function respondTrade(params: {
     if (trade.cardPoints) ledgers.push({ teamId: target, kind: "cardPoints", delta: trade.cardPoints, note, byToken });
     if (ledgers.length) await tx.ledger.createMany({ data: ledgers });
 
+    // 凍結動產：接受 → 過戶給收受方並解凍；拒絕 / 取消 → 僅解凍（自動回到原擁有者有效清單）
+    const lockedItems = await tx.teamItem.findMany({
+      where: { lockedTradeId: trade.id },
+      include: { asset: true },
+    });
+    if (lockedItems.length) {
+      if (action === "accept") {
+        await tx.teamItem.updateMany({
+          where: { lockedTradeId: trade.id },
+          data: { teamId: trade.toTeamId, lockedTradeId: null },
+        });
+      } else {
+        await tx.teamItem.updateMany({ where: { lockedTradeId: trade.id }, data: { lockedTradeId: null } });
+      }
+      const itemLedgers: Prisma.LedgerCreateManyInput[] = [];
+      for (const it of lockedItems) {
+        if (action === "accept") {
+          itemLedgers.push({ teamId: trade.fromTeamId, kind: "items", delta: 0, note: `動產轉出：${it.asset.name} → ${to?.name}`, byToken });
+          itemLedgers.push({ teamId: trade.toTeamId, kind: "items", delta: 0, note: `動產收入：${it.asset.name}（來自 ${from?.name}）`, byToken });
+        } else {
+          itemLedgers.push({ teamId: trade.fromTeamId, kind: "items", delta: 0, note: `動產退回：${it.asset.name}（${action === "reject" ? "對方拒絕" : "自行取消"}）`, byToken });
+        }
+      }
+      await tx.ledger.createMany({ data: itemLedgers });
+    }
+
     // ALLIANCE_BONUS：交易接受時，只要任一方持有，交易雙方「各」得固定光幣
     if (action === "accept") {
       const allianceItems = await tx.teamItem.findMany({
-        where: { teamId: { in: [trade.fromTeamId, trade.toTeamId] }, active: true, asset: { effectType: "ALLIANCE_BONUS" } },
+        where: { teamId: { in: [trade.fromTeamId, trade.toTeamId] }, ...ACTIVE_ITEM, asset: { effectType: "ALLIANCE_BONUS" } },
         include: { asset: true },
       });
       const allianceUsedIds: number[] = [];
@@ -618,7 +669,7 @@ export async function drawLottery(params: { byToken?: string }) {
 
     // JACKPOT_SHARE：其他隊自動抽成（從銀行出，不影響中獎者）
     const allItems = await tx.teamItem.findMany({
-      where: { active: true },
+      where: { ...ACTIVE_ITEM },
       include: { asset: true },
     });
     const shareUsedIds: number[] = [];
@@ -790,7 +841,7 @@ export async function applyGoodCard(params: {
 
     // WHEEL_ON_GOOD_CARD：好運卡獎勵 × 輪盤結果
     const wheelItems = await tx.teamItem.findMany({
-      where: { teamId, active: true },
+      where: { teamId, ...ACTIVE_ITEM },
       include: { asset: true },
     });
     const wheelOnCardItem = wheelItems.find((i) => i.asset.effectType === "WHEEL_ON_GOOD_CARD");
@@ -854,7 +905,7 @@ export async function applyMobileReward(params: {
     let doubled: boolean | null = null;
     if (coins > 0) {
       const dItems = await tx.teamItem.findMany({
-        where: { teamId, active: true },
+        where: { teamId, ...ACTIVE_ITEM },
         include: { asset: true },
       });
       const dItem = dItems.find((i) => i.asset.effectType === "DOUBLE_OR_NOTHING");
@@ -921,6 +972,7 @@ export async function transferItem(params: {
     const item = await tx.teamItem.findUnique({ where: { id: itemId }, include: { asset: true } });
     if (!item) throw new Error("找不到動產");
     if (!item.active) throw new Error("該動產已失效");
+    if (item.lockedTradeId != null) throw new Error("該動產交易凍結中");
     if (item.teamId === toTeamId) throw new Error("來源與目標相同");
     const toTeam = await tx.team.findUnique({ where: { id: toTeamId } });
     if (!toTeam) throw new Error("找不到目標小隊");
@@ -938,6 +990,7 @@ export async function deactivateItem(params: { itemId: number; byToken?: string 
     const item = await tx.teamItem.findUnique({ where: { id: itemId }, include: { asset: true } });
     if (!item) throw new Error("找不到動產");
     if (!item.active) throw new Error("該動產已失效");
+    if (item.lockedTradeId != null) throw new Error("該動產交易凍結中");
     await tx.teamItem.update({ where: { id: itemId }, data: { active: false } });
     await logLedger(tx, { teamId: item.teamId, kind: "items", delta: 0, note: `動產失效：${item.asset.name}`, byToken });
     return { ok: true };
@@ -951,6 +1004,7 @@ export async function setPiracyMark(params: { itemId: number; markTeamId: number
     const item = await tx.teamItem.findUnique({ where: { id: itemId }, include: { asset: true } });
     if (!item) throw new Error("找不到動產");
     if (!item.active) throw new Error("該動產已失效");
+    if (item.lockedTradeId != null) throw new Error("該動產交易凍結中");
     if (item.asset.effectType !== "PIRACY") throw new Error("此動產無法鎖定目標");
     if (item.markTeamId != null) throw new Error("印記已鎖定目標，無法更改");
     if (markTeamId === item.teamId) throw new Error("不能標記自己");
@@ -973,7 +1027,7 @@ export async function distributeRoundIncome(params: { teamId: number; byToken?: 
   const { teamId, byToken } = params;
   return prisma.$transaction(async (tx) => {
     // 只處理選定小隊的道具（UNDERDOG 排名仍需全場淨值，於下方另計）
-    const items = await tx.teamItem.findMany({ where: { teamId, active: true }, include: { asset: true } });
+    const items = await tx.teamItem.findMany({ where: { teamId, ...ACTIVE_ITEM }, include: { asset: true } });
 
     const ROUND_TYPES = new Set(["COINS_PER_ROUND", "COMPOUND_INTEREST", "PROPERTY_DIVIDEND", "UNDERDOG"]);
     const roundItems = items.filter((i) => ROUND_TYPES.has(i.asset.effectType));

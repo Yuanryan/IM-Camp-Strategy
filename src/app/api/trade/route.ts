@@ -1,4 +1,4 @@
-import { apiRoute, num, optNum } from "@/lib/api";
+import { apiRoute, num, optNum, optNumArray } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { createTrade } from "@/lib/service";
 
@@ -24,13 +24,25 @@ export const GET = apiRoute(["TEAM"], async ({ session }) => {
   const nameOf = (id: number) => teams.find((t) => t.id === id)?.name ?? `#${id}`;
   const shape = (t: (typeof recent)[number]) => ({ id: t.id, toTeamName: nameOf(t.toTeamId), coins: t.coins, cardPoints: t.cardPoints });
 
+  // PENDING 交易凍結中的動產：用 lockedTradeId 反查，分組到各筆交易
+  const lockedItems = trades.length
+    ? await prisma.teamItem.findMany({
+        where: { lockedTradeId: { in: trades.map((t) => t.id) } },
+        include: { asset: { select: { name: true, grade: true } } },
+      })
+    : [];
+  const itemsOf = (tradeId: number) =>
+    lockedItems
+      .filter((it) => it.lockedTradeId === tradeId)
+      .map((it) => ({ id: it.id, name: it.asset.name, grade: it.asset.grade }));
+
   return {
     incoming: trades
       .filter((t) => t.toTeamId === me)
-      .map((t) => ({ id: t.id, fromTeamName: nameOf(t.fromTeamId), coins: t.coins, cardPoints: t.cardPoints })),
+      .map((t) => ({ id: t.id, fromTeamName: nameOf(t.fromTeamId), coins: t.coins, cardPoints: t.cardPoints, items: itemsOf(t.id) })),
     outgoing: trades
       .filter((t) => t.fromTeamId === me)
-      .map((t) => ({ id: t.id, toTeamName: nameOf(t.toTeamId), coins: t.coins, cardPoints: t.cardPoints })),
+      .map((t) => ({ id: t.id, toTeamName: nameOf(t.toTeamId), coins: t.coins, cardPoints: t.cardPoints, items: itemsOf(t.id) })),
     justAccepted: recent.filter((t) => t.status === "ACCEPTED").map(shape),
     justRejected: recent.filter((t) => t.status === "REJECTED").map(shape),
   };
@@ -44,6 +56,7 @@ export const POST = apiRoute(["TEAM"], async ({ body, session }) => {
     toTeamId: num(body, "toTeamId"),
     coins: optNum(body, "coins"),
     cardPoints: optNum(body, "cardPoints"),
+    itemIds: optNumArray(body, "itemIds"),
     byToken: session.label,
   });
 });

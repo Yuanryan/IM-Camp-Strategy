@@ -44,3 +44,9 @@ export function str(body: Record<string, unknown>, key: string): string {
   if (typeof v !== "string" || !v) throw new Error(`參數 ${key} 必填`);
   return v;
 }
+// 取數字陣列（缺省回空陣列）；非數字元素一律剔除
+export function optNumArray(body: Record<string, unknown>, key: string): number[] {
+  const v = body[key];
+  if (!Array.isArray(v)) return [];
+  return v.map((x) => (typeof x === "number" ? x : parseInt(String(x), 10))).filter((n) => !Number.isNaN(n));
+}
