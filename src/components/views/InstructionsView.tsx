@@ -269,7 +269,7 @@ function ResourceSection() {
     { icon: Dices, name: "骰子", desc: "移動工具，完成小遊戲取得，可累積使用", color: "text-purple-400" },
     { icon: Zap, name: "特殊骰", desc: "事件三後可得，奇數／偶數／自選／超大", color: "text-cyan-400" },
     { icon: Building2, name: "不動產", desc: "四大區域資產，可購買並升至三級", color: "text-emerald-400" },
-    { icon: Package, name: "動產", desc: "流動資產，S/A/B 等級，市值結算時揭露", color: "text-rose-400" },
+    { icon: Package, name: "動產", desc: "S/A/B 等級道具，自帶被動效果，隱藏市值結算時揭露", color: "text-rose-400" },
     { icon: Info, name: "情報牌", desc: "市場事件線索，真假參半，需自行判斷", color: "text-sky-400" },
     { icon: ShoppingBag, name: "卡牌點數", desc: "過燈塔取得，在卡牌商店購買功能卡", color: "text-violet-400" },
     { icon: Sword, name: "功能卡", desc: "攻守策略：購地、護盾、情蒐等 10 種", color: "text-orange-400" },
@@ -491,6 +491,34 @@ function SpecialSection() {
           踩到登記格可免費登記一個號碼（1～50）。第二個起加購費：
           <span className="text-rose-300 font-mono"> 50 × 2^(n-1)</span>
           。開獎格觸發時，中獎隊伍獨得整個獎金池。
+        </p>
+      </motion.div>
+
+      {/* Movable assets — passive effects */}
+      <motion.div variants={fogItem}
+        className="glass rounded-xl p-3.5 border border-amber-500/20 bg-gradient-to-r from-amber-500/8 to-transparent">
+        <div className="flex items-center gap-2 mb-1.5">
+          <Package className="w-4 h-4 text-amber-400" />
+          <p className="font-bold text-sm text-amber-300">動產 · 被動效果</p>
+        </div>
+        <p className="text-slate-400 text-xs leading-relaxed">
+          動產不只是收藏品——每張都自帶<span className="text-amber-300 font-bold">被動效果</span>。例如：
+          收路費加成、付路費減免、購買折扣、每輪複利或分紅、樂透加成抽成、輪盤保底等。
+          同類效果直接相加；隱藏市值仍於結算時才由交易所揭露。
+        </p>
+      </motion.div>
+
+      {/* Trade & auction */}
+      <motion.div variants={fogItem}
+        className="glass rounded-xl p-3.5 border border-violet-500/20 bg-gradient-to-r from-violet-500/8 to-transparent">
+        <div className="flex items-center gap-2 mb-1.5">
+          <Sword className="w-4 h-4 text-violet-400" />
+          <p className="font-bold text-sm text-violet-300">隊間交易 · 政府拍賣</p>
+        </div>
+        <p className="text-slate-400 text-xs leading-relaxed">
+          <span className="text-violet-300 font-bold">交易</span>：隨時可與他隊交換光幣、卡牌點數、不動產、動產，須到交易所登記、雙方確認才生效。
+          {" "}
+          <span className="text-violet-300 font-bold">拍賣</span>：事件四後啟動政府拍賣，由拍賣官主持英式喊價——各隊現場喊價，得標立即扣款並過戶。
         </p>
       </motion.div>
     </motion.div>
