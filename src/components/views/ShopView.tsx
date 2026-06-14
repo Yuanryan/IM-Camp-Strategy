@@ -20,6 +20,36 @@ function drawDisplay(cards: ShopCard[], n = 3): string[] {
   return pool.slice(0, n).map((c) => c.type);
 }
 
+// 每隊的 3 張展示鎖在 localStorage，避免「重進商店重抽」。
+// key 依隊伍 id；買一張後清掉該隊，下次進來才重抽。
+const drawKey = (teamId: number) => `shopDraw:${teamId}`;
+function loadDraw(teamId: number): string[] | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(drawKey(teamId));
+    const arr = raw ? (JSON.parse(raw) as unknown) : null;
+    return Array.isArray(arr) && arr.every((x) => typeof x === "string") ? (arr as string[]) : null;
+  } catch {
+    return null;
+  }
+}
+function saveDraw(teamId: number, types: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(drawKey(teamId), JSON.stringify(types));
+  } catch {
+    /* 容量 / 隱私模式失敗時靜默忽略 */
+  }
+}
+function clearDraw(teamId: number) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(drawKey(teamId));
+  } catch {
+    /* ignore */
+  }
+}
+
 // 發牌動畫：卡片從牌堆飛入（依序），落定後從牌背翻面露出正面。dealKey 變動即重播。
 function DealtCard({ index, dealKey, children }: { index: number; dealKey: number; children: React.ReactNode }) {
   const dealDelay = index * 0.18; // 依序發牌
@@ -65,27 +95,39 @@ export function ShopView() {
   const { snap } = useSnapshot(3000);
   const { data, mutate: mutateShop } = useSWR<ShopData>("/api/shop", fetcher, { refreshInterval: 3000 });
   const [team, setTeam] = useState<number | "">("");
-  // 展示的 3 張：前端隨機抽，只存「卡種類」，成本 / 庫存即時從 data.cards 對照
+  // 展示的 3 張：每隊鎖在 localStorage，只存「卡種類」，成本 / 庫存即時從 data.cards 對照
   const [displayTypes, setDisplayTypes] = useState<string[]>([]);
   const [dealKey, setDealKey] = useState(0); // 每次抽牌 +1，重播發牌動畫
-  const drawnOnce = useRef(false);
+  const resolvedFor = useRef<number | null>(null); // 已為哪一隊解出展示（避免庫存輪詢時重抽）
 
   const cards = data?.cards;
 
+  // 強制重抽（關主手動「重抽三張」按鈕）：覆寫該隊的鎖定
   const reshuffle = useCallback(() => {
-    if (cards) {
-      setDisplayTypes(drawDisplay(cards));
+    if (cards && team !== "") {
+      const next = drawDisplay(cards);
+      saveDraw(team, next);
+      setDisplayTypes(next);
       setDealKey((k) => k + 1);
     }
-  }, [cards]);
+  }, [cards, team]);
 
-  // 進頁面 data 一到手即抽一次
+  // 切換隊伍時：有鎖定就沿用（重進不重抽），沒有才抽一次並鎖定。
+  // resolvedFor 確保每隊只解一次；庫存輪詢（cards 變動）不會觸發重抽。
   useEffect(() => {
-    if (!cards || drawnOnce.current) return;
-    drawnOnce.current = true;
-    setDisplayTypes(drawDisplay(cards));
+    if (team === "") {
+      resolvedFor.current = null;
+      setDisplayTypes([]);
+      return;
+    }
+    if (!cards || resolvedFor.current === team) return;
+    const saved = loadDraw(team);
+    const next = saved ?? drawDisplay(cards);
+    if (!saved) saveDraw(team, next);
+    resolvedFor.current = team;
+    setDisplayTypes(next);
     setDealKey((k) => k + 1);
-  }, [cards]);
+  }, [team, cards]);
 
   if (!snap || !data) return <p className="text-sm text-slate-400">載入中…</p>;
   const cur = snap.teams.find((t) => t.id === team);
@@ -106,9 +148,9 @@ export function ShopView() {
         </div>
       </StickyTeam>
 
-      <Card title="展示中（3 張，隨機抽選）">
+      <Card title="展示中（3 張・每隊固定，買一張後重抽）">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <ActionButton label="重抽三張" className="chip shrink-0" onAction={async () => { reshuffle();}} />
+          <ActionButton label="重抽三張" className="chip shrink-0" disabled={team === ""} onAction={async () => { reshuffle(); }} />
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {displayTypes.map((type, i) => {
@@ -121,18 +163,20 @@ export function ShopView() {
                   <div className="text-base font-bold text-cyan-200">{c?.type ?? "（空）"}</div>
                   <div className="mt-1 h-8 text-xs text-slate-400">{c?.effect ?? ""}</div>
                   <div className="my-2 text-sm text-slate-300">點數 <Num className="font-bold text-cyan-300">{c?.cost ?? 0}</Num>　庫存 <Num>{c?.remaining ?? 0}</Num></div>
-                  <ActionButton label="購買" className="w-full btn-emerald"
+                  <ActionButton
+                    label={soldOut ? "已售完" : cantAfford ? `點數不足（- ${c.cost - (cur?.cardPoints ?? 0)}）` : "購買"}
+                    className="w-full btn-emerald"
                     disabled={team === "" || soldOut || cantAfford}
                     onAction={async () => {
                       const r = await postJson("/api/shop/sell", { teamId: team, cardType: type });
                       await mutateShop();
+                      // 買一張 → 清掉該隊鎖定並重抽（下次進來才不是同一組）
+                      if (team !== "") {
+                        clearDraw(team);
+                        resolvedFor.current = null;
+                      }
                       return `售出 ${r.card}（-${r.cost} 點）`;
                     }} />
-                  {soldOut ? (
-                    <p className="mt-1 text-xs text-slate-500">已售完</p>
-                  ) : cantAfford ? (
-                    <p className="mt-1 text-xs text-rose-300/80">點數不足（- {c.cost - (cur?.cardPoints ?? 0)}）</p>
-                  ) : null}
                 </div>
               </DealtCard>
             );

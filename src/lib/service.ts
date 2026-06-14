@@ -312,6 +312,125 @@ export async function transferProperty(params: {
   });
 }
 
+// ── 功能卡：不動產相關效果（交易所執行；不扣卡牌點數，點數已於商店購卡時扣）──
+// 全部只「執行效果」，由關主見證玩家出示對應功能卡。
+
+// 購地卡：強制收購對手一塊地。對手獲「初始定價 × 80%」補償（銀行出資），產權（含等級）轉給出卡隊。
+export async function cardSeizeLand(params: { propertyId: number; toTeamId: number; byToken?: string }) {
+  const { propertyId, toTeamId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const prop = await tx.property.findUnique({ where: { id: propertyId } });
+    if (!prop) throw new Error("找不到不動產");
+    if (prop.ownerTeamId == null) throw new Error("該不動產尚未售出");
+    if (prop.ownerTeamId === toTeamId) throw new Error("不能收購自己的地");
+    const buyer = await tx.team.findUnique({ where: { id: toTeamId } });
+    if (!buyer) throw new Error("找不到出卡小隊");
+    const fromTeamId = prop.ownerTeamId;
+    const compensation = roundTo50(prop.basePrice * 0.8);
+    const ledgerIds: number[] = [];
+    if (compensation > 0) {
+      await tx.team.update({ where: { id: fromTeamId }, data: { coins: { increment: compensation } } });
+      ledgerIds.push(await logLedger(tx, { teamId: fromTeamId, kind: "property", delta: compensation, note: `購地卡補償 ${prop.name}（初始價 8 折）`, byToken }));
+    }
+    await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: toTeamId } });
+    ledgerIds.push(await logLedger(tx, { teamId: toTeamId, kind: "property", delta: 0, note: `購地卡強制收購 ${prop.name}（來自隊 #${fromTeamId}）`, byToken }));
+    const undo: UndoRecipe = {
+      label: `購地卡 ${prop.name}`,
+      ledgerIds,
+      property: { id: propertyId, ownerTeamId: fromTeamId, level: prop.level },
+    };
+    return { ok: true, compensation, undo };
+  });
+}
+
+// 換地卡：我方一塊地與對手一塊地強制對換（產權互換，各自等級跟著走）。
+export async function cardSwapLand(params: { propertyAId: number; propertyBId: number; byToken?: string }) {
+  const { propertyAId, propertyBId, byToken } = params;
+  if (propertyAId === propertyBId) throw new Error("兩塊地相同");
+  return prisma.$transaction(async (tx) => {
+    const a = await tx.property.findUnique({ where: { id: propertyAId } });
+    const b = await tx.property.findUnique({ where: { id: propertyBId } });
+    if (!a || !b) throw new Error("找不到不動產");
+    if (a.ownerTeamId == null || b.ownerTeamId == null) throw new Error("兩塊地都須已售出");
+    if (a.ownerTeamId === b.ownerTeamId) throw new Error("兩塊地屬於同一隊");
+    await tx.property.update({ where: { id: a.id }, data: { ownerTeamId: b.ownerTeamId } });
+    await tx.property.update({ where: { id: b.id }, data: { ownerTeamId: a.ownerTeamId } });
+    const lid = await logLedger(tx, { teamId: a.ownerTeamId, kind: "property", delta: 0, note: `換地卡：${a.name} ⇄ ${b.name}`, byToken });
+    const undo: UndoRecipe = {
+      label: `換地卡 ${a.name} ⇄ ${b.name}`,
+      ledgerIds: [lid],
+      properties: [
+        { id: a.id, ownerTeamId: a.ownerTeamId, level: a.level },
+        { id: b.id, ownerTeamId: b.ownerTeamId, level: b.level },
+      ],
+    };
+    return { ok: true, undo };
+  });
+}
+
+// 換屋卡：兩棟房屋互換升級級別（產權不變，只換等級）。
+export async function cardSwapHouse(params: { propertyAId: number; propertyBId: number; byToken?: string }) {
+  const { propertyAId, propertyBId, byToken } = params;
+  if (propertyAId === propertyBId) throw new Error("兩棟房屋相同");
+  return prisma.$transaction(async (tx) => {
+    const a = await tx.property.findUnique({ where: { id: propertyAId } });
+    const b = await tx.property.findUnique({ where: { id: propertyBId } });
+    if (!a || !b) throw new Error("找不到不動產");
+    if (a.ownerTeamId == null || b.ownerTeamId == null) throw new Error("兩棟房屋都須已售出");
+    if (a.ownerTeamId === b.ownerTeamId) throw new Error("兩棟房屋屬於同一隊");
+    await tx.property.update({ where: { id: a.id }, data: { level: b.level } });
+    await tx.property.update({ where: { id: b.id }, data: { level: a.level } });
+    const lid = await logLedger(tx, { teamId: a.ownerTeamId, kind: "property", delta: 0, note: `換屋卡：${a.name}(${a.level}級) ⇄ ${b.name}(${b.level}級)`, byToken });
+    const undo: UndoRecipe = {
+      label: `換屋卡 ${a.name} ⇄ ${b.name}`,
+      ledgerIds: [lid],
+      properties: [
+        { id: a.id, ownerTeamId: a.ownerTeamId, level: a.level },
+        { id: b.id, ownerTeamId: b.ownerTeamId, level: b.level },
+      ],
+    };
+    return { ok: true, undo };
+  });
+}
+
+// 拆屋卡：對手一棟房屋降一級（3→2→1→未升級）。
+export async function cardDemolish(params: { propertyId: number; byToken?: string }) {
+  const { propertyId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const prop = await tx.property.findUnique({ where: { id: propertyId } });
+    if (!prop) throw new Error("找不到不動產");
+    if (prop.ownerTeamId == null) throw new Error("該不動產尚未售出");
+    if (prop.level <= 0) throw new Error("該房屋已是未升級，無法再拆");
+    await tx.property.update({ where: { id: propertyId }, data: { level: prop.level - 1 } });
+    const lid = await logLedger(tx, { teamId: prop.ownerTeamId, kind: "property", delta: 0, note: `拆屋卡：${prop.name} ${prop.level}級 → ${prop.level - 1}級`, byToken });
+    const undo: UndoRecipe = {
+      label: `拆屋卡 ${prop.name}`,
+      ledgerIds: [lid],
+      property: { id: propertyId, ownerTeamId: prop.ownerTeamId, level: prop.level },
+    };
+    return { ok: true, undo };
+  });
+}
+
+// 怪獸卡：完全摧毀對手一棟房屋，使該地降回未購買狀態（無主、0 級）。
+export async function cardMonster(params: { propertyId: number; byToken?: string }) {
+  const { propertyId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const prop = await tx.property.findUnique({ where: { id: propertyId } });
+    if (!prop) throw new Error("找不到不動產");
+    if (prop.ownerTeamId == null) throw new Error("該不動產尚未售出");
+    const fromTeamId = prop.ownerTeamId;
+    await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: null, level: 0 } });
+    const lid = await logLedger(tx, { teamId: fromTeamId, kind: "property", delta: 0, note: `怪獸卡摧毀 ${prop.name}（降回未購買）`, byToken });
+    const undo: UndoRecipe = {
+      label: `怪獸卡 ${prop.name}`,
+      ledgerIds: [lid],
+      property: { id: propertyId, ownerTeamId: fromTeamId, level: prop.level },
+    };
+    return { ok: true, undo };
+  });
+}
+
 // ── 過路費 ───────────────────────────────────────────────────
 export async function payToll(params: {
   propertyId: number; // 踩到的資本據點
@@ -1103,10 +1222,11 @@ const UNDO_WINDOW_MS = 30_000;
 export async function undoAction(params: {
   ledgerIds: number[];
   property?: { id: number; ownerTeamId: number | null; level: number };
+  properties?: { id: number; ownerTeamId: number | null; level: number }[];
   byToken?: string;
   isAdmin?: boolean;
 }) {
-  const { ledgerIds, property, byToken, isAdmin } = params;
+  const { ledgerIds, property, properties, byToken, isAdmin } = params;
   const ids = [...new Set((ledgerIds ?? []).filter((n) => Number.isInteger(n)))];
   if (!ids.length) throw new Error("沒有可撤銷的項目");
 
@@ -1140,11 +1260,13 @@ export async function undoAction(params: {
       await tx.ledger.update({ where: { id: r.id }, data: { reversed: true } });
     }
 
-    // 不動產：還原成操作前的持有 / 等級
-    if (property && Number.isInteger(property.id)) {
+    // 不動產：還原成操作前的持有 / 等級（單筆 + 多筆並存）
+    const toRestore = [...(property ? [property] : []), ...(properties ?? [])];
+    for (const p of toRestore) {
+      if (!Number.isInteger(p.id)) continue;
       await tx.property.update({
-        where: { id: property.id },
-        data: { ownerTeamId: property.ownerTeamId ?? null, level: property.level },
+        where: { id: p.id },
+        data: { ownerTeamId: p.ownerTeamId ?? null, level: p.level },
       });
     }
 

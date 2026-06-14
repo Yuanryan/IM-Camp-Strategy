@@ -192,7 +192,7 @@ function HeroSection() {
           { val: "36", label: "地圖格" },
           { val: "4", label: "區域" },
           { val: "4", label: "市場事件" },
-          { val: "10", label: "功能卡種" },
+          { val: "8", label: "功能卡種" },
         ].map(({ val, label }) => (
           <div key={label} className="glass rounded-xl px-3 py-3 text-center">
             <div className="neon-gold text-xl font-black num">{val}</div>
@@ -272,7 +272,7 @@ function ResourceSection() {
     { icon: Package, name: "動產", desc: "S/A/B 等級道具，自帶被動效果，隱藏市值結算時揭露", color: "text-rose-400" },
     { icon: Info, name: "情報牌", desc: "市場事件線索，真假參半，需自行判斷", color: "text-sky-400" },
     { icon: ShoppingBag, name: "卡牌點數", desc: "過燈塔取得，在卡牌商店購買功能卡", color: "text-violet-400" },
-    { icon: Sword, name: "功能卡", desc: "攻守策略：購地、護盾、情蒐等 10 種", color: "text-orange-400" },
+    { icon: Sword, name: "功能卡", desc: "攻守策略：購地、護盾、情蒐等 8 種", color: "text-orange-400" },
   ];
 
   return (
@@ -425,16 +425,14 @@ function SpecialSection() {
   ];
 
   const cards = [
-    { name: "購地卡", effect: "強制收購對手一塊土地", cost: 30 },
-    { name: "換地卡", effect: "與對手互換土地", cost: 25 },
-    { name: "拆屋卡", effect: "拆除對手一層建設", cost: 25 },
-    { name: "怪獸卡", effect: "摧毀對手一棟建設", cost: 40 },
-    { name: "護盾卡", effect: "抵擋一次攻擊或過路費", cost: 20 },
+    { name: "購地卡", effect: "強制收購對手一塊土地", cost: 50 },
+    { name: "換地卡", effect: "與對手互換土地", cost: 20 },
+    { name: "拆屋卡", effect: "拆除對手一層建設", cost: 30 },
+    { name: "怪獸卡", effect: "摧毀對手一棟建設", cost: 70 },
+    { name: "護盾卡", effect: "抵擋一次攻擊或過路費", cost: 25 },
     { name: "情蒐卡", effect: "得知指定對手資訊", cost: 15 },
-    { name: "市場預警", effect: "知道下次事件漲跌方向", cost: 25 },
-    { name: "加速骰", effect: "立即取得 1 顆普通骰", cost: 10 },
+    { name: "市場預警", effect: "知道下次事件漲跌方向", cost: 50 },
     { name: "換屋卡", effect: "與對手交換升級等級", cost: 20 },
-    { name: "樂透加購", effect: "額外登記一個大樂透號碼", cost: 15 },
   ];
 
   return (

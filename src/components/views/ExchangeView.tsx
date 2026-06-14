@@ -4,9 +4,15 @@ import { useState } from "react";
 import { useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, PriceTag, LevelDots, EventBanner, TeamItemBadges } from "@/components/ui";
-import { REGIONS, REGION_UI, EffectType, upgradeFee, applyShopPrice, stackEffects, type UndoRecipe } from "@/lib/game";
+import { REGIONS, REGION_UI, EffectType, upgradeFee, applyShopPrice, stackEffects, roundTo50, type UndoRecipe } from "@/lib/game";
 
-const LEVEL_TAG = ["已購", "1級", "2級", "3級"];
+const LEVEL_TAG = ["0級", "1級", "2級", "3級"];
+
+// 快照不動產的精簡型別（PropertyPicker / 功能卡分頁共用）
+type PropView = {
+  id: number; name: string; region: string; level: number;
+  ownerTeamId: number | null; ownerName: string | null; basePrice: number;
+};
 
 // 按鈕價格標籤：有動產折扣時，原價刪除線顯示在右側
 function PriceLabel({ prefix, final, base }: { prefix: string; final: number; base: number }) {
@@ -21,6 +27,7 @@ function PriceLabel({ prefix, final, base }: { prefix: string; final: number; ba
 
 export function ExchangeView() {
   const { snap, mutate } = useSnapshot(2500);
+  const [tab, setTab] = useState<"props" | "cards">("props");
   const [team, setTeam] = useState<number | "">("");
   const [discount, setDiscount] = useState(0);
   const [price, setPrice] = useState(0);
@@ -28,6 +35,7 @@ export function ExchangeView() {
 
   if (!snap) return <p className="text-sm text-slate-400">載入中…</p>;
   const teams = snap.teams;
+  const cur = teams.find((t) => t.id === team);
   const props = snap.properties.filter((p) => p.region === region);
 
   // 某隊的 SHOP_PRICE 折扣 delta（與 service.buyProperty / upgradeProperty 一致）
@@ -50,40 +58,41 @@ export function ExchangeView() {
     <div className="space-y-4">
       <EventBanner events={snap.activeEvents} />
 
+      {/* 分頁切換 */}
+      <div className="flex gap-2">
+        {([["props", "不動產"], ["cards", "功能卡"]] as const).map(([key, label]) => (
+          <button key={key} onClick={() => setTab(key)}
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+              tab === key ? "bg-white/10 text-cyan-300 ring-1 ring-cyan-400/40" : "chip"
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
       <StickyTeam>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end sm:gap-3">
-          <div className="col-span-2 sm:col-auto">
-            <div className="mb-1 text-xs text-slate-400">作用小隊（購買 / 過戶目標）</div>
-            <TeamSelect teams={teams} value={team} onChange={setTeam} />
-          </div>
-          <label className="text-xs text-slate-400">
-            <div className="mb-1">折抵（光靈）</div>
-            <input type="number" inputMode="numeric" value={discount} min={0}
-              onChange={(e) => setDiscount(Number(e.target.value) || 0)} className="fld w-full sm:w-28" />
-          </label>
-          <label className="text-xs text-slate-400">
-            <div className="mb-1">過戶價金</div>
-            <input type="number" inputMode="numeric" value={price} min={0}
-              onChange={(e) => setPrice(Number(e.target.value) || 0)} className="fld w-full sm:w-28" />
-          </label>
-        </div>
-        <p className="mt-2 text-xs">
-          {team === "" ? (
-            <span className="text-amber-300/90">⚠ 尚未選擇作用小隊 — 購買 / 過戶前請先選隊</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <TeamSelect teams={teams} value={team} onChange={setTeam} />
+          {cur ? (
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-slate-400">
+                光幣 <Num className="neon-gold font-bold">{cur.coins}</Num>
+              </span>
+            </div>
           ) : (
-            <span className="text-slate-300">
-              目前作用：<b className="text-cyan-300">{teams.find((t) => t.id === team)?.name}</b>
-              （光幣 <Num className="neon-gold">{teams.find((t) => t.id === team)?.coins}</Num>）
-            </span>
+            <span className="text-xs text-amber-300/80">⚠ 請先選擇小隊</span>
           )}
-        </p>
+        </div>
         <TeamItemBadges
-          items={teams.find((t) => t.id === team)?.items ?? []}
+          items={cur?.items ?? []}
           relevantTypes={[EffectType.SHOP_PRICE, EffectType.PROPERTY_VALUE]}
         />
       </StickyTeam>
 
+      {tab === "cards" && <CardActions properties={snap.properties} teams={teams} actorTeam={team} act={act} />}
+
       {/* 不動產列表 */}
+      {tab === "props" && (
       <Card>
         <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 py-1.5">
           {REGIONS.map((r) => (
@@ -161,9 +170,157 @@ export function ExchangeView() {
           })}
         </div>
       </Card>
+      )}
 
-      <LedgerCard />
+      {/* <LedgerCard /> */}
     </div>
+  );
+}
+
+// ── 功能卡分頁 ──────────────────────────────────────────────
+type ActFn = (fn: () => Promise<{ [k: string]: unknown }>, ok: string) => Promise<string | { message: string; undo?: UndoRecipe }>;
+
+// 可篩選的不動產選擇器：依區域 + 依持有隊，兩軸同時套用（base 為卡片角色的基底過濾後清單）
+function PropertyPicker({
+  label, base, value, onChange, teams,
+}: {
+  label: string;
+  base: PropView[]; // 已套基底過濾（己方 / 他隊 / 已售出…）
+  value: number | "";
+  onChange: (id: number | "") => void;
+  teams: { id: number; name: string }[];
+}) {
+  const [area, setArea] = useState<string>("ALL");
+  const [owner, setOwner] = useState<number | "">("");
+  // 只列出 base 裡實際存在的持有隊，供「依對手」下拉
+  const ownerTeams = teams.filter((t) => base.some((p) => p.ownerTeamId === t.id));
+  const list = base.filter(
+    (p) => (area === "ALL" || p.region === area) && (owner === "" || p.ownerTeamId === owner),
+  );
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+      <div className="mb-2 text-xs font-medium text-slate-300">{label}</div>
+      <div className="mb-2 flex flex-wrap gap-2">
+        {/* 依區域 */}
+        <button onClick={() => setArea("ALL")}
+          className={`rounded-md px-2.5 py-1 text-xs transition ${area === "ALL" ? "bg-white/10 text-cyan-300 ring-1 ring-cyan-400/40" : "chip"}`}>全部區域</button>
+        {REGIONS.map((r) => (
+          <button key={r.code} onClick={() => setArea(r.code)}
+            className={`rounded-md px-2.5 py-1 text-xs transition ${area === r.code ? `bg-white/10 ${REGION_UI[r.code].text} ring-1 ${REGION_UI[r.code].border}` : "chip"}`}>
+            {r.name}
+          </button>
+        ))}
+        {/* 依對手 */}
+        <TeamSelect teams={ownerTeams} value={owner} onChange={setOwner} placeholder="所有小隊" />
+      </div>
+      <select value={value} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : "")}
+        className="fld w-full">
+        <option value="">— 選擇不動產（{list.length}）—</option>
+        {list.map((p) => (
+          <option key={p.id} value={p.id}>
+            {REGIONS.find((r) => r.code === p.region)?.name}・{p.name}（{p.ownerName ?? "未售出"}・{LEVEL_TAG[p.level]}）
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+type CardKind = "seizeLand" | "swapLand" | "swapHouse" | "demolish" | "monster";
+const CARD_META: { key: CardKind; name: string; desc: string; needsActor: boolean; pickers: "single" | "dual" }[] = [
+  { key: "seizeLand", name: "購地卡", desc: "強制收購對手一塊地（對手獲初始價 8 折補償，產權含等級轉給作用隊）", needsActor: true, pickers: "single" },
+  { key: "swapLand", name: "換地卡", desc: "作用隊一塊地 ⇄ 對手一塊地（產權互換）", needsActor: true, pickers: "dual" },
+  { key: "swapHouse", name: "換屋卡", desc: "兩棟房屋互換升級級別（產權不變）", needsActor: true, pickers: "dual" },
+  { key: "demolish", name: "拆屋卡", desc: "對手一棟房屋降一級", needsActor: false, pickers: "single" },
+  { key: "monster", name: "怪獸卡", desc: "摧毀對手一棟房屋，降回未購買", needsActor: false, pickers: "single" },
+];
+
+function CardActions({
+  properties, teams, actorTeam, act,
+}: {
+  properties: PropView[];
+  teams: { id: number; name: string; coins: number }[];
+  actorTeam: number | "";
+  act: ActFn;
+}) {
+  const [card, setCard] = useState<CardKind | "">("");
+  const [src, setSrc] = useState<number | "">(""); // 來源（作用隊自己的地）
+  const [tgt, setTgt] = useState<number | "">(""); // 目標（對手的地）
+  const meta = CARD_META.find((m) => m.key === card);
+
+  const reset = () => { setSrc(""); setTgt(""); };
+
+  // 基底過濾
+  const owned = properties.filter((p) => p.ownerTeamId != null);
+  const mine = actorTeam === "" ? [] : owned.filter((p) => p.ownerTeamId === actorTeam);
+  const others = actorTeam === "" ? owned : owned.filter((p) => p.ownerTeamId !== actorTeam);
+
+  const tgtProp = properties.find((p) => p.id === tgt);
+  const compensation = tgtProp ? roundTo50(tgtProp.basePrice * 0.8) : 0;
+
+  const run = async () => {
+    if (!card) return "請先選卡片";
+    if (meta?.needsActor && actorTeam === "") return "請先在上方選作用小隊（出卡隊）";
+    if (card === "seizeLand") {
+      if (tgt === "") return "請選要收購的對手土地";
+      return act(() => postJson("/api/exchange/card", { action: "seizeLand", propertyId: tgt, toTeamId: actorTeam }), "已執行購地卡").then((r) => { reset(); return r; });
+    }
+    if (card === "swapLand" || card === "swapHouse") {
+      if (src === "" || tgt === "") return "請選來源與目標兩塊地";
+      return act(() => postJson("/api/exchange/card", { action: card, propertyAId: src, propertyBId: tgt }), card === "swapLand" ? "已執行換地卡" : "已執行換屋卡").then((r) => { reset(); return r; });
+    }
+    // demolish / monster
+    if (tgt === "") return "請選目標房屋";
+    return act(() => postJson("/api/exchange/card", { action: card, propertyId: tgt }), card === "demolish" ? "已執行拆屋卡" : "已執行怪獸卡").then((r) => { reset(); return r; });
+  };
+
+  return (
+    <Card title="功能卡效果（不動產相關）">
+      <p className="mb-3 text-xs text-amber-300/80">⚠ 關主收到卡牌後再執行</p>
+
+      {/* 選卡 */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {CARD_META.map((m) => (
+          <button key={m.key} onClick={() => { setCard(m.key); reset(); }}
+            className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+              card === m.key ? "bg-white/10 text-cyan-300 ring-1 ring-cyan-400/40" : "chip"
+            }`}>
+            {m.name}
+          </button>
+        ))}
+      </div>
+
+      {!meta ? (
+        <p className="text-sm text-slate-400">請選擇一張功能卡。</p>
+      ) : (
+        <div className="space-y-3">
+          <p className="text-sm text-slate-300">{meta.desc}</p>
+          {meta.needsActor && actorTeam === "" && (
+            <p className="text-xs text-amber-300/90">⚠ 此卡需「作用小隊」作為出卡隊，請先在上方選隊。</p>
+          )}
+
+          {/* 來源（雙選卡才需要：作用隊自己的地） */}
+          {meta.pickers === "dual" && (
+            <PropertyPicker label="來源（作用隊持有）" base={mine} value={src} onChange={setSrc} teams={teams} />
+          )}
+
+          {/* 目標（對手的地） */}
+          <PropertyPicker
+            label={meta.key === "seizeLand" ? "目標（要收購的對手土地）" : "目標（對手持有）"}
+            base={others} value={tgt} onChange={setTgt} teams={teams} />
+
+          {/* 購地卡補償試算 */}
+          {meta.key === "seizeLand" && tgtProp && (
+            <p className="text-xs text-slate-400">
+              補償給 <b className="text-cyan-300">{tgtProp.ownerName}</b>：初始價 <Num>{tgtProp.basePrice}</Num> × 80% ＝ <Num className="neon-gold">{compensation}</Num> 光幣
+            </p>
+          )}
+
+          <ActionButton label={`執行 ${meta.name}`} className="btn-emerald"
+            onAction={run} />
+        </div>
+      )}
+    </Card>
   );
 }
 

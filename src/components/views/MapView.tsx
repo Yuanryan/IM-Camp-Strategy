@@ -396,7 +396,7 @@ function RoundSettlePanel({
       )}
       {incomeItems.length > 0 && (
         <div className="mb-3">
-          <div className="mb-1.5 text-xs font-semibold text-emerald-300">💰 每輪收益</div>
+          <div className="mb-1.5 text-xs font-semibold text-emerald-300">每輪收益</div>
           <ul className="space-y-1.5">
             {incomeItems.map((i) => (
               <li key={i.id} className="text-xs">

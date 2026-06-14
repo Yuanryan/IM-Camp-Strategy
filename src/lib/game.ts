@@ -498,16 +498,16 @@ export const FUNCTION_CARDS: {
   cost: number;
   defaultStock: number;
 }[] = [
-  { type: "購地卡", effect: "強制收購對手一塊土地", cost: 30, defaultStock: 4 },
-  { type: "換地卡", effect: "以己方土地與對手土地交換", cost: 25, defaultStock: 4 },
-  { type: "換屋卡", effect: "交換房屋升級級別", cost: 20, defaultStock: 4 },
-  { type: "拆屋卡", effect: "拆除對手一層房屋", cost: 25, defaultStock: 4 },
-  { type: "怪獸卡", effect: "摧毀對手一棟房屋", cost: 40, defaultStock: 3 },
-  { type: "護盾卡", effect: "抵擋一次卡牌攻擊或過路費", cost: 20, defaultStock: 6 },
-  { type: "情蒐卡", effect: "獲得指定對手資訊", cost: 15, defaultStock: 6 },
-  { type: "加速骰", effect: "立即獲得 1 顆普通骰", cost: 10, defaultStock: 8 },
-  { type: "市場預警卡", effect: "得知下一次事件前某區漲跌方向", cost: 25, defaultStock: 4 },
-  { type: "大樂透加購卡", effect: "額外登記一個大樂透號碼", cost: 15, defaultStock: 4 },
+  // 點數 / 庫存對齊企畫書（功能卡表 L1464+）：抑制攻擊卡滾雪球。
+  // 中央燈塔一次給 30 點，故攻擊卡刻意較貴、限量。
+  { type: "購地卡", effect: "強制收購對手一塊土地（對手獲初始價 8 折補償）", cost: 50, defaultStock: 5 },
+  { type: "換地卡", effect: "以己方土地與對手土地強制對換", cost: 20, defaultStock: 5 },
+  { type: "換屋卡", effect: "與對手互換一棟房屋的升級級別", cost: 20, defaultStock: 5 },
+  { type: "拆屋卡", effect: "拆除對手一層房屋（降一級）", cost: 30, defaultStock: 5 },
+  { type: "怪獸卡", effect: "摧毀對手一棟房屋，降回未購買", cost: 70, defaultStock: 3 },
+  { type: "護盾卡", effect: "免疫一次卡牌攻擊或免收一次過路費", cost: 25, defaultStock: 8 },
+  { type: "情蒐卡", effect: "查指定對手資源概況（四選一）", cost: 15, defaultStock: 8 },
+  { type: "市場預警卡", effect: "得知下一次事件前某區漲跌方向", cost: 50, defaultStock: 2 },
 ];
 
 // 發放獎勵 / 懲罰的快捷預設（資料化，單一來源；前端共用元件 RewardButtons 讀取）
@@ -517,6 +517,8 @@ export type UndoRecipe = {
   label: string;
   ledgerIds: number[];
   property?: { id: number; ownerTeamId: number | null; level: number };
+  // 一次影響多塊不動產時（換地 / 換屋）逐筆還原；與 property 單筆並存。
+  properties?: { id: number; ownerTeamId: number | null; level: number }[];
 };
 
 export type RewardTone = "good" | "bad" | "gold" | "spirit";
