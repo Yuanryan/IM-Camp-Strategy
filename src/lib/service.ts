@@ -445,7 +445,7 @@ export async function cardMonster(params: { propertyId: number; byTeamId?: numbe
     await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: null, level: 0 } });
     const lid = await logLedger(tx, { teamId: fromTeamId, kind: "property", delta: 0, note: `怪獸卡摧毀 ${prop.name}（降回未購買）`, byToken });
     const atk = await attackerName(tx, byTeamId);
-    await logAttack(tx, fromTeamId, `⚔ ${atk ? `${atk} 用怪獸卡摧毀了你的` : "你的"}「${prop.name}」，已降回未購買`, byToken);
+    await logAttack(tx, fromTeamId, `⚔ ${atk ? `${atk} 用怪獸卡摧毀了你的` : "你的"}「${prop.name}」，你失去這塊地了`, byToken);
     const undo: UndoRecipe = {
       label: `怪獸卡 ${prop.name}`,
       ledgerIds: [lid],

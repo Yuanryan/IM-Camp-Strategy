@@ -114,7 +114,7 @@ function findMonopoly(
 }
 
 // 攻擊通知時間窗：被功能卡攻擊後，小隊頁警示橫幅顯示這麼久即自動淡出（輪詢 3s，足夠重現數次）。
-const ATTACK_WINDOW_MS = 12_000;
+const ATTACK_WINDOW_MS = 1_800_000;
 
 export async function getSnapshot(): Promise<Snapshot> {
   const [state, teams, properties, lotteryNumbers, teamItems, auctionEvent, liveLot, soldLots, attackLogs] =
