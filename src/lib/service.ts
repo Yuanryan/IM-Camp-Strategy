@@ -315,6 +315,12 @@ export async function transferProperty(params: {
 // ── 功能卡：不動產相關效果（交易所執行；不扣卡牌點數，點數已於商店購卡時扣）──
 // 全部只「執行效果」，由關主見證玩家出示對應功能卡。
 
+// 攻擊通知：對「被攻擊隊」寫一筆 kind:"attack"、delta:0 的 ledger（給小隊頁警示橫幅用）。
+// 不納入 undo —— 讓它隨時間窗自然淡出，撤銷產權不影響通知。
+async function logAttack(tx: Tx, victimTeamId: number, note: string, byToken?: string) {
+  await logLedger(tx, { teamId: victimTeamId, kind: "attack", delta: 0, note, byToken });
+}
+
 // 購地卡：強制收購對手一塊地。對手獲「初始定價 × 80%」補償（銀行出資），產權（含等級）轉給出卡隊。
 export async function cardSeizeLand(params: { propertyId: number; toTeamId: number; byToken?: string }) {
   const { propertyId, toTeamId, byToken } = params;
@@ -334,6 +340,7 @@ export async function cardSeizeLand(params: { propertyId: number; toTeamId: numb
     }
     await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: toTeamId } });
     ledgerIds.push(await logLedger(tx, { teamId: toTeamId, kind: "property", delta: 0, note: `購地卡強制收購 ${prop.name}（來自隊 #${fromTeamId}）`, byToken }));
+    await logAttack(tx, fromTeamId, `⚔ ${buyer.name} 用購地卡強制收購你的「${prop.name}」（補償 ${compensation}）`, byToken);
     const undo: UndoRecipe = {
       label: `購地卡 ${prop.name}`,
       ledgerIds,
@@ -353,9 +360,12 @@ export async function cardSwapLand(params: { propertyAId: number; propertyBId: n
     if (!a || !b) throw new Error("找不到不動產");
     if (a.ownerTeamId == null || b.ownerTeamId == null) throw new Error("兩塊地都須已售出");
     if (a.ownerTeamId === b.ownerTeamId) throw new Error("兩塊地屬於同一隊");
+    // attacker = 出卡隊（來源地 A 的持有隊）；victim = 目標地 B 的持有隊
+    const attacker = await tx.team.findUnique({ where: { id: a.ownerTeamId }, select: { name: true } });
     await tx.property.update({ where: { id: a.id }, data: { ownerTeamId: b.ownerTeamId } });
     await tx.property.update({ where: { id: b.id }, data: { ownerTeamId: a.ownerTeamId } });
     const lid = await logLedger(tx, { teamId: a.ownerTeamId, kind: "property", delta: 0, note: `換地卡：${a.name} ⇄ ${b.name}`, byToken });
+    await logAttack(tx, b.ownerTeamId, `⚔ ${attacker?.name ?? "對手"} 用換地卡把你的「${b.name}」換成了「${a.name}」`, byToken);
     const undo: UndoRecipe = {
       label: `換地卡 ${a.name} ⇄ ${b.name}`,
       ledgerIds: [lid],
@@ -378,9 +388,12 @@ export async function cardSwapHouse(params: { propertyAId: number; propertyBId: 
     if (!a || !b) throw new Error("找不到不動產");
     if (a.ownerTeamId == null || b.ownerTeamId == null) throw new Error("兩棟房屋都須已售出");
     if (a.ownerTeamId === b.ownerTeamId) throw new Error("兩棟房屋屬於同一隊");
+    // attacker = 出卡隊（來源屋 A 的持有隊）；victim = 目標屋 B 的持有隊
+    const attacker = await tx.team.findUnique({ where: { id: a.ownerTeamId }, select: { name: true } });
     await tx.property.update({ where: { id: a.id }, data: { level: b.level } });
     await tx.property.update({ where: { id: b.id }, data: { level: a.level } });
     const lid = await logLedger(tx, { teamId: a.ownerTeamId, kind: "property", delta: 0, note: `換屋卡：${a.name}(${a.level}級) ⇄ ${b.name}(${b.level}級)`, byToken });
+    await logAttack(tx, b.ownerTeamId, `⚔ ${attacker?.name ?? "對手"} 用換屋卡把你的「${b.name}」等級換成 ${a.level} 級`, byToken);
     const undo: UndoRecipe = {
       label: `換屋卡 ${a.name} ⇄ ${b.name}`,
       ledgerIds: [lid],
@@ -393,16 +406,25 @@ export async function cardSwapHouse(params: { propertyAId: number; propertyBId: 
   });
 }
 
+// 攻擊者名（出卡隊）小工具：byTeamId 有給才查名，供拆屋 / 怪獸通知顯示攻擊者。
+async function attackerName(tx: Tx, byTeamId?: number): Promise<string | null> {
+  if (byTeamId == null) return null;
+  const t = await tx.team.findUnique({ where: { id: byTeamId }, select: { name: true } });
+  return t?.name ?? null;
+}
+
 // 拆屋卡：對手一棟房屋降一級（3→2→1→未升級）。
-export async function cardDemolish(params: { propertyId: number; byToken?: string }) {
-  const { propertyId, byToken } = params;
+export async function cardDemolish(params: { propertyId: number; byTeamId?: number; byToken?: string }) {
+  const { propertyId, byTeamId, byToken } = params;
   return prisma.$transaction(async (tx) => {
     const prop = await tx.property.findUnique({ where: { id: propertyId } });
     if (!prop) throw new Error("找不到不動產");
     if (prop.ownerTeamId == null) throw new Error("該不動產尚未售出");
-    if (prop.level <= 0) throw new Error("該房屋已是未升級，無法再拆");
+    if (prop.level <= 0) throw new Error("該房屋已最低等級，無法再降級");
     await tx.property.update({ where: { id: propertyId }, data: { level: prop.level - 1 } });
     const lid = await logLedger(tx, { teamId: prop.ownerTeamId, kind: "property", delta: 0, note: `拆屋卡：${prop.name} ${prop.level}級 → ${prop.level - 1}級`, byToken });
+    const atk = await attackerName(tx, byTeamId);
+    await logAttack(tx, prop.ownerTeamId, `⚔ ${atk ? `${atk} 用拆屋卡把` : ""}你的「${prop.name}」${atk ? "降為" : "被拆屋卡降為"} ${prop.level - 1} 級`, byToken);
     const undo: UndoRecipe = {
       label: `拆屋卡 ${prop.name}`,
       ledgerIds: [lid],
@@ -413,8 +435,8 @@ export async function cardDemolish(params: { propertyId: number; byToken?: strin
 }
 
 // 怪獸卡：完全摧毀對手一棟房屋，使該地降回未購買狀態（無主、0 級）。
-export async function cardMonster(params: { propertyId: number; byToken?: string }) {
-  const { propertyId, byToken } = params;
+export async function cardMonster(params: { propertyId: number; byTeamId?: number; byToken?: string }) {
+  const { propertyId, byTeamId, byToken } = params;
   return prisma.$transaction(async (tx) => {
     const prop = await tx.property.findUnique({ where: { id: propertyId } });
     if (!prop) throw new Error("找不到不動產");
@@ -422,6 +444,8 @@ export async function cardMonster(params: { propertyId: number; byToken?: string
     const fromTeamId = prop.ownerTeamId;
     await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: null, level: 0 } });
     const lid = await logLedger(tx, { teamId: fromTeamId, kind: "property", delta: 0, note: `怪獸卡摧毀 ${prop.name}（降回未購買）`, byToken });
+    const atk = await attackerName(tx, byTeamId);
+    await logAttack(tx, fromTeamId, `⚔ ${atk ? `${atk} 用怪獸卡摧毀了你的` : "你的"}「${prop.name}」，已降回未購買`, byToken);
     const undo: UndoRecipe = {
       label: `怪獸卡 ${prop.name}`,
       ledgerIds: [lid],

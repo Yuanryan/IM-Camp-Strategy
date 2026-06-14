@@ -1,4 +1,4 @@
-import { apiRoute, num, str } from "@/lib/api";
+import { apiRoute, num, str, optNum } from "@/lib/api";
 import {
   cardSeizeLand,
   cardSwapLand,
@@ -19,9 +19,9 @@ export const POST = apiRoute(["EXCHANGE"], async ({ body, session }) => {
     case "swapHouse": // 換屋卡
       return cardSwapHouse({ propertyAId: num(body, "propertyAId"), propertyBId: num(body, "propertyBId"), byToken });
     case "demolish": // 拆屋卡
-      return cardDemolish({ propertyId: num(body, "propertyId"), byToken });
+      return cardDemolish({ propertyId: num(body, "propertyId"), byTeamId: optNum(body, "byTeamId") || undefined, byToken });
     case "monster": // 怪獸卡
-      return cardMonster({ propertyId: num(body, "propertyId"), byToken });
+      return cardMonster({ propertyId: num(body, "propertyId"), byTeamId: optNum(body, "byTeamId") || undefined, byToken });
     default:
       throw new Error("未知的卡片動作");
   }

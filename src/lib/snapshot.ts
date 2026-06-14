@@ -46,6 +46,7 @@ export type TeamView = {
   netWorth: number;      // coins + propertyValue（結算口徑，不含動產幣值）
   itemCount: number;
   items: ActiveItemView[];
+  recentAttacks: string[]; // 最近被功能卡攻擊的通知訊息（時間窗內，新到舊）；小隊頁警示橫幅用
 };
 
 export type RegionView = {
@@ -112,8 +113,11 @@ function findMonopoly(
   return first[0];
 }
 
+// 攻擊通知時間窗：被功能卡攻擊後，小隊頁警示橫幅顯示這麼久即自動淡出（輪詢 3s，足夠重現數次）。
+const ATTACK_WINDOW_MS = 12_000;
+
 export async function getSnapshot(): Promise<Snapshot> {
-  const [state, teams, properties, lotteryNumbers, teamItems, auctionEvent, liveLot, soldLots] =
+  const [state, teams, properties, lotteryNumbers, teamItems, auctionEvent, liveLot, soldLots, attackLogs] =
     await Promise.all([
       prisma.gameState.findUnique({ where: { id: 1 } }),
       prisma.team.findMany({ orderBy: { id: "asc" } }),
@@ -127,6 +131,11 @@ export async function getSnapshot(): Promise<Snapshot> {
         where: { status: "SOLD" },
         orderBy: { soldAt: "desc" },
         take: 5,
+      }),
+      // 近期攻擊通知（時間窗內、未沖銷）
+      prisma.ledger.findMany({
+        where: { kind: "attack", reversed: false, createdAt: { gte: new Date(Date.now() - ATTACK_WINDOW_MS) } },
+        orderBy: { id: "desc" },
       }),
     ]);
 
@@ -166,6 +175,15 @@ export async function getSnapshot(): Promise<Snapshot> {
     teamItemsMap.set(item.teamId, list);
   }
 
+  // 各隊近期攻擊通知（新到舊；ledger 已 orderBy id desc）
+  const attacksByTeam = new Map<number, string[]>();
+  for (const a of attackLogs) {
+    if (a.teamId == null || !a.note) continue;
+    const list = attacksByTeam.get(a.teamId) ?? [];
+    list.push(a.note);
+    attacksByTeam.set(a.teamId, list);
+  }
+
   // 各隊不動產現值
   const teamPropValue = new Map<number, { count: number; value: number }>();
   for (const p of propViews) {
@@ -194,6 +212,7 @@ export async function getSnapshot(): Promise<Snapshot> {
       netWorth: t.coins + adjustedPropValue,
       itemCount: items.length,
       items,
+      recentAttacks: attacksByTeam.get(t.id) ?? [],
     };
   });
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { RadioTower, Gavel, ChevronDown } from "lucide-react";
+import { RadioTower, Gavel, ChevronDown, Swords } from "lucide-react";
 import { EVENTS, EffectType, ITEM_GRADE_COLORS } from "@/lib/game";
 import type { ActiveItemView, AuctionSnapshot } from "@/lib/snapshot";
 
@@ -66,6 +66,27 @@ export function EventBanner({ events }: { events: number[] }) {
       <span className="text-cyan-300/90">
         {events.map((i) => EVENTS[i]?.name).filter(Boolean).join("　|　")}
       </span>
+    </div>
+  );
+}
+
+// 攻擊警示橫幅（小隊端）：被功能卡攻擊時顯示，數秒後隨快照時間窗自動淡出。最多列 3 則。
+export function AttackBanner({ attacks }: { attacks: string[] }) {
+  if (!attacks.length) return null;
+  return (
+    <div className="breathe rounded-xl border border-rose-400/50 bg-rose-500/10 px-4 py-2.5 shadow-[0_0_18px_rgba(244,63,94,0.25)]">
+      <div className="mb-1 flex items-center gap-2 text-sm font-bold tracking-wide text-rose-200">
+        <Swords className="h-4 w-4 shrink-0 text-rose-300" />
+        <span>你被攻擊了！</span>
+      </div>
+      <ul className="space-y-0.5">
+        {attacks.slice(0, 3).map((msg, i) => (
+          <li key={i} className="text-xs text-rose-100/90">{msg}</li>
+        ))}
+        {attacks.length > 3 && (
+          <li className="text-[11px] text-rose-300/70">…還有 {attacks.length - 3} 則</li>
+        )}
+      </ul>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { fetcher, useSnapshot, postJson, toast, confirmDialog } from "@/components/client";
 import { Card } from "@/components/Shell";
-import { Num, PriceTag, LevelDots, EventBanner, AuctionBanner, BottomNav } from "@/components/ui";
+import { Num, PriceTag, LevelDots, EventBanner, AuctionBanner, AttackBanner, BottomNav } from "@/components/ui";
 import { TradeView } from "@/components/views/TradeView";
 import { InstructionsView } from "@/components/views/InstructionsView";
 import { Wallet, ArrowLeftRight, Trophy, BookOpen } from "lucide-react";
@@ -67,6 +67,7 @@ export function TeamView({ teamId }: { teamId: number }) {
         <TradeView teamId={teamId} />
       ) : (
         <>
+          <AttackBanner attacks={me.recentAttacks} />
           <EventBanner events={snap.activeEvents} />
           <AuctionBanner auction={snap.auction} myCoins={me.coins} />
 
