@@ -81,6 +81,7 @@ npm run dev             # http://localhost:3000
 | LOTTERY_BONUS | 樂透加成 | 大樂透中獎時 | 中獎獎金 × (1 + delta) |
 | JACKPOT_SHARE | 樂透抽成 | 任意隊大樂透中獎時 | 從銀行獲得 effectValue% 獎金池 |
 | LOTTERY_INSURANCE | 樂透保險 | 本期大樂透未中獎時 | 退還本期所有登記費用（一次性） |
+| LOTTERY_FEE_DISCOUNT | 樂透加購折扣 | 大樂透加購號碼時 | 加購費 × (1 + delta)，負值為折扣（夾到 0；入池額同步減少） |
 | DOUBLE_OR_NOTHING | 雙倍或歸零 | 流動關主發放光幣時 | 50% 機率雙倍，50% 機率歸零 |
 | ALLIANCE_BONUS | 交易紅利 | 交易被接受時 | 雙方各獲 effectValue 光幣 |
 | REMINDER | 提醒（無計算） | 無 | 僅在關主 UI 顯示提醒，不影響任何計算 |

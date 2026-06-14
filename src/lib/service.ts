@@ -13,6 +13,7 @@ import {
   applyWheelMaxStake,
   applyLotteryBonus,
   applyJackpotShare,
+  applyLotteryFeeDiscount,
   applyCompoundInterest,
   applyPropertyDividend,
   applyAllianceBonus,
@@ -572,29 +573,19 @@ export async function respondTrade(params: {
 }
 
 // ── 卡牌商店 ─────────────────────────────────────────────────
-async function restockSlot(tx: Tx, slot: number) {
-  const displays = await tx.shopDisplay.findMany();
-  const shown = new Set(displays.filter((d) => d.slot !== slot && d.cardType).map((d) => d.cardType));
-  const candidates = await tx.functionCard.findMany({ where: { remaining: { gt: 0 } } });
-  const pool = candidates.filter((c) => !shown.has(c.type));
-  const pick = (pool.length ? pool : candidates)[Math.floor(Math.random() * (pool.length ? pool.length : candidates.length))];
-  await tx.shopDisplay.update({ where: { slot }, data: { cardType: pick?.type ?? null } });
-}
-
-export async function sellCard(params: { teamId: number; slot: number; byToken?: string }) {
-  const { teamId, slot, byToken } = params;
+// 賣一張功能卡。展示的 3 張由前端隨機抽（純展示），故售出以「卡種類」為準。
+export async function sellCard(params: { teamId: number; cardType: string; byToken?: string }) {
+  const { teamId, cardType, byToken } = params;
   return prisma.$transaction(async (tx) => {
-    const display = await tx.shopDisplay.findUnique({ where: { slot } });
-    if (!display?.cardType) throw new Error("該展示位沒有卡");
-    const card = await tx.functionCard.findUnique({ where: { type: display.cardType } });
-    if (!card || card.remaining <= 0) throw new Error("該卡已售完");
+    const card = await tx.functionCard.findUnique({ where: { type: cardType } });
+    if (!card) throw new Error("找不到該功能卡");
+    if (card.remaining <= 0) throw new Error("該卡已售完");
     const team = await tx.team.findUnique({ where: { id: teamId } });
     if (!team) throw new Error("找不到小隊");
     if (team.cardPoints < card.cost) throw new Error(`卡牌點數不足（需 ${card.cost}）`);
     await tx.team.update({ where: { id: teamId }, data: { cardPoints: { decrement: card.cost } } });
     await tx.functionCard.update({ where: { type: card.type }, data: { remaining: { decrement: 1 } } });
     await logLedger(tx, { teamId, kind: "cardPoints", delta: -card.cost, note: `購買功能卡 ${card.type}`, byToken });
-    await restockSlot(tx, slot);
     return { ok: true, card: card.type, cost: card.cost };
   });
 }
@@ -622,14 +613,18 @@ export async function registerLottery(params: { teamId: number; number: number; 
     });
     if (existing) throw new Error("該號碼本期已被登記");
     const owned = await tx.lotteryNumber.count({ where: { period: state.lotteryPeriod, teamId } });
-    const fee = lotteryFee(owned);
+    const baseFee = lotteryFee(owned);
+    // 動產 LOTTERY_FEE_DISCOUNT：加購費折扣（delta 為負，多張相加；夾到 0）
+    const discountEffect = await loadActiveEffects(tx, teamId, "LOTTERY_FEE_DISCOUNT");
+    const fee = baseFee > 0 ? applyLotteryFeeDiscount(baseFee, discountEffect.delta) : 0;
     const team = await tx.team.findUnique({ where: { id: teamId } });
     if (!team) throw new Error("找不到小隊");
     if (team.coins < fee) throw new Error(`光幣不足（加購費 ${fee}）`);
     if (fee > 0) {
       await tx.team.update({ where: { id: teamId }, data: { coins: { decrement: fee } } });
-      await logLedger(tx, { teamId, kind: "lottery", delta: -fee, note: `大樂透加購 ${number} 號`, byToken });
+      await logLedger(tx, { teamId, kind: "lottery", delta: -fee, note: `大樂透加購 ${number} 號${fee < baseFee ? `（原 ${baseFee}，折扣後 ${fee}）` : ""}`, byToken });
     }
+    if (baseFee > 0) await decrementUses(tx, discountEffect.usedIds);
     await tx.lotteryNumber.create({ data: { period: state.lotteryPeriod, number, teamId } });
     const poolAdd = fee * 2; // 加購費 *2 入池
     await tx.gameState.update({ where: { id: 1 }, data: { lotteryPool: { increment: poolAdd } } });

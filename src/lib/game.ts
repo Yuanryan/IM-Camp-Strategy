@@ -236,6 +236,7 @@ export const EffectType = {
   LOTTERY_BONUS:     "LOTTERY_BONUS",     // 大樂透中獎倍率加成（+0.50 → 獎金 ×1.5）
   JACKPOT_SHARE:     "JACKPOT_SHARE",     // 任意隊中獎時自動抽成（0.05 → 5% 獎金池）
   LOTTERY_INSURANCE: "LOTTERY_INSURANCE", // 他隊中獎時退還本期登記費用（一次性）
+  LOTTERY_FEE_DISCOUNT: "LOTTERY_FEE_DISCOUNT", // 大樂透加購號碼費用折扣（-0.50 → 加購費 5 折）
   COMPOUND_INTEREST: "COMPOUND_INTEREST", // 每輪賺取現有光幣 X%（0.02 → 2%/輪）
   PROPERTY_DIVIDEND: "PROPERTY_DIVIDEND", // 每輪賺取不動產現值 X%（0.03 → 3%/輪）
   UNDERDOG:          "UNDERDOG",          // 末位時每輪獲得固定補貼（200 → 末位時 +200/輪）
@@ -262,6 +263,7 @@ export const EFFECT_TYPE_LABELS: Record<EffectType, string> = {
   LOTTERY_BONUS:     "樂透加成",
   JACKPOT_SHARE:     "樂透抽成",
   LOTTERY_INSURANCE: "樂透保險",
+  LOTTERY_FEE_DISCOUNT: "樂透加購折扣",
   COMPOUND_INTEREST: "複利收益",
   PROPERTY_DIVIDEND: "不動產分紅",
   UNDERDOG:          "末位補貼",
@@ -341,6 +343,11 @@ export function applyLotteryBonus(pool: number, bonusDelta: number): number {
 // JACKPOT_SHARE：按比例抽取獎金池
 export function applyJackpotShare(pool: number, rate: number): number {
   return Math.max(0, Math.round(pool * rate));
+}
+
+// LOTTERY_FEE_DISCOUNT：大樂透加購費折扣（delta 為負，多張直接相加；夾到 0）
+export function applyLotteryFeeDiscount(fee: number, discountDelta: number): number {
+  return Math.max(0, Math.round(fee * (1 + discountDelta)));
 }
 
 // COMPOUND_INTEREST：按現有光幣計算利息
@@ -423,6 +430,7 @@ export const MOVABLE_ASSET_SEED: {
   { name: "彩票加倍咒",   grade: "S", effectType: "LOTTERY_BONUS",    effectValue:  0.50, condition: null, defaultUses: null, description: "大樂透中獎時獎金 ×1.5（永久）" },
   { name: "彩票抽成令",   grade: "S", effectType: "JACKPOT_SHARE",    effectValue:  0.05, condition: null, defaultUses: null, description: "大樂透任意隊中獎時自動獲得 5% 獎金池（永久）" },
   { name: "彩票保險單",   grade: "A", effectType: "LOTTERY_INSURANCE", effectValue: 1,    condition: null, defaultUses: 1,    description: "大樂透他隊中獎時退還本期所有登記費用（一次性）" },
+  { name: "彩票折價券",   grade: "B", effectType: "LOTTERY_FEE_DISCOUNT", effectValue: -0.50, condition: null, defaultUses: null, description: "大樂透加購號碼費用 5 折（永久）" },
   // ── 每輪收益系列 ──
   { name: "複利魔方",     grade: "S", effectType: "COMPOUND_INTEREST", effectValue: 0.03, condition: null, defaultUses: null, description: "每輪賺取現有光幣 3%（永久）" },
   { name: "不動產分紅",   grade: "A", effectType: "PROPERTY_DIVIDEND", effectValue: 0.03, condition: null, defaultUses: null, description: "每輪賺取不動產現值 3%（永久）" },

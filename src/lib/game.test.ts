@@ -23,6 +23,7 @@ import {
   applyWheelMaxStake,
   applyLotteryBonus,
   applyJackpotShare,
+  applyLotteryFeeDiscount,
   applyCompoundInterest,
   applyPropertyDividend,
   applyPiracy,
@@ -235,6 +236,18 @@ describe("effect: JACKPOT_SHARE（applyJackpotShare）", () => {
   });
 });
 
+describe("effect: LOTTERY_FEE_DISCOUNT（applyLotteryFeeDiscount）", () => {
+  it("5 折", () => {
+    expect(applyLotteryFeeDiscount(100, -0.5)).toBe(50);
+  });
+  it("delta = 0 時不變", () => {
+    expect(applyLotteryFeeDiscount(100, 0)).toBe(100);
+  });
+  it("多張疊加夾到 0（不為負）", () => {
+    expect(applyLotteryFeeDiscount(100, -1.5)).toBe(0);
+  });
+});
+
 // ── COMPOUND_INTEREST ────────────────────────────────────────
 describe("effect: COMPOUND_INTEREST（applyCompoundInterest）", () => {
   it("3% 利率", () => {
@@ -297,6 +310,9 @@ describe("effect: 含條件 / 隨機 effectType 結構驗證", () => {
   it("LOTTERY_INSURANCE 在 MOVABLE_ASSET_SEED 中存在", () => {
     expect(MOVABLE_ASSET_SEED.some((a) => a.effectType === EffectType.LOTTERY_INSURANCE)).toBe(true);
   });
+  it("LOTTERY_FEE_DISCOUNT 在 MOVABLE_ASSET_SEED 中存在", () => {
+    expect(MOVABLE_ASSET_SEED.some((a) => a.effectType === EffectType.LOTTERY_FEE_DISCOUNT)).toBe(true);
+  });
 });
 
 // ── REMINDER：無計算效果（僅資料驗證，見 MOVABLE_ASSET_SEED）──
@@ -320,6 +336,7 @@ describe("effect 覆蓋率", () => {
       EffectType.LOTTERY_BONUS,
       EffectType.JACKPOT_SHARE,
       EffectType.LOTTERY_INSURANCE,
+      EffectType.LOTTERY_FEE_DISCOUNT,
       EffectType.COMPOUND_INTEREST,
       EffectType.PROPERTY_DIVIDEND,
       EffectType.UNDERDOG,
