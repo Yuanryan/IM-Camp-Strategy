@@ -20,9 +20,10 @@ import {
   applyPiracy,
   spinWheelCustom,
   currentValue,
+  leveledValue,
   lotteryFee,
   parseActiveEvents,
-  roundTo50,
+  roundTo10,
   stackEffects,
   upgradeFee,
   TOLL_RATE,
@@ -332,7 +333,7 @@ export async function cardSeizeLand(params: { propertyId: number; toTeamId: numb
     const buyer = await tx.team.findUnique({ where: { id: toTeamId } });
     if (!buyer) throw new Error("找不到出卡小隊");
     const fromTeamId = prop.ownerTeamId;
-    const compensation = roundTo50(prop.basePrice * 0.8);
+    const compensation = roundTo10(prop.basePrice * 0.8);
     const ledgerIds: number[] = [];
     if (compensation > 0) {
       await tx.team.update({ where: { id: fromTeamId }, data: { coins: { increment: compensation } } });
@@ -479,22 +480,26 @@ export async function payToll(params: {
       if (p.level >= 3) s.lvl3 += 1;
       stat.set(p.ownerTeamId, s);
     }
-    const ranked = [...stat.entries()].sort(
-      (a, b) => b[1].lvl3 - a[1].lvl3 || b[1].total - a[1].total,
-    );
+    // 獨佔的最低門檻：該區至少要有 1 棟三級不動產才可能成立。
+    // 沒有任何三級 → 無人獨佔 → 全區免過路費（升到三級是「開始收過路費」的投資門檻）。
+    const ranked = [...stat.entries()]
+      .filter(([, s]) => s.lvl3 >= 1)
+      .sort((a, b) => b[1].lvl3 - a[1].lvl3 || b[1].total - a[1].total);
     let monopolyId: number | null = null;
     if (ranked.length === 1) monopolyId = ranked[0][0];
     else if (ranked.length >= 2) {
       const [f, s] = ranked;
       if (!(f[1].lvl3 === s[1].lvl3 && f[1].total === s[1].total)) monopolyId = f[0];
     }
-    if (monopolyId == null) throw new Error(`${REGION_NAME[region]} 目前沒有獨佔隊伍，免過路費`);
+    if (monopolyId == null) throw new Error(`${REGION_NAME[region]} 目前沒有獨佔隊伍（需有三級不動產），免過路費`);
     if (monopolyId === payerTeamId) throw new Error("踩到自己獨佔區，免過路費");
 
+    // 過路費計價用 leveledValue（含升級加成），讓壟斷隊蓋房（升級）能多收過路費。
+    // 注意：購買 / 升級「價格」仍用未加成的 currentValue，升級不會抬高自己的買價。
     const totalValue = regionProps
       .filter((p) => p.ownerTeamId === monopolyId)
-      .reduce((s, p) => s + currentValue(p, activeEvents, state.event4Penalty), 0);
-    const baseToll = roundTo50(totalValue * TOLL_RATE);
+      .reduce((s, p) => s + leveledValue(p, activeEvents, state.event4Penalty), 0);
+    const baseToll = roundTo10(totalValue * TOLL_RATE);
     if (baseToll <= 0) throw new Error("過路費為 0");
 
     // 動產效果：獨佔隊 TOLL_INCOME 提高過路費、付款隊 TOLL_PAID 降低過路費。

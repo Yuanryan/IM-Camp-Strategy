@@ -382,7 +382,7 @@ function PropertySection() {
 
       {/* Upgrade costs */}
       <motion.div variants={fogItem} className="glass rounded-2xl p-4 border border-emerald-500/15">
-        <p className="text-slate-400 text-xs font-mono uppercase tracking-widest mb-3">升級費用（四捨五入至 50 光幣）</p>
+        <p className="text-slate-400 text-xs font-mono uppercase tracking-widest mb-3">升級費用（四捨五入至 10 光幣）</p>
         <div className="space-y-3">
           {levels.map(({ label, cost, pct, color }, i) => (
             <div key={i} className="flex items-center gap-3">
@@ -406,9 +406,12 @@ function PropertySection() {
         className="glass rounded-xl p-4 border border-amber-500/25 bg-gradient-to-r from-amber-500/10 to-transparent">
         <p className="text-amber-300 font-bold text-sm mb-1.5">獨佔隊伍 · 過路費</p>
         <p className="text-slate-400 text-xs leading-relaxed">
-          某區「三級不動產最多」的隊伍取得獨佔。其他隊踩到該區資本據點需支付：
+          需先在該區擁有至少一棟三級不動產，才可能取得獨佔（「三級不動產最多」者勝出）。其他隊踩到該區資本據點需支付：
         </p>
-        <p className="text-amber-300 font-bold text-sm mt-1.5">該區所有不動產現值總和 × 10%（四捨五入至 50）</p>
+        <p className="text-amber-300 font-bold text-sm mt-1.5">該區所有不動產（升級後價值）總和 × 8%（四捨五入至 10）</p>
+        <p className="text-slate-400 text-xs leading-relaxed mt-1.5">
+          不動產等級越高，計入過路費的價值也越高——蓋得越高，收得越多。
+        </p>
       </motion.div>
     </motion.div>
   );

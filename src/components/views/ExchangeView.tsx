@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, PriceTag, LevelDots, EventBanner, TeamItemBadges, HudTabs } from "@/components/ui";
-import { REGIONS, REGION_UI, EffectType, upgradeFee, applyShopPrice, stackEffects, roundTo50, type UndoRecipe } from "@/lib/game";
+import { REGIONS, REGION_UI, EffectType, upgradeFee, applyShopPrice, stackEffects, roundTo10, type UndoRecipe } from "@/lib/game";
 import { Building2, Sword } from "lucide-react";
 
 const LEVEL_TAG = ["0級", "1級", "2級", "3級"];
@@ -274,7 +274,7 @@ function CardActions({
   const others = actorTeam === "" ? owned : owned.filter((p) => p.ownerTeamId !== actorTeam);
 
   const tgtProp = properties.find((p) => p.id === tgt);
-  const compensation = tgtProp ? roundTo50(tgtProp.basePrice * 0.8) : 0;
+  const compensation = tgtProp ? roundTo10(tgtProp.basePrice * 0.8) : 0;
 
   const run = async () => {
     if (!card) return "請先選卡片";

@@ -1,8 +1,12 @@
 import { describe, it, expect } from "vitest";
 import {
   stackEffects,
-  roundTo50,
+  roundTo10,
   currentValue,
+  leveledValue,
+  LEVEL_VALUE_BONUS,
+  investedValue,
+  investedPrincipalMult,
   upgradeFee,
   lotteryFee,
   parseActiveEvents,
@@ -351,17 +355,17 @@ describe("effect 覆蓋率", () => {
   });
 });
 
-// ── roundTo50 ────────────────────────────────────────────────
-describe("roundTo50", () => {
+// ── roundTo10 ────────────────────────────────────────────────
+describe("roundTo10", () => {
   it.each([
     [0, 0],
-    [24, 0],
-    [25, 50],
-    [74, 50],
-    [75, 100],
-    [510, 500],
+    [4, 0],
+    [5, 10],
+    [74, 70],
+    [75, 80],
+    [511, 510],
   ])("%i → %i", (input, expected) => {
-    expect(roundTo50(input)).toBe(expected);
+    expect(roundTo10(input)).toBe(expected);
   });
 });
 
@@ -395,9 +399,73 @@ describe("currentValue", () => {
   });
 });
 
+// ── leveledValue（升級後價值：含升級加成）──────────────────────
+// 同時用於過路費計價與結算淨值；購買 / 升級「價格」仍用未加成的 currentValue。
+describe("leveledValue", () => {
+  const prop = { basePrice: 600, region: "AURORA", type: "金融", level: 0 };
+
+  it("0 級時等於 currentValue（無加成）", () => {
+    expect(leveledValue({ ...prop, level: 0 }, [], null)).toBe(600);
+  });
+
+  it("k=0.5：每升一級 +50% 價值（1→1.5→2→2.5×）", () => {
+    expect(leveledValue({ ...prop, level: 1 }, [], null)).toBe(600 * 1.5);
+    expect(leveledValue({ ...prop, level: 2 }, [], null)).toBe(600 * 2.0);
+    expect(leveledValue({ ...prop, level: 3 }, [], null)).toBe(600 * 2.5);
+  });
+
+  it("3 級價值為 0 級的 2.5 倍（升級提高過路費與結算淨值）", () => {
+    const lvl0 = leveledValue({ ...prop, level: 0 }, [], null);
+    const lvl3 = leveledValue({ ...prop, level: 3 }, [], null);
+    expect(lvl3 / lvl0).toBeCloseTo(1 + LEVEL_VALUE_BONUS * 3);
+  });
+
+  it("市場事件倍率與升級加成可疊乘", () => {
+    // 事件一：AURORA ×1.25、金融 ×1.1 → currentValue = round(600*1.25*1.1)=825
+    // 2 級加成 ×2 → 1650
+    expect(leveledValue({ ...prop, level: 2 }, [1], null)).toBe(825 * 2);
+  });
+});
+
+// ── investedValue / investedPrincipalMult（結算淨值＝投入本金市值）──────
+// 把買價+升級費當本金（以 base 計），再隨事件浮動；結算淨值用此，過路費不用。
+describe("investedPrincipalMult", () => {
+  it("各級本金倍率 = 1 / 1.2 / 1.6 / 2.2（＝ 1 + 0.2 + 0.4 + 0.6）", () => {
+    expect(investedPrincipalMult(0)).toBeCloseTo(1.0);
+    expect(investedPrincipalMult(1)).toBeCloseTo(1.2);
+    expect(investedPrincipalMult(2)).toBeCloseTo(1.6);
+    expect(investedPrincipalMult(3)).toBeCloseTo(2.2);
+  });
+});
+
+describe("investedValue", () => {
+  const prop = { basePrice: 600, region: "AURORA", type: "金融", level: 0 };
+
+  it("0 級無事件時等於 base", () => {
+    expect(investedValue({ ...prop, level: 0 }, [], null)).toBe(600);
+  });
+
+  it("升級＝買價同等對待（無 k）：lvl3 = base × 2.2", () => {
+    expect(investedValue({ ...prop, level: 3 }, [], null)).toBe(Math.round(600 * 2.2));
+  });
+
+  it("結算淨值 ≈ 實際投入（買價 + 各級升級費）", () => {
+    // base 600：升級費 round10(120)=120、round10(240)=240、round10(360)=360
+    const invested = 600 + 120 + 240 + 360; // 1320
+    expect(investedValue({ ...prop, level: 3 }, [], null)).toBeCloseTo(invested, -1);
+  });
+
+  it("隨市場事件浮動：買在高點、事件回跌會虧（事件一 ×1.375）", () => {
+    // 事件一 AURORA×1.25、金融×1.1 = ×1.375；lvl0 → 600×1.375=825
+    expect(investedValue({ ...prop, level: 0 }, [1], null)).toBe(Math.round(600 * 1.375));
+    // 無事件後回到 600（淨值下跌，反映市場風險）
+    expect(investedValue({ ...prop, level: 0 }, [], null)).toBe(600);
+  });
+});
+
 // ── upgradeFee ───────────────────────────────────────────────
 describe("upgradeFee", () => {
-  it("0→1 級為 base 的 20%（四捨五入到 50）", () => {
+  it("0→1 級為 base 的 20%（四捨五入到 10）", () => {
     expect(upgradeFee(500, 0)).toBe(100);
   });
   it("1→2 級為 40%", () => {

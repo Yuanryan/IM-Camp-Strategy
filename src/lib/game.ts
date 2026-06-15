@@ -58,42 +58,44 @@ export const PROPERTY_SEED: {
   type: string;
   basePrice: number;
 }[] = [
+  // 價格基準：以 1000 起始光幣校準。中位數約 750（起始買得起約 1 塊），
+  // 整區壟斷約需 6000（6×起始），讓 10 隊競逐時各區維持競爭、不易被單隊速壟斷。
   // 極光金域
-  { name: "星展銀行", region: "AURORA", type: "金融", basePrice: 550 },
-  { name: "光幣當舖", region: "AURORA", type: "金融", basePrice: 350 },
-  { name: "IM百貨", region: "AURORA", type: "商業", basePrice: 350 },
-  { name: "公館黃金商圈", region: "AURORA", type: "商業", basePrice: 400 },
-  { name: "小福廣場", region: "AURORA", type: "商業", basePrice: 300 },
-  { name: "禮賢郵局", region: "AURORA", type: "投資", basePrice: 500 },
-  { name: "光軌公館站", region: "AURORA", type: "商貿", basePrice: 350 },
-  { name: "集思會議中心", region: "AURORA", type: "展覽", basePrice: 450 },
+  { name: "星展銀行", region: "AURORA", type: "金融", basePrice: 850 },
+  { name: "光幣當舖", region: "AURORA", type: "金融", basePrice: 550 },
+  { name: "IM百貨", region: "AURORA", type: "商業", basePrice: 550 },
+  { name: "公館黃金商圈", region: "AURORA", type: "商業", basePrice: 600 },
+  { name: "小福廣場", region: "AURORA", type: "商業", basePrice: 450 },
+  { name: "禮賢郵局", region: "AURORA", type: "投資", basePrice: 750 },
+  { name: "光軌公館站", region: "AURORA", type: "商貿", basePrice: 550 },
+  { name: "集思會議中心", region: "AURORA", type: "展覽", basePrice: 700 },
   // 靈序研究
-  { name: "管圖實驗室", region: "SPECTRA", type: "研究", basePrice: 450 },
-  { name: "Illuminate 科技總部", region: "SPECTRA", type: "研究", basePrice: 600 },
-  { name: "科技大樓", region: "SPECTRA", type: "通訊", basePrice: 550 },
-  { name: "中央研究院", region: "SPECTRA", type: "通訊", basePrice: 550 },
-  { name: "總圖資料庫中心", region: "SPECTRA", type: "資料", basePrice: 500 },
-  { name: "Google 台北 101 辦公室", region: "SPECTRA", type: "資料", basePrice: 600 },
-  { name: "Gemini 研發處", region: "SPECTRA", type: "AI", basePrice: 400 },
-  { name: "沃思資訊所", region: "SPECTRA", type: "網路", basePrice: 450 },
+  { name: "管圖實驗室", region: "SPECTRA", type: "研究", basePrice: 700 },
+  { name: "Illuminate 科技總部", region: "SPECTRA", type: "研究", basePrice: 900 },
+  { name: "科技大樓", region: "SPECTRA", type: "通訊", basePrice: 850 },
+  { name: "中央研究院", region: "SPECTRA", type: "通訊", basePrice: 850 },
+  { name: "總圖資料庫中心", region: "SPECTRA", type: "資料", basePrice: 750 },
+  { name: "Google 台北 101 辦公室", region: "SPECTRA", type: "資料", basePrice: 900 },
+  { name: "Gemini 研發處", region: "SPECTRA", type: "AI", basePrice: 600 },
+  { name: "沃思資訊所", region: "SPECTRA", type: "網路", basePrice: 700 },
   // 影焰工域
-  { name: "NVIDIA 台灣分公司", region: "EMBER", type: "材料", basePrice: 650 },
-  { name: "德田半導體中心", region: "EMBER", type: "材料", basePrice: 650 },
-  { name: "台電大樓", region: "EMBER", type: "製造", basePrice: 450 },
-  { name: "台積電人才培育所", region: "EMBER", type: "製造", basePrice: 550 },
-  { name: "寶藏巖", region: "EMBER", type: "原料", basePrice: 500 },
-  { name: "光軌台電大樓站", region: "EMBER", type: "物流", basePrice: 500 },
-  { name: "水源貨櫃碼頭", region: "EMBER", type: "物流", basePrice: 550 },
-  { name: "水源儲倉", region: "EMBER", type: "物流", basePrice: 450 },
+  { name: "NVIDIA 台灣分公司", region: "EMBER", type: "材料", basePrice: 1000 },
+  { name: "德田半導體中心", region: "EMBER", type: "材料", basePrice: 1000 },
+  { name: "台電大樓", region: "EMBER", type: "製造", basePrice: 700 },
+  { name: "台積電人才培育所", region: "EMBER", type: "製造", basePrice: 850 },
+  { name: "寶藏巖", region: "EMBER", type: "原料", basePrice: 750 },
+  { name: "光軌台電大樓站", region: "EMBER", type: "物流", basePrice: 750 },
+  { name: "水源貨櫃碼頭", region: "EMBER", type: "物流", basePrice: 850 },
+  { name: "水源儲倉", region: "EMBER", type: "物流", basePrice: 700 },
   // 晨霧棲城
-  { name: "長興住宅苑", region: "HAVEN", type: "住宅", basePrice: 500 },
-  { name: "大安森林公園", region: "HAVEN", type: "住宅", basePrice: 500 },
-  { name: "太子學舍", region: "HAVEN", type: "住宅", basePrice: 450 },
-  { name: "醫學圖書館", region: "HAVEN", type: "教育", basePrice: 500 },
-  { name: "醉月湖小學", region: "HAVEN", type: "教育", basePrice: 500 },
-  { name: "博雅療養院", region: "HAVEN", type: "醫療", basePrice: 600 },
-  { name: "大安運動中心", region: "HAVEN", type: "運動", basePrice: 450 },
-  { name: "118 咖啡巷", region: "HAVEN", type: "飲食", basePrice: 450 },
+  { name: "長興住宅苑", region: "HAVEN", type: "住宅", basePrice: 750 },
+  { name: "大安森林公園", region: "HAVEN", type: "住宅", basePrice: 750 },
+  { name: "太子學舍", region: "HAVEN", type: "住宅", basePrice: 700 },
+  { name: "醫學圖書館", region: "HAVEN", type: "教育", basePrice: 750 },
+  { name: "醉月湖小學", region: "HAVEN", type: "教育", basePrice: 750 },
+  { name: "博雅療養院", region: "HAVEN", type: "醫療", basePrice: 900 },
+  { name: "大安運動中心", region: "HAVEN", type: "運動", basePrice: 700 },
+  { name: "118 咖啡巷", region: "HAVEN", type: "飲食", basePrice: 700 },
 ];
 
 // 市場事件倍率（只取企畫書的「% 效果」，初始價一律用四區域表）
@@ -176,20 +178,62 @@ export function currentValue(
   return Math.round(v);
 }
 
-export function roundTo50(n: number): number {
-  return Math.round(n / 50) * 50;
+// 玩家實際支付 / 收取的金額一律四捨五入到 10 光幣，方便現場交易所人工找零，
+// 同時保留百分比運算的精度（不影響 currentValue 等「帳面數值」，那些維持精確）。
+export function roundTo10(n: number): number {
+  return Math.round(n / 10) * 10;
 }
 
-// 過路費基礎費率：獨佔隊該區不動產現值總和 × TOLL_RATE（再四捨五入到 50）。
+// 過路費基礎費率：獨佔隊該區不動產（升級後價值）總和 × TOLL_RATE（再四捨五入到 10）。
 // 調整此值即可整體升降全場過路費（道具 TOLL_INCOME / TOLL_PAID 仍以此為基準疊加）。
-export const TOLL_RATE = 0.15;
+// 採 8%：因為「升級」已直接計入結算淨值（見 investedValue），蓋房本身即回本，
+// 過路費不再是升級的唯一理由，故壓低為純粹的現金流 / 騷擾收入，避免 10 隊賽局中過度滾雪球。
+export const TOLL_RATE = 0.08;
 
-// 升級費用：購買=base；1級=base×20%；2級=40%；3級=60%（四捨五入到 50）
-// 傳入「目前等級」回傳升到下一級的費用；level 3 不可再升
+// 升級費率（單一事實來源）：0→1=base×20%、1→2=40%、2→3=60%。
+// upgradeFee（實付費用）與 investedValue（結算本金）都以此為準，確保「投入＝淨值」。
+export const UPGRADE_RATES = [0.2, 0.4, 0.6] as const;
+
+// 升級費用：傳入「目前等級」回傳升到下一級的費用（四捨五入到 10）；level 3 不可再升。
 export function upgradeFee(basePrice: number, currentLevel: number): number | null {
-  const rate: Record<number, number> = { 0: 0.2, 1: 0.4, 2: 0.6 };
-  if (!(currentLevel in rate)) return null;
-  return roundTo50(basePrice * rate[currentLevel]);
+  const rate = UPGRADE_RATES[currentLevel];
+  if (rate === undefined) return null;
+  return roundTo10(basePrice * rate);
+}
+
+// 本金倍率：把「已升級到 level」累積投入折算成 base 的倍數。
+// lvl0=1.0、lvl1=1.2、lvl2=1.6、lvl3=2.2（＝ 1 + 0.2 + 0.4 + 0.6）。
+export function investedPrincipalMult(level: number): number {
+  let m = 1;
+  for (let i = 0; i < level; i++) m += UPGRADE_RATES[i] ?? 0;
+  return m;
+}
+
+// ── 結算 / 淨值用「投入本金市值」──────────────────────────────
+// 把「買價 + 各級升級費」當成本金（以 base 計），再隨市場事件浮動：
+//   investedValue = base × investedPrincipalMult(level) × 事件倍率
+// 結果≈該隊實際投入的光幣（升級＝買價同等對待，無 k 加成），且會隨事件漲跌，
+// 故「買在高點、事件回跌」會虧損 —— 不動產最終市值受事件影響（符合企畫書）。
+export function investedValue(
+  prop: { basePrice: number; region: string; type: string; level: number },
+  activeEvents: number[],
+  event4Penalty?: string | null,
+): number {
+  const eventMult =
+    currentValue({ basePrice: 1000, region: prop.region, type: prop.type }, activeEvents, event4Penalty) / 1000;
+  return Math.round(prop.basePrice * investedPrincipalMult(prop.level) * eventMult);
+}
+
+// ── 過路費用「升級加成市值」（仍用 k=0.5，過路費＝蓋房的主要回報）──────────
+// 過路費比淨值更陡地獎勵升級：壟斷 + 過路費才是蓋房的主要誘因。
+// leveledValue = currentValue ×（1 + LEVEL_VALUE_BONUS × level）。
+export const LEVEL_VALUE_BONUS = 0.5;
+export function leveledValue(
+  prop: { basePrice: number; region: string; type: string; level: number },
+  activeEvents: number[],
+  event4Penalty?: string | null,
+): number {
+  return currentValue(prop, activeEvents, event4Penalty) * (1 + LEVEL_VALUE_BONUS * prop.level);
 }
 
 // 大樂透加購費：50 × 2^(已登記號碼數 - 1)；第一個免費

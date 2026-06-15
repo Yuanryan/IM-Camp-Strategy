@@ -14,8 +14,8 @@ import {
 const prisma = new PrismaClient();
 
 // ─── 賽前設定（留空待填，請依實際情況修改）──────────────────────
-const TEAM_COUNT = 10; // TODO: 改成實際小隊數
-const STARTING_COINS = 0; // TODO: 各隊初始光幣
+const TEAM_COUNT = 10; // 實際小隊數
+const STARTING_COINS = 1000; // 各隊初始光幣（不動產價格表以此校準：中位數約 750，起始買得起約 1 塊）
 const STARTING_CARD_POINTS = 0; // TODO: 各隊初始卡牌點數
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 // 各角色站別數量

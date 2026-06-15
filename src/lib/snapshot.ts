@@ -4,8 +4,10 @@ import {
   REGION_NAME,
   applyPropertyValue,
   currentValue,
+  leveledValue,
+  investedValue,
   parseActiveEvents,
-  roundTo50,
+  roundTo10,
   stackEffects,
   TOLL_RATE,
   type RegionCode,
@@ -21,7 +23,9 @@ export type PropertyView = {
   level: number;
   ownerTeamId: number | null;
   ownerName: string | null;
-  currentValue: number; // 已售出才有意義；未售出顯示為現價參考
+  currentValue: number;   // 市場現值（未含升級）＝購買 / 升級價的基準
+  investedValue: number;  // 投入本金市值（買價+升級費，隨事件浮動）＝計入結算淨值
+  leveledValue: number;   // 升級加成市值（×(1+0.5×level)）＝過路費計價基準
 };
 
 export type ActiveItemView = {
@@ -55,7 +59,7 @@ export type RegionView = {
   name: string;
   monopolyTeamId: number | null;
   monopolyTeamName: string | null;
-  toll: number; // 過路費（已含四捨五入到 50）
+  toll: number; // 過路費（已含四捨五入到 10）
 };
 
 export type AuctionLotView = {
@@ -97,7 +101,8 @@ export type Snapshot = {
   auction: AuctionSnapshot;
 };
 
-// 計算某區獨佔隊伍：最多三級 → 再比總持有數 → 平手則無
+// 計算某區獨佔隊伍：需有 ≥1 棟三級 → 最多三級 → 再比總持有數 → 平手則無。
+// 與 service.payToll 的獨佔判定一致（含三級門檻），否則投影顯示的獨佔/過路費會與實際收取不符。
 function findMonopoly(
   regionProps: { ownerTeamId: number | null; level: number }[],
 ): number | null {
@@ -110,9 +115,11 @@ function findMonopoly(
     stat.set(p.ownerTeamId, s);
   }
   if (stat.size === 0) return null;
-  const ranked = [...stat.entries()].sort(
-    (a, b) => b[1].lvl3 - a[1].lvl3 || b[1].total - a[1].total,
-  );
+  // 最低門檻：至少 1 棟三級不動產才可能獨佔。
+  const ranked = [...stat.entries()]
+    .filter(([, s]) => s.lvl3 >= 1)
+    .sort((a, b) => b[1].lvl3 - a[1].lvl3 || b[1].total - a[1].total);
+  if (ranked.length === 0) return null;
   if (ranked.length === 1) return ranked[0][0];
   const [first, second] = ranked;
   // 第一名需嚴格大於第二名（三級數或總持有數）才算獨佔
@@ -163,6 +170,8 @@ export async function getSnapshot(): Promise<Snapshot> {
     ownerTeamId: p.ownerTeamId,
     ownerName: p.ownerTeamId ? (teamName.get(p.ownerTeamId) ?? null) : null,
     currentValue: currentValue(p, activeEvents, event4Penalty),
+    investedValue: investedValue(p, activeEvents, event4Penalty),
+    leveledValue: leveledValue(p, activeEvents, event4Penalty),
   }));
 
   // 各隊動產效果（按隊伍分組，不含 hiddenValue）
@@ -193,13 +202,13 @@ export async function getSnapshot(): Promise<Snapshot> {
     attacksByTeam.set(a.teamId, list);
   }
 
-  // 各隊不動產現值
+  // 各隊不動產淨值：用 investedValue（買價+升級費，隨事件浮動）＝玩家實際投入的市值。
   const teamPropValue = new Map<number, { count: number; value: number }>();
   for (const p of propViews) {
     if (p.ownerTeamId == null) continue;
     const s = teamPropValue.get(p.ownerTeamId) ?? { count: 0, value: 0 };
     s.count += 1;
-    s.value += p.currentValue;
+    s.value += p.investedValue;
     teamPropValue.set(p.ownerTeamId, s);
   }
 
@@ -231,10 +240,11 @@ export async function getSnapshot(): Promise<Snapshot> {
     const monopolyTeamId = findMonopoly(regionProps);
     let toll = 0;
     if (monopolyTeamId != null) {
+      // 顯示的過路費須與 service.payToll 計價一致：用 leveledValue（含升級加成）。
       const totalValue = regionProps
         .filter((p) => p.ownerTeamId === monopolyTeamId)
-        .reduce((s, p) => s + p.currentValue, 0);
-      toll = roundTo50(totalValue * TOLL_RATE);
+        .reduce((s, p) => s + p.leveledValue, 0);
+      toll = roundTo10(totalValue * TOLL_RATE);
     }
     return {
       code: r.code,
