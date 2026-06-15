@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import useSWR from "swr";
 import { fetcher, useSnapshot, postJson, ActionButton, toast } from "@/components/client";
 import { Card } from "@/components/Shell";
-import { Num, AssetPicker } from "@/components/ui";
+import { AnimatedNum, AssetPicker } from "@/components/ui";
 
 type LotType = "CUSTOM" | "ITEM" | "PROPERTY";
 
@@ -183,7 +183,7 @@ export function AuctionView() {
               <div className="mt-1 text-sm text-slate-400">{live.description}</div>
             )}
             <div className="mt-4 text-[11px] uppercase tracking-widest text-slate-400">目前喊價</div>
-            <Num className="neon-gold text-7xl font-black leading-none">{live.currentBid}</Num>
+            <AnimatedNum value={live.currentBid} className="neon-gold text-7xl font-black leading-none" />
             <div className="mt-1 text-xs text-slate-500">起標 {live.startPrice}</div>
           </div>
 
@@ -251,9 +251,10 @@ export function AuctionView() {
                     }`}
                   >
                     {t.name}
-                    <span className={`ml-1.5 ${broke && !picked ? "text-slate-600" : "text-amber-300/90"}`}>
-                      {t.coins}
-                    </span>
+                    <AnimatedNum
+                      value={t.coins}
+                      className={`ml-1.5 ${broke && !picked ? "text-slate-600" : "text-amber-300/90"}`}
+                    />
                   </button>
                 );
               })}

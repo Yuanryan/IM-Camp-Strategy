@@ -785,8 +785,18 @@ export async function drawLottery(params: { byToken?: string }) {
     const hit = allNumbers.find((n) => n.number === number) ?? null;
 
     if (!hit) {
-      await tx.gameState.update({ where: { id: 1 }, data: { lotteryPool: { increment: 1000 } } });
-      return { number, winnerTeamId: null, basePool: state.lotteryPool, finalPool: state.lotteryPool + 1000 };
+      const finalPool = state.lotteryPool + 1000;
+      await tx.gameState.update({
+        where: { id: 1 },
+        data: {
+          lotteryPool: { increment: 1000 },
+          lastDrawNumber: number,
+          lastDrawWinnerId: null,
+          lastDrawPool: finalPool,
+          lastDrawAt: new Date(),
+        },
+      });
+      return { number, winnerTeamId: null, basePool: state.lotteryPool, finalPool };
     }
 
     const basePool = state.lotteryPool;
@@ -838,11 +848,18 @@ export async function drawLottery(params: { byToken?: string }) {
     }
     if (insuranceUsedIds.length) await decrementUses(tx, insuranceUsedIds);
 
-    // 清空本期、開新一期、獎金池重設 1000
+    // 清空本期、開新一期、獎金池重設 1000、記錄本次開獎（供投影重播）
     await tx.lotteryNumber.deleteMany({ where: { period: state.lotteryPeriod } });
     await tx.gameState.update({
       where: { id: 1 },
-      data: { lotteryPeriod: { increment: 1 }, lotteryPool: 1000 },
+      data: {
+        lotteryPeriod: { increment: 1 },
+        lotteryPool: 1000,
+        lastDrawNumber: number,
+        lastDrawWinnerId: hit.teamId,
+        lastDrawPool: finalPool,
+        lastDrawAt: new Date(),
+      },
     });
     return { number, winnerTeamId: hit.teamId, basePool, finalPool };
   });

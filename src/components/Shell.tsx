@@ -1,8 +1,34 @@
 import type { ReactNode } from "react";
-import { LogOut, Sparkles } from "lucide-react";
-import { ROLE_LABEL, type Role } from "@/lib/game";
+import {
+  LogOut,
+  Sparkles,
+  Mic,
+  ArrowLeftRight,
+  Map as MapIcon,
+  Gamepad2,
+  Store,
+  Gavel,
+  MonitorPlay,
+  ShieldCheck,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+import { type Role } from "@/lib/game";
 import { FogToggle } from "@/components/ui/fog-toggle";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
+
+// 各角色頁面對應的標題列圖示
+const ROLE_ICON: Record<Role, LucideIcon> = {
+  HOST: Mic,
+  EXCHANGE: ArrowLeftRight,
+  MAP: MapIcon,
+  MOBILE: Gamepad2,
+  CARDSHOP: Store,
+  AUCTION: Gavel,
+  PROJECTION: MonitorPlay,
+  ADMIN: ShieldCheck,
+  TEAM: Users,
+};
 
 // 各角色頁面共用外框（透明毛玻璃標題列 + 登出）
 export function Shell({
@@ -16,25 +42,18 @@ export function Shell({
   title?: string;
   children: ReactNode;
 }) {
+  const Icon = ROLE_ICON[role] ?? Sparkles;
   return (
     <div className="flex min-h-screen flex-col">
       <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/60 backdrop-blur-md">
         <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
             <span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-400/30 bg-cyan-400/10 text-cyan-400 shadow-[0_0_14px_rgba(34,211,238,0.25)]">
-              <Sparkles className="h-4.5 w-4.5" strokeWidth={2.25} />
+              <Icon className="h-4.5 w-4.5" strokeWidth={2.25} />
             </span>
-            <div className="leading-tight">
-              <div className="flex items-center gap-2">
-                <span className="rounded-md border border-cyan-400/25 bg-cyan-400/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-cyan-300">
-                  {ROLE_LABEL[role]}
-                </span>
-                <span className="text-base font-bold tracking-wide text-slate-100">
-                  {title ?? label}
-                </span>
-              </div>
-              {title && <span className="text-xs text-slate-500">{label}</span>}
-            </div>
+            <span className="text-base font-bold tracking-wide text-slate-100">
+              {title ?? label}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <FullscreenButton />

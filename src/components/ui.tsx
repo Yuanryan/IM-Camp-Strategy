@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useMotionValue, animate } from "framer-motion";
 import { RadioTower, Gavel, ChevronDown, Swords } from "lucide-react";
 import { EVENTS, EffectType, ITEM_GRADE_COLORS } from "@/lib/game";
 import type { ActiveItemView, AuctionSnapshot } from "@/lib/snapshot";
@@ -15,6 +16,34 @@ export function Num({
   className?: string;
 }) {
   return <span className={`num ${className}`}>{children}</span>;
+}
+
+// 數字滾動：值改變時平滑補間（大螢幕 / 拍賣現場的「跳動感」）。
+// 用於會即時變動的金額（淨值、喊價、過路費、獎金池…）。
+export function AnimatedNum({
+  value,
+  className = "",
+  separator = true,
+}: {
+  value: number;
+  className?: string;
+  separator?: boolean; // 千分位逗號（大數字用）；小數字可關掉
+}) {
+  const [display, setDisplay] = useState(value);
+  const mv = useMotionValue(value);
+  useEffect(() => {
+    const controls = animate(mv, value, {
+      duration: 0.7,
+      ease: [0.22, 0.61, 0.36, 1],
+      onUpdate: (v) => setDisplay(Math.round(v)),
+    });
+    return () => controls.stop();
+  }, [value, mv]);
+  return (
+    <Num className={`inline-block tabular-nums ${className}`}>
+      {separator ? display.toLocaleString("en-US") : display}
+    </Num>
+  );
 }
 
 // 不動產等級：發光光點（0~3）

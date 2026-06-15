@@ -14,7 +14,6 @@ const STATION_LINKS = [
   ["地圖關主", "/map"],
   ["流動關主", "/mobile"],
   ["卡牌商店", "/shop"],
-  ["大樂透", "/lottery"],
   ["投影", "/projection"],
 ];
 

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Gem } from "lucide-react";
 import { getSession } from "@/lib/auth";
 import { ROLE_HOME, ROLE_LABEL } from "@/lib/game";
 
@@ -28,8 +29,8 @@ export default async function Home({
 
       <div className="glass relative w-full max-w-md rounded-3xl p-8 shadow-2xl shadow-cyan-900/30">
         <div className="mb-5 flex items-center gap-3">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500 to-yellow-400 text-2xl shadow-lg shadow-cyan-500/40">
-            🏮
+          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-cyan-500 to-yellow-400 shadow-lg shadow-cyan-500/40">
+            <Gem className="h-6 w-6 text-slate-950" strokeWidth={2.25} />
           </span>
           <div>
             <h1 className="bg-gradient-to-r from-cyan-300 via-cyan-200 to-yellow-300 bg-clip-text text-2xl font-black text-transparent">

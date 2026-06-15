@@ -7,6 +7,7 @@ import {
   parseActiveEvents,
   roundTo50,
   stackEffects,
+  TOLL_RATE,
   type RegionCode,
 } from "./game";
 
@@ -81,6 +82,14 @@ export type Snapshot = {
     period: number;
     pool: number;
     numbers: { number: number; teamId: number; teamName: string }[];
+    // 最近一次開獎結果（投影頁據此重播開獎動畫）；null = 尚未開過獎
+    lastDraw: {
+      number: number;
+      winnerTeamId: number | null;
+      winnerName: string | null;
+      pool: number;
+      at: string; // ISO 時間字串，投影頁用來判斷是否為「新的一次開獎」
+    } | null;
   };
   teams: TeamView[];
   properties: PropertyView[];
@@ -225,7 +234,7 @@ export async function getSnapshot(): Promise<Snapshot> {
       const totalValue = regionProps
         .filter((p) => p.ownerTeamId === monopolyTeamId)
         .reduce((s, p) => s + p.currentValue, 0);
-      toll = roundTo50(totalValue * 0.1);
+      toll = roundTo50(totalValue * TOLL_RATE);
     }
     return {
       code: r.code,
@@ -270,6 +279,16 @@ export async function getSnapshot(): Promise<Snapshot> {
           teamName: teamName.get(n.teamId) ?? `#${n.teamId}`,
         }))
         .sort((a, b) => a.number - b.number),
+      lastDraw:
+        state?.lastDrawNumber != null && state.lastDrawAt
+          ? {
+              number: state.lastDrawNumber,
+              winnerTeamId: state.lastDrawWinnerId,
+              winnerName: state.lastDrawWinnerId ? (teamName.get(state.lastDrawWinnerId) ?? null) : null,
+              pool: state.lastDrawPool ?? 0,
+              at: state.lastDrawAt.toISOString(),
+            }
+          : null,
     },
     teams: teamViews,
     properties: propViews,

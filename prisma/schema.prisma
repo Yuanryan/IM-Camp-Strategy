@@ -165,6 +165,11 @@ model GameState {
   event4Penalty String? // 事件四「前次漲最多區域」由主持人選定
   lotteryPeriod Int      @default(1)
   lotteryPool   Int      @default(1000)
+  // 最近一次大樂透開獎結果（供投影頁重播開獎動畫；null=尚未開過獎）
+  lastDrawNumber    Int?
+  lastDrawWinnerId  Int? // null = 無人中獎
+  lastDrawPool      Int? // 中獎發出 / 無人中獎累積後的金額
+  lastDrawAt        DateTime? // 投影頁以此判斷是否有「新的一次開獎」
   settledAt     DateTime?
   updatedAt     DateTime @updatedAt
 }
