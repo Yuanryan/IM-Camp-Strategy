@@ -147,11 +147,15 @@ function Timer() {
     return () => clearInterval(id);
   }, [running]);
 
-  const adjustTime = (amount: number) => {
-    const newSec = Math.max(0, sec + amount);
-    setSec(newSec);
-    setTotalSec(newSec);
+  const setTime = (newSec: number) => {
+    const v = Math.max(0, Math.min(99 * 60 + 59, Math.floor(newSec)));
+    setSec(v);
+    setTotalSec(v);
   };
+  const adjustTime = (amount: number) => setTime(sec + amount);
+  // 暫停時可直接輸入：分 / 秒各一格，立即套用到 sec 與 totalSec（圓環滿格基準）
+  const editMin = (m: number) => setTime((Number.isFinite(m) ? Math.max(0, m) : 0) * 60 + (sec % 60));
+  const editSec = (s: number) => setTime(Math.floor(sec / 60) * 60 + (Number.isFinite(s) ? Math.min(59, Math.max(0, s)) : 0));
 
   const mm = String(Math.floor(sec / 60)).padStart(2, "0");
   const ss = String(sec % 60).padStart(2, "0");
@@ -204,17 +208,25 @@ function Timer() {
             
             {/* 時間數字 (暫停時偏上，開始時滑到中央並放大) */}
             <div className={`absolute transition-all duration-500 ease-out ${
-              running 
+              running
                 ? "translate-y-0 scale-[1.15] md:scale-[1.2]" // 執行中：回到正中心並放大 15%~25%
                 : "-translate-y-5 md:-translate-y-6 scale-100"  // 暫停時：稍微往上提給按鈕空間
             }`}>
-              <Num className={`text-6xl md:text-7xl font-black font-mono tracking-widest ${
-                isDanger ? "text-rose-500 drop-shadow-[0_0_15px_rgba(225,29,72,0.8)] animate-pulse" :
-                running ? "text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.6)]" :
-                "text-slate-200"
-              }`}>
-                {mm}:{ss}
-              </Num>
+              {running ? (
+                <Num className={`text-6xl md:text-7xl font-black font-mono tracking-widest ${
+                  isDanger ? "text-rose-500 drop-shadow-[0_0_15px_rgba(225,29,72,0.8)] animate-pulse" :
+                  "text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.6)]"
+                }`}>
+                  {mm}:{ss}
+                </Num>
+              ) : (
+                // 暫停時：分 / 秒可直接輸入
+                <div className="flex items-center justify-center py-2 leading-none text-6xl md:text-7xl font-black font-mono tracking-widest text-slate-200">
+                  <TimeField value={Math.floor(sec / 60)} max={99} align="right" label="分鐘" onCommit={editMin} />
+                  <span className="px-0.5">:</span>
+                  <TimeField value={sec % 60} max={59} align="left" label="秒數" onCommit={editSec} />
+                </div>
+              )}
             </div>
 
             {/* 微調按鈕群 (暫停時顯示在時間下方，開始時往下降並淡出) */}
@@ -258,6 +270,31 @@ function Timer() {
 
       </div>
     </Card>
+  );
+}
+
+// 計時器暫停時的「分 / 秒」輸入格：本地 draft 讓你能清空並連打兩位數，
+// 失焦時再對齊回標準值；外部（±按鈕）改值時也會同步。
+function TimeField({ value, max, align, label, onCommit }: {
+  value: number; max: number; align: "left" | "right"; label: string; onCommit: (n: number) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  // 編輯中顯示原始 draft（不補零、不設 maxLength → 鍵入時 onChange 才能取最後兩位覆蓋）；
+  // 失焦時補零成兩位數（如 00、05）
+  const shown = draft !== null ? draft : String(value).padStart(2, "0");
+  return (
+    <input
+      type="text" inputMode="numeric" pattern="[0-9]*" aria-label={label}
+      value={shown}
+      onFocus={() => setDraft("")}
+      onChange={(e) => {
+        const digits = e.target.value.replace(/\D/g, "").slice(-2);
+        setDraft(digits);
+        onCommit(Math.min(max, digits === "" ? 0 : parseInt(digits, 10)));
+      }}
+      onBlur={() => setDraft(null)}
+      className={`w-[2.2ch] bg-transparent leading-none outline-none focus:text-cyan-300 ${align === "right" ? "text-right" : "text-left"}`}
+    />
   );
 }
 
