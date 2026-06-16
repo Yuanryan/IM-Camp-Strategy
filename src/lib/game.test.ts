@@ -302,12 +302,7 @@ describe("effect: ALLIANCE_BONUS（applyAllianceBonus）", () => {
 // 這三個含隨機 / 條件邏輯，核心邏輯在 service.ts（整合測試才能完整驗）。
 // 此處只驗結構正確。
 describe("effect: 含條件 / 隨機 effectType 結構驗證", () => {
-  it("WHEEL_ON_GOOD_CARD 在 MOVABLE_ASSET_SEED 中存在", () => {
-    expect(MOVABLE_ASSET_SEED.some((a) => a.effectType === EffectType.WHEEL_ON_GOOD_CARD)).toBe(true);
-  });
-  it("DOUBLE_OR_NOTHING 在 MOVABLE_ASSET_SEED 中存在", () => {
-    expect(MOVABLE_ASSET_SEED.some((a) => a.effectType === EffectType.DOUBLE_OR_NOTHING)).toBe(true);
-  });
+  // 註：主題化道具改版後，WHEEL_ON_GOOD_CARD / DOUBLE_OR_NOTHING 已刻意不在牌庫中。
   it("UNDERDOG 在 MOVABLE_ASSET_SEED 中存在", () => {
     expect(MOVABLE_ASSET_SEED.some((a) => a.effectType === EffectType.UNDERDOG)).toBe(true);
   });

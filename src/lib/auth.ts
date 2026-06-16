@@ -11,6 +11,12 @@ export const SESSION_COOKIE = "session";
 export const AUTH_OFF =
   process.env.AUTH_DISABLED === "1" || process.env.AUTH_DISABLED === "true";
 
+// 開發用：設環境變數 DEV_LOGIN_BUTTONS=1，首頁的角色清單會變成「一鍵登入」按鈕，
+// 不必掃 QR 即可用該角色身分登入（透過 /api/login?role=<ROLE> 撈該角色的 token）。
+// ⚠️ 正式上線（Vercel）千萬不要設這個——等於對外開放所有角色入口。
+export const DEV_LOGIN =
+  process.env.DEV_LOGIN_BUTTONS === "1" || process.env.DEV_LOGIN_BUTTONS === "true";
+
 export type Session = {
   tokenId: number;
   token: string;

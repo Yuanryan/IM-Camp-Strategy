@@ -31,11 +31,190 @@ export function AdminView() {
         </div>
       </Card>
 
+      <LoginLinksCard />
       <TeamEditor snap={snap} onChange={mutate} />
       <PropertyEditor snap={snap} onChange={mutate} />
       <CardEditor />
       <ItemEditor snap={snap} />
       <LedgerCard />
+    </div>
+  );
+}
+
+type TokenRow = {
+  id: number;
+  role: string;
+  roleLabel: string;
+  label: string;
+  url: string;
+  qr: string;
+};
+
+// 登入連結 / QR：列出所有角色與小隊的一鍵登入連結與 QR code。
+// 現場若臨時要在新裝置登入某站別 / 某隊，可在此直接掃描或複製連結。
+function LoginLinksCard() {
+  const { data } = useSWR<{ tokens: TokenRow[] }>("/api/admin/tokens", fetcher);
+  const [copied, setCopied] = useState<number | null>(null);
+  const [copiedAll, setCopiedAll] = useState(false);
+  const [showQr, setShowQr] = useState(true);
+
+  const copy = async (row: TokenRow) => {
+    try {
+      await navigator.clipboard.writeText(row.url);
+      setCopied(row.id);
+      setTimeout(() => setCopied((c) => (c === row.id ? null : c)), 1500);
+    } catch {
+      // clipboard 被擋（非 https / 權限）時忽略；使用者仍可手動選取連結
+    }
+  };
+
+  // 一次複製整份清單：每列「角色 label<TAB>url」，方便貼到試算表或文件分發。
+  const copyAll = async () => {
+    if (!data) return;
+    const text = data.tokens
+      .map((r) => `${r.roleLabel} ${r.label}\t${r.url}`)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedAll(true);
+      setTimeout(() => setCopiedAll(false), 1500);
+    } catch {
+      // clipboard 被擋時忽略
+    }
+  };
+
+  return (
+    <Card
+      title={
+        <span className="flex items-center justify-between gap-2">
+          <span>登入連結 / QR（各站別・各小隊）</span>
+          <span className="flex gap-1.5">
+            <button
+              onClick={copyAll}
+              disabled={!data}
+              className={`rounded-lg px-2 py-1 text-xs transition disabled:opacity-40 ${
+                copiedAll
+                  ? "bg-emerald-500/20 text-emerald-300"
+                  : "chip hover:bg-white/20"
+              }`}
+            >
+              {copiedAll ? "已複製全部" : "複製全部"}
+            </button>
+            <button
+              onClick={() => setShowQr((s) => !s)}
+              className="chip px-2 py-1 text-xs hover:bg-white/20"
+            >
+              {showQr ? "隱藏 QR" : "顯示 QR"}
+            </button>
+          </span>
+        </span>
+      }
+    >
+      <p className="mb-3 text-xs text-amber-300/80">
+        ⚠️ 這些連結可直接以該身分登入（含其他關主 / 各隊），請勿外流或投影給玩家。
+      </p>
+      {!data ? (
+        <p className="text-sm text-slate-400">載入中…</p>
+      ) : (
+        <div className="space-y-4">
+          <TokenSection
+            heading="關主 / 站別"
+            rows={data.tokens.filter((r) => r.role !== "TEAM")}
+            showQr={showQr}
+            copied={copied}
+            onCopy={copy}
+          />
+          <TokenSection
+            heading="小隊"
+            rows={data.tokens.filter((r) => r.role === "TEAM")}
+            showQr={showQr}
+            copied={copied}
+            onCopy={copy}
+          />
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// 一個分組（關主 / 小隊）：標題 + 該組的 token 卡片格。組內無資料則整段不顯示。
+function TokenSection({
+  heading,
+  rows,
+  showQr,
+  copied,
+  onCopy,
+}: {
+  heading: string;
+  rows: TokenRow[];
+  showQr: boolean;
+  copied: number | null;
+  onCopy: (row: TokenRow) => void;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div>
+      <div className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
+        {heading}
+        <span className="ml-1.5 font-normal text-slate-600">（{rows.length}）</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+        {rows.map((row) => (
+          <TokenTile key={row.id} row={row} showQr={showQr} copied={copied} onCopy={onCopy} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// 單一 token 卡片：身分標籤 + QR + 開啟 / 複製。
+function TokenTile({
+  row,
+  showQr,
+  copied,
+  onCopy,
+}: {
+  row: TokenRow;
+  showQr: boolean;
+  copied: number | null;
+  onCopy: (row: TokenRow) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-white/5 p-2.5">
+      <div>
+        <div className="text-[10px] uppercase tracking-widest text-slate-500">
+          {row.roleLabel}
+        </div>
+        <div className="truncate text-sm font-semibold text-slate-100">{row.label}</div>
+      </div>
+      {showQr && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={row.qr}
+          alt={`${row.label} 登入 QR`}
+          className="aspect-square w-full rounded-lg bg-white p-1"
+        />
+      )}
+      <div className="mt-auto flex gap-1.5">
+        <a
+          href={row.url}
+          target="_blank"
+          rel="noreferrer"
+          className="chip flex-1 px-2 py-1 text-center text-xs hover:bg-white/20"
+        >
+          開啟 ↗
+        </a>
+        <button
+          onClick={() => onCopy(row)}
+          className={`flex-1 rounded-lg px-2 py-1 text-xs transition ${
+            copied === row.id
+              ? "bg-emerald-500/20 text-emerald-300"
+              : "chip hover:bg-white/20"
+          }`}
+        >
+          {copied === row.id ? "已複製" : "複製"}
+        </button>
+      </div>
     </div>
   );
 }

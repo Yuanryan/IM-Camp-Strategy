@@ -269,7 +269,7 @@ export const EffectType = {
   TOLL_PAID:         "TOLL_PAID",         // 支付過路費減免（-0.10 → -10%）
   SHOP_PRICE:        "SHOP_PRICE",        // 購買 / 升級折扣（-0.10 → -10%）
   PROPERTY_VALUE:    "PROPERTY_VALUE",    // 持有不動產淨值加成（+0.10 → +10%）
-  COINS_PER_ROUND:   "COINS_PER_ROUND",   // 每輪固定光幣（50 → +50/輪）
+  COINS_PER_ROUND:   "COINS_PER_ROUND",   // 每回合固定光幣（50 → +50/輪）
   TAX_COLLECTOR:     "TAX_COLLECTOR",     // 全場每筆過路費抽成（0.02 → 2%）
   GOOD_CARD_BONUS:   "GOOD_CARD_BONUS",   // 好運卡獎勵加成（+0.20 → +20%）
   BAD_CARD_REDUCE:   "BAD_CARD_REDUCE",   // 厄運卡懲罰減免（-0.50 → -50%；-1.0 → 免疫）
@@ -281,9 +281,9 @@ export const EffectType = {
   JACKPOT_SHARE:     "JACKPOT_SHARE",     // 任意隊中獎時自動抽成（0.05 → 5% 獎金池）
   LOTTERY_INSURANCE: "LOTTERY_INSURANCE", // 他隊中獎時退還本期登記費用（一次性）
   LOTTERY_FEE_DISCOUNT: "LOTTERY_FEE_DISCOUNT", // 大樂透加購號碼費用折扣（-0.50 → 加購費 5 折）
-  COMPOUND_INTEREST: "COMPOUND_INTEREST", // 每輪賺取現有光幣 X%（0.02 → 2%/輪）
-  PROPERTY_DIVIDEND: "PROPERTY_DIVIDEND", // 每輪賺取不動產現值 X%（0.03 → 3%/輪）
-  UNDERDOG:          "UNDERDOG",          // 末位時每輪獲得固定補貼（200 → 末位時 +200/輪）
+  COMPOUND_INTEREST: "COMPOUND_INTEREST", // 每回合賺取現有光幣 X%（0.02 → 2%/輪）
+  PROPERTY_DIVIDEND: "PROPERTY_DIVIDEND", // 每回合賺取不動產現值 X%（0.03 → 3%/輪）
+  UNDERDOG:          "UNDERDOG",          // 末位時每回合獲得固定補貼（200 → 末位時 +200/輪）
   DOUBLE_OR_NOTHING: "DOUBLE_OR_NOTHING", // 流動關主發獎時 50/50：雙倍或歸零
   ALLIANCE_BONUS:    "ALLIANCE_BONUS",    // 交易接受時雙方各獲固定光幣（50 → 各 +50）
   PIRACY:            "PIRACY",            // 俠盜印記・懸賞標記：被標記隊收過路費時抽成（僅當俠盜較窮才生效）
@@ -296,7 +296,7 @@ export const EFFECT_TYPE_LABELS: Record<EffectType, string> = {
   TOLL_PAID:         "過路費減免",
   SHOP_PRICE:        "購買折扣",
   PROPERTY_VALUE:    "不動產增值",
-  COINS_PER_ROUND:   "每輪收益",
+  COINS_PER_ROUND:   "每回合收益",
   TAX_COLLECTOR:     "全場稅收",
   GOOD_CARD_BONUS:   "好運卡加成",
   BAD_CARD_REDUCE:   "厄運卡減免",
@@ -362,7 +362,7 @@ export function applyTaxCut(baseToll: number, totalRate: number): number {
   return Math.max(0, Math.round(baseToll * totalRate));
 }
 
-// COINS_PER_ROUND：每輪固定收益（total = 各道具光幣直接相加）
+// COINS_PER_ROUND：每回合固定收益（total = 各道具光幣直接相加）
 export function applyRoundIncome(total: number): number {
   return Math.round(total);
 }
@@ -440,49 +440,53 @@ export const MOVABLE_ASSET_SEED: {
   description: string;
   defaultUses: number | null;
 }[] = [
-  // ── S 級 ──
-  { name: "黃金稅收牌",   grade: "S", effectType: "TOLL_INCOME",    effectValue:  0.25, condition: null, defaultUses: 3,    description: "收取過路費時額外獲得 25%（3 次）" },
-  { name: "鑽石免稅令",   grade: "S", effectType: "TOLL_PAID",       effectValue: -0.25, condition: null, defaultUses: 3,    description: "支付過路費時減少 25%（3 次）" },
-  { name: "地產霸業卷",   grade: "S", effectType: "PROPERTY_VALUE",  effectValue:  0.25, condition: null, defaultUses: null, description: "持有不動產結算淨值 +25%（永久）" },
-  { name: "稅務特許狀",   grade: "S", effectType: "TAX_COLLECTOR",   effectValue:  0.04, condition: null, defaultUses: null, description: "全場每筆過路費自動抽成 4%（永久）" },
-  // ── A 級 ──
-  { name: "銀行分紅卡",   grade: "A", effectType: "TOLL_INCOME",    effectValue:  0.15, condition: null, defaultUses: 2,    description: "收取過路費時額外獲得 15%（2 次）" },
-  { name: "商業折扣券",   grade: "A", effectType: "SHOP_PRICE",      effectValue: -0.15, condition: null, defaultUses: 2,    description: "購買或升級不動產費用 -15%（2 次）" },
-  { name: "地產加值令",   grade: "A", effectType: "PROPERTY_VALUE",  effectValue:  0.15, condition: null, defaultUses: null, description: "持有不動產結算淨值 +15%（永久）" },
-  { name: "穩定收益債",   grade: "A", effectType: "COINS_PER_ROUND", effectValue: 100,   condition: null, defaultUses: null, description: "每輪固定收益 100 光幣（永久）" },
-  { name: "區域壟斷令",   grade: "A", effectType: "TOLL_INCOME",    effectValue:  0.20, condition: JSON.stringify({ region: "AURORA" }), defaultUses: 2, description: "在極光金域收取過路費 +20%（2 次）" },
-  { name: "好運加倍咒",   grade: "A", effectType: "GOOD_CARD_BONUS", effectValue:  0.20, condition: null, defaultUses: 2,    description: "好運卡獎勵光幣 +20%（2 次）" },
-  { name: "行動加速符",   grade: "A", effectType: "REMINDER",        effectValue:  0,    condition: null, defaultUses: null, description: "【提醒關主】每輪可多移動 2 步（永久）" },
-  // ── B 級 ──
-  { name: "小額分潤卡",   grade: "B", effectType: "TOLL_INCOME",    effectValue:  0.08, condition: null, defaultUses: 1,    description: "收取過路費時額外獲得 8%（1 次）" },
-  { name: "折扣優惠券",   grade: "B", effectType: "SHOP_PRICE",      effectValue: -0.08, condition: null, defaultUses: 1,    description: "購買或升級不動產費用 -8%（1 次）" },
-  { name: "地產小加成",   grade: "B", effectType: "PROPERTY_VALUE",  effectValue:  0.08, condition: null, defaultUses: null, description: "持有不動產結算淨值 +8%（永久）" },
-  { name: "每輪小收益",   grade: "B", effectType: "COINS_PER_ROUND", effectValue:  50,   condition: null, defaultUses: null, description: "每輪固定收益 50 光幣（永久）" },
-  { name: "付路費折扣牌", grade: "B", effectType: "TOLL_PAID",       effectValue: -0.10, condition: null, defaultUses: 1,    description: "支付過路費時減少 10%（1 次）" },
-  { name: "迷霧護身符",   grade: "B", effectType: "BAD_CARD_REDUCE", effectValue: -1.0,  condition: null, defaultUses: 1,    description: "厄運卡懲罰完全免疫（1 次）" },
-  { name: "幸運符咒",     grade: "B", effectType: "GOOD_CARD_BONUS", effectValue:  0.10, condition: null, defaultUses: 1,    description: "好運卡獎勵光幣 +10%（1 次）" },
-  { name: "受難減免卡",   grade: "B", effectType: "BAD_CARD_REDUCE", effectValue: -0.50, condition: null, defaultUses: 1,    description: "厄運卡懲罰減少 50%（1 次）" },
+  // 主題化道具：台大資管 / 台灣迷因風味；效果沿用原數值慣例。
+  // 排除 DOUBLE_OR_NOTHING、WHEEL_ON_GOOD_CARD 兩種效果。
+  // ── S 級：高價收藏 / 強力永久效果 ──
+  { name: "台大資管入場券",       grade: "S", effectType: "PROPERTY_VALUE",   effectValue:  0.25, condition: null, defaultUses: null, description: "持有不動產結算淨值 +25%（永久）— 進場即王道" },
+  { name: "百歲台大紀念金幣",     grade: "S", effectType: "COMPOUND_INTEREST", effectValue:  0.03, condition: null, defaultUses: null, description: "每回合賺取現有光幣 3%（永久）— 百年積累的複利" },
+  { name: "1BTC",                 grade: "S", effectType: "WHEEL_BONUS",       effectValue:  0.50, condition: null, defaultUses: null, description: "輪盤淨獲利 +50%（永久，虧損不放大）— 高風險高報酬" },
+  { name: "蒙娜麗莎",             grade: "S", effectType: "PROPERTY_DIVIDEND", effectValue:  0.08, condition: null, defaultUses: null, description: "每回合賺取不動產現值 8%（永久）— 無價名畫的展出分紅" },
+  { name: "台積電股票",           grade: "S", effectType: "LOTTERY_BONUS",     effectValue:  0.50, condition: null, defaultUses: null, description: "大樂透中獎金額 +50%（永久）— 護國神山" },
+  { name: "[不揪]著作權",         grade: "S", effectType: "TAX_COLLECTOR",     effectValue:  0.04, condition: null, defaultUses: null, description: "全場每筆過路費自動抽成 4%（永久）— 版稅抽成" },
+  { name: "限量IM金徽章",         grade: "S", effectType: "JACKPOT_SHARE",     effectValue:  0.05, condition: null, defaultUses: null, description: "大樂透任意隊中獎時自動獲 5% 獎金池（永久）— 榮譽抽成" },
+  { name: "台大校長簽名信",       grade: "S", effectType: "TOLL_INCOME",       effectValue:  0.25, condition: null, defaultUses: 3,    description: "收取過路費時額外 +25%（3 次）— 校長加持收租" },
+  { name: "黃仁勳簽名顯卡",       grade: "S", effectType: "WHEEL_BONUS",       effectValue:  0.50, condition: null, defaultUses: null, description: "輪盤淨獲利 +50%（永久）— AI 算力之神" },
+  { name: "陶朱隱園的花園",     grade: "S", effectType: "PROPERTY_VALUE",    effectValue:  0.25, condition: null, defaultUses: null, description: "持有不動產結算淨值 +25%（永久）— 蛋黃區地王" },
+  { name: "孫生媽媽的名牌包",     grade: "S", effectType: "PIRACY",            effectValue:  0.10, condition: null, defaultUses: null, description: "懸賞標記一支敵隊，其收過路費時你抽 10%（僅當你較窮才生效・永久）— 名牌包不是買的，是「討」來的" },
+  // ── A 級：中堅效果 ──
+  { name: "0050",                 grade: "A", effectType: "COMPOUND_INTEREST", effectValue:  0.01, condition: null, defaultUses: null, description: "每回合賺取現有光幣 1%（永久）— 穩穩的分紅" },
+  { name: "F1賽車",               grade: "A", effectType: "REMINDER",          effectValue:  0,    condition: null, defaultUses: null, description: "【提醒關主】每回合可選擇移動骰子數 +0/+1/+2 步（永久）" },
+  { name: "資管之夜門票",         grade: "A", effectType: "ALLIANCE_BONUS",    effectValue:  100,  condition: null, defaultUses: 3,    description: "交易接受時雙方各獲 100 光幣（3 次）— 之夜的人脈" },
+  { name: "公路車",               grade: "A", effectType: "TOLL_PAID",         effectValue: -0.25, condition: null, defaultUses: 3,    description: "支付過路費減少 25%（3 次）— 自己騎不搭車" },
+  { name: "iPhone 18 Pro",        grade: "A", effectType: "TOLL_INCOME",       effectValue:  0.15, condition: null, defaultUses: 2,    description: "收取過路費時額外 +15%（2 次）— 最潮收款機" },
+  { name: "電動麻將桌",           grade: "A", effectType: "COINS_PER_ROUND",   effectValue:  100,  condition: null, defaultUses: null, description: "每回合固定收益 100 光幣（永久）— 自動開桌抽水" },
+  { name: "林昀儒桌球拍金標",     grade: "A", effectType: "WHEEL_NO_ZERO",     effectValue:  0,    condition: null, defaultUses: 2,    description: "輪盤保底，×0 不會出現（2 次）— 穩定發揮不失常" },
+  { name: "台北-台南高鐵票",      grade: "A", effectType: "SHOP_PRICE",        effectValue: -0.15, condition: null, defaultUses: 2,    description: "購買 / 升級不動產費用 -15%（2 次）— 南北置產通勤" },
+  { name: "健身房回數票x30",      grade: "A", effectType: "UNDERDOG",          effectValue:  200,  condition: null, defaultUses: null, description: "每回合若為末位獲 200 光幣補貼（永久）— 逆境健身翻身" },
+  { name: "學長姐筆記共筆",       grade: "A", effectType: "GOOD_CARD_BONUS",   effectValue:  0.20, condition: null, defaultUses: 2,    description: "好運卡獎勵 +20%（2 次）— 共筆神助攻" },
+  { name: "全勤獎學金",           grade: "A", effectType: "COINS_PER_ROUND",   effectValue:  100,  condition: null, defaultUses: null, description: "每回合固定收益 100 光幣（永久）— 不缺席的回報" },
+  { name: "圖書館閉館座位",       grade: "A", effectType: "WHEEL_NO_ZERO",     effectValue:  0,    condition: null, defaultUses: 2,    description: "輪盤保底，×0 不會出現（2 次）— 穩到不出包" },
+  { name: "期末 All-pass 香",     grade: "A", effectType: "UNDERDOG",          effectValue:  200,  condition: null, defaultUses: null, description: "每回合若為末位獲 200 光幣補貼（永久）— 低空翻身" },
+  { name: "賭徒硬幣",           grade: "A", effectType: "WHEEL_STAKE_BOOST", effectValue:  0.20, condition: null, defaultUses: null, description: "輪盤最大投入上限增加 20%（永久）— 高進低出，梭哈魂" },
+  // ── B 級：消耗品 / 小加成（食物、二手、生活）──
+  { name: "手工薩克斯風",         grade: "B", effectType: "COINS_PER_ROUND",   effectValue:  50,   condition: null, defaultUses: null, description: "每回合固定收益 50 光幣（永久）— 街頭打賞" },
+  { name: "水源阿伯二手腳踏車",   grade: "B", effectType: "TOLL_PAID",         effectValue: -0.10, condition: null, defaultUses: 1,    description: "支付過路費減少 10%（1 次）— 二手代步" },
+  { name: "辛殿單人免費券",       grade: "B", effectType: "GOOD_CARD_BONUS",   effectValue:  0.20, condition: null, defaultUses: 1,    description: "好運卡獎勵 +20%（1 次）— 吃好料補運" },
+  { name: "歐趴糖",               grade: "B", effectType: "LOTTERY_INSURANCE", effectValue:  1,    condition: null, defaultUses: 1,    description: "大樂透他隊中獎時退還本期登記費用（一次性）— 保你不虧" },
+  { name: "台大牛奶",             grade: "B", effectType: "GOOD_CARD_BONUS",   effectValue:  0.10, condition: null, defaultUses: 1,    description: "好運卡獎勵 +10%（1 次）— 喝牛奶補運氣" },
+  { name: "微積分考古題",         grade: "B", effectType: "LOTTERY_FEE_DISCOUNT", effectValue: -0.50, condition: null, defaultUses: null, description: "大樂透加購號碼費用 5 折（永久）— 算準明牌" },
+  { name: "黑麥汁",               grade: "B", effectType: "BAD_CARD_REDUCE",   effectValue: -0.50, condition: null, defaultUses: 1,    description: "厄運卡懲罰減少 50%（1 次）— 黑麥汁壓壓驚" },
+  { name: "日本單人來回機票",     grade: "B", effectType: "BAD_CARD_REDUCE",   effectValue: -1.0,  condition: null, defaultUses: 1,    description: "厄運卡懲罰完全免疫（1 次）— 出國避難" },
+  { name: "女九滷味",             grade: "B", effectType: "TOLL_PAID",         effectValue: -0.10, condition: null, defaultUses: 1,    description: "支付過路費 -10%（1 次）— 宵夜續命" },
+  { name: "大杯珍奶",             grade: "B", effectType: "GOOD_CARD_BONUS",   effectValue:  0.10, condition: null, defaultUses: 1,    description: "好運卡獎勵 +10%（1 次）— 半糖去冰補運" },
+  { name: "五十嵐買一送一",       grade: "B", effectType: "SHOP_PRICE",        effectValue: -0.08, condition: null, defaultUses: 1,    description: "購買 / 升級費用 -8%（1 次）— 撿便宜" },
+  { name: "轉角哥雞排",           grade: "B", effectType: "BAD_CARD_REDUCE",   effectValue: -0.50, condition: null, defaultUses: 1,    description: "厄運卡懲罰 -50%（1 次）— 雞排壓驚" },
+  { name: "微積分作業解答",         grade: "B", effectType: "LOTTERY_FEE_DISCOUNT", effectValue: -0.50, condition: null, defaultUses: null, description: "大樂透加購 5 折（永久）— 抄到明牌" },
   // ── 詛咒道具（偽裝成普通 B 級，實際為負面效果）──
-  { name: "詛咒稅單",     grade: "B", effectType: "TOLL_INCOME",    effectValue: -0.15, condition: null, defaultUses: 3,    description: "收取過路費時反而少收 15%（詛咒，3 次）" },
-  { name: "黑市合約",     grade: "B", effectType: "SHOP_PRICE",      effectValue:  0.10, condition: null, defaultUses: 2,    description: "購買或升級費用 +10%（詛咒，2 次）" },
-  // ── 輪盤系列 ──
-  { name: "幸運女神眷顧", grade: "S", effectType: "WHEEL_BONUS",      effectValue:  0.50, condition: null, defaultUses: 3,    description: "輪盤淨獲利 +50%（3 次，虧損不放大）" },
-  { name: "保底護符",     grade: "A", effectType: "WHEEL_NO_ZERO",    effectValue:  0,    condition: null, defaultUses: 2,    description: "輪盤保底，×0 結果不會出現（2 次）" },
-  { name: "槓桿王牌",     grade: "A", effectType: "WHEEL_STAKE_BOOST",effectValue:  0.10, condition: null, defaultUses: null, description: "輪盤最大投入上限從 10% 提升至 20%（永久）" },
-  { name: "抽卡輪盤",     grade: "S", effectType: "WHEEL_ON_GOOD_CARD",effectValue: 0,    condition: null, defaultUses: 2,    description: "好運卡獎勵再乘以輪盤結果（大起大落！2 次）" },
-  // ── 大樂透系列 ──
-  { name: "彩票加倍咒",   grade: "S", effectType: "LOTTERY_BONUS",    effectValue:  0.50, condition: null, defaultUses: null, description: "大樂透中獎時獎金 ×1.5（永久）" },
-  { name: "彩票抽成令",   grade: "S", effectType: "JACKPOT_SHARE",    effectValue:  0.05, condition: null, defaultUses: null, description: "大樂透任意隊中獎時自動獲得 5% 獎金池（永久）" },
-  { name: "彩票保險單",   grade: "A", effectType: "LOTTERY_INSURANCE", effectValue: 1,    condition: null, defaultUses: 1,    description: "大樂透他隊中獎時退還本期所有登記費用（一次性）" },
-  { name: "彩票折價券",   grade: "B", effectType: "LOTTERY_FEE_DISCOUNT", effectValue: -0.50, condition: null, defaultUses: null, description: "大樂透加購號碼費用 5 折（永久）" },
-  // ── 每輪收益系列 ──
-  { name: "複利魔方",     grade: "S", effectType: "COMPOUND_INTEREST", effectValue: 0.03, condition: null, defaultUses: null, description: "每輪賺取現有光幣 3%（永久）" },
-  { name: "不動產分紅",   grade: "A", effectType: "PROPERTY_DIVIDEND", effectValue: 0.03, condition: null, defaultUses: null, description: "每輪賺取不動產現值 3%（永久）" },
-  { name: "末位補貼金",   grade: "A", effectType: "UNDERDOG",          effectValue: 200,  condition: null, defaultUses: null, description: "每輪若為末位，獲得 200 光幣補貼（永久）" },
-  // ── 特殊系列 ──
-  { name: "雙倍或歸零",   grade: "S", effectType: "DOUBLE_OR_NOTHING", effectValue: 0,    condition: null, defaultUses: null, description: "流動關主發獎時 50/50：光幣雙倍或歸零（永久）" },
-  { name: "交易紅利卡",   grade: "B", effectType: "ALLIANCE_BONUS",    effectValue: 100,  condition: null, defaultUses: 3,    description: "交易接受時雙方各獲 100 光幣（3 次）" },
-  { name: "俠盜印記",       grade: "S", effectType: "PIRACY",            effectValue: 0.10, condition: null, defaultUses: null, description: "懸賞標記一支敵隊；其收過路費時抽 10%（僅當你較窮才生效・永久）" },
+  { name: "管圖的廢棄麻將桌",     grade: "B", effectType: "SHOP_PRICE",        effectValue:  0.10, condition: null, defaultUses: 2,    description: "購買 / 升級費用 +10%（詛咒，2 次）— 廢棄桌帶賽" },
+  { name: "必修衝堂",             grade: "B", effectType: "TOLL_INCOME",       effectValue: -0.15, condition: null, defaultUses: 3,    description: "收取過路費時少收 15%（詛咒，3 次）— 卡到時間" },
+  { name: "機車違停拖吊單",       grade: "B", effectType: "SHOP_PRICE",        effectValue:  0.10, condition: null, defaultUses: 2,    description: "購買 / 升級費用 +10%（詛咒，2 次）— 荷包失血" },
 ];
 
 // ── 好運卡 / 厄運卡（光源點 / 迷霧區抽卡）─────────────────────
@@ -545,12 +549,10 @@ export const FUNCTION_CARDS: {
   // 點數 / 庫存對齊企畫書（功能卡表 L1464+）：抑制攻擊卡滾雪球。
   // 中央燈塔一次給 30 點，故攻擊卡刻意較貴、限量。
   { type: "購地卡", effect: "強制收購對手一塊土地（對手獲初始價 8 折補償）", cost: 50, defaultStock: 5 },
-  { type: "換地卡", effect: "以己方土地與對手土地強制對換", cost: 20, defaultStock: 5 },
-  { type: "換屋卡", effect: "與對手互換一棟房屋的升級級別", cost: 20, defaultStock: 5 },
-  { type: "拆屋卡", effect: "拆除對手一層房屋（降一級）", cost: 30, defaultStock: 5 },
-  { type: "怪獸卡", effect: "摧毀對手一棟房屋，降回未購買", cost: 70, defaultStock: 3 },
-  { type: "護盾卡", effect: "免疫一次卡牌攻擊或免收一次過路費", cost: 25, defaultStock: 8 },
-  { type: "情蒐卡", effect: "查指定對手資源概況（四選一）", cost: 15, defaultStock: 8 },
+  { type: "換地卡", effect: "以己方土地與對手土地強制對換", cost: 50, defaultStock: 5 },
+  { type: "換屋卡", effect: "與對手互換一棟房屋的升級級別", cost: 30, defaultStock: 5 },
+  { type: "拆屋卡", effect: "拆除對手一層房屋（降一級）", cost: 40, defaultStock: 5 },
+  { type: "怪獸卡", effect: "摧毀對手一棟房屋，對手將失去該土地", cost: 90, defaultStock: 3 },
   { type: "市場預警卡", effect: "得知下一次事件前某區漲跌方向", cost: 50, defaultStock: 2 },
 ];
 

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { Gem } from "lucide-react";
-import { getSession } from "@/lib/auth";
+import { getSession, DEV_LOGIN } from "@/lib/auth";
 import { ROLE_HOME, ROLE_LABEL } from "@/lib/game";
 
 export default async function Home({
@@ -56,16 +56,36 @@ export default async function Home({
           </p>
         </div>
 
-        <ul className="mt-5 grid grid-cols-3 gap-2 text-center text-xs font-medium text-slate-400">
-          {Object.entries(ROLE_LABEL).map(([role, label]) => (
-            <li
-              key={role}
-              className="rounded-xl border border-white/10 bg-white/5 py-2"
-            >
-              {label}
-            </li>
-          ))}
-        </ul>
+        {DEV_LOGIN ? (
+          <>
+            <p className="mt-5 text-xs font-semibold uppercase tracking-widest text-amber-300/80">
+              開發捷徑・點選即以該角色登入
+            </p>
+            <ul className="mt-2 grid grid-cols-3 gap-2 text-center text-xs font-medium">
+              {Object.entries(ROLE_LABEL).map(([role, label]) => (
+                <li key={role}>
+                  <a
+                    href={`/api/login?role=${role}`}
+                    className="block rounded-xl border border-amber-400/30 bg-amber-400/10 py-2 text-amber-200 transition hover:border-amber-300/60 hover:bg-amber-400/20 hover:text-amber-100 active:scale-95"
+                  >
+                    {label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : (
+          <ul className="mt-5 grid grid-cols-3 gap-2 text-center text-xs font-medium text-slate-400">
+            {Object.entries(ROLE_LABEL).map(([role, label]) => (
+              <li
+                key={role}
+                className="rounded-xl border border-white/10 bg-white/5 py-2"
+              >
+                {label}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <p className="relative mt-6 text-xs text-slate-500">© 2026 資管營 · IM 大富翁：迷霧資本戰</p>

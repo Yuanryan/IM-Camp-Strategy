@@ -175,7 +175,7 @@ export function LotteryView({
             );
           })}
         </div>
-        <p className="mt-2 text-xs text-slate-500">金色＝你的號碼，綠色＝他隊已登記。每隊第一個號碼免費，之後 50 × 2^(已持-1)。每次登記獎金池 +100，加購費也入池。</p>
+        <p className="mt-2 text-xs text-slate-500">金色＝你的號碼，綠色＝他隊已登記。每隊第一個號碼免費，之後每個號碼倍數成長。每次登記獎金池增加加購費用的兩倍。</p>
 
         {snap.lottery.numbers.length > 0 && (
           <div className="mt-3 space-y-2 border-t border-white/10 pt-3">
