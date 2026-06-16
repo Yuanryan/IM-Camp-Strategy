@@ -271,7 +271,7 @@ function ResourceSection() {
     { icon: Building2, name: "不動產", desc: "四大區域資產，可購買並升至三級", color: "text-emerald-400" },
     { icon: Package, name: "動產", desc: "S/A/B 等級道具，自帶被動效果，隱藏市值結算時揭露", color: "text-rose-400" },
     { icon: Info, name: "情報牌", desc: "市場事件線索，真假參半，需自行判斷", color: "text-sky-400" },
-    { icon: ShoppingBag, name: "卡牌點數", desc: "過燈塔取得，在卡牌商店購買功能卡", color: "text-violet-400" },
+    { icon: ShoppingBag, name: "卡牌點數", desc: "過燈塔取得，在神秘商店購買功能卡", color: "text-violet-400" },
     { icon: Sword, name: "功能卡", desc: "攻守策略：購地、護盾、情蒐等 8 種", color: "text-orange-400" },
   ];
 

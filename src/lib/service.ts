@@ -738,6 +738,37 @@ export async function sellCard(params: { teamId: number; cardType: string; byTok
   });
 }
 
+// 神秘商店：用光幣購買動產（上架 shopStock>0 的模板）。買到即用 grantItem 的方式建立 TeamItem。
+export async function buyShopItem(params: { teamId: number; assetId: number; byToken?: string }) {
+  const { teamId, assetId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const asset = await tx.movableAsset.findUnique({ where: { id: assetId } });
+    if (!asset) throw new Error("找不到該動產");
+    if (asset.shopStock <= 0) throw new Error("該動產已售完");
+    const team = await tx.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new Error("找不到小隊");
+    if (team.coins < asset.price) throw new Error(`光幣不足（售價 ${asset.price}）`);
+    await tx.team.update({ where: { id: teamId }, data: { coins: { decrement: asset.price } } });
+    await tx.movableAsset.update({ where: { id: asset.id }, data: { shopStock: { decrement: 1 } } });
+    await tx.teamItem.create({
+      data: {
+        teamId,
+        assetId: asset.id,
+        usesRemaining: asset.defaultUses ?? null,
+        note: "神秘商店購入",
+      },
+    });
+    await logLedger(tx, {
+      teamId,
+      kind: "coins",
+      delta: -asset.price,
+      note: `神秘商店購入動產：${asset.name}（${asset.grade} 級）`,
+      byToken,
+    });
+    return { ok: true, name: asset.name, price: asset.price };
+  });
+}
+
 export async function redeemVoucher(params: { teamId: number; byToken?: string }) {
   const { teamId, byToken } = params;
   return prisma.$transaction(async (tx) => {
@@ -959,6 +990,19 @@ export async function adminSetCard(params: {
   if (typeof cost === "number") data.cost = cost;
   if (typeof remaining === "number") data.remaining = remaining;
   return prisma.functionCard.update({ where: { type }, data });
+}
+
+// 神秘商店：調整某動產的售價 / 上架庫存（admin）。
+export async function adminSetShopItem(params: {
+  assetId: number;
+  price?: number;
+  shopStock?: number;
+}) {
+  const { assetId, price, shopStock } = params;
+  const data: { price?: number; shopStock?: number } = {};
+  if (typeof price === "number") data.price = Math.max(0, price);
+  if (typeof shopStock === "number") data.shopStock = Math.max(0, shopStock);
+  return prisma.movableAsset.update({ where: { id: assetId }, data });
 }
 
 // ── 稽核：沖銷一筆 ledger（光幣 / 卡牌點數可自動回沖）────────

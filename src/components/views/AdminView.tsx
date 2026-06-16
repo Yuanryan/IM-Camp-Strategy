@@ -13,7 +13,7 @@ const STATION_LINKS = [
   ["交易所", "/exchange"],
   ["地圖關主", "/map"],
   ["流動關主", "/mobile"],
-  ["卡牌商店", "/shop"],
+  ["神秘商店", "/shop"],
   ["投影", "/projection"],
 ];
 
@@ -35,6 +35,7 @@ export function AdminView() {
       <TeamEditor snap={snap} onChange={mutate} />
       <PropertyEditor snap={snap} onChange={mutate} />
       <CardEditor />
+      <ShopItemEditor />
       <ItemEditor snap={snap} />
       <LedgerCard />
     </div>
@@ -293,6 +294,36 @@ function CardEditor() {
         {data.map((c) => <CardRow key={c.type} card={c} onChange={mutate} />)}
       </div>
     </Card>
+  );
+}
+
+type ShopAsset = { id: number; name: string; grade: string; price: number; shopStock: number };
+
+function ShopItemEditor() {
+  const { data, mutate } = useSWR<ShopAsset[]>("/api/admin/shop-item", fetcher);
+  if (!data) return null;
+  return (
+    <Card title="神秘商店動產（售價 / 上架庫存）">
+      <p className="mb-2 text-xs text-slate-400">售價以光幣計；上架庫存 0 = 不在商店販售。</p>
+      <div className="space-y-1.5">
+        {data.map((a) => <ShopItemRow key={a.id} asset={a} onChange={mutate} />)}
+      </div>
+    </Card>
+  );
+}
+
+function ShopItemRow({ asset, onChange }: { asset: ShopAsset; onChange: () => void }) {
+  const [price, setPrice] = useState(asset.price);
+  const [shopStock, setShopStock] = useState(asset.shopStock);
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold border ${ITEM_GRADE_COLORS[asset.grade] ?? "chip"}`}>{asset.grade}</span>
+      <span className="w-36 truncate font-medium">{asset.name}</span>
+      <label className="text-xs text-slate-400">售價<input type="number" inputMode="numeric" value={price} onChange={(e) => setPrice(Number(e.target.value) || 0)} className="fld ml-1 w-24" /></label>
+      <label className="text-xs text-slate-400">上架<input type="number" inputMode="numeric" value={shopStock} onChange={(e) => setShopStock(Number(e.target.value) || 0)} className="fld ml-1 w-20" /></label>
+      <ActionButton label="儲存" className="chip hover:bg-white/20"
+        onAction={async () => { await postJson("/api/admin/shop-item", { assetId: asset.id, price, shopStock }); onChange(); return "已儲存"; }} />
+    </div>
   );
 }
 

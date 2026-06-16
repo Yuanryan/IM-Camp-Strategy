@@ -431,6 +431,13 @@ export function spinWheelCustom(options?: { excludeMultipliers?: number[] }): nu
 
 // 動產模板種子資料（seeded to DB via prisma/seed.ts）
 // defaultUses: null=永久；n=效果觸發 n 次後失效
+// 神秘商店：依等級給定預設售價（光幣）與上架庫存。admin 可逐項覆寫。
+export const ITEM_GRADE_PRICE: Record<string, number> = { S: 2000, A: 1000, B: 400 };
+export const DEFAULT_SHOP_STOCK = 2; // 每件動產預設上架 2 個
+
+// 詛咒道具不該擺上商店（偽裝成 B 級的負面效果），seed 時 shopStock 設 0。
+export const CURSED_ASSET_NAMES = new Set(["管圖的廢棄麻將桌", "必修衝堂", "機車違停拖吊單"]);
+
 export const MOVABLE_ASSET_SEED: {
   name: string;
   grade: string;
@@ -548,7 +555,7 @@ export const FUNCTION_CARDS: {
 }[] = [
   // 點數 / 庫存對齊企畫書（功能卡表 L1464+）：抑制攻擊卡滾雪球。
   // 中央燈塔一次給 30 點，故攻擊卡刻意較貴、限量。
-  { type: "購地卡", effect: "強制收購對手一塊土地（對手獲初始價 8 折補償）", cost: 50, defaultStock: 5 },
+  { type: "購地卡", effect: "強制收購對手一塊土地（對手獲初始價 8 折補償）", cost: 100, defaultStock: 5 },
   { type: "換地卡", effect: "以己方土地與對手土地強制對換", cost: 50, defaultStock: 5 },
   { type: "換屋卡", effect: "與對手互換一棟房屋的升級級別", cost: 30, defaultStock: 5 },
   { type: "拆屋卡", effect: "拆除對手一層房屋（降一級）", cost: 40, defaultStock: 5 },
@@ -621,7 +628,7 @@ export const ROLE_LABEL: Record<Role, string> = {
   EXCHANGE: "交易所",
   MAP: "地圖關主",
   MOBILE: "流動關主",
-  CARDSHOP: "卡牌商店",
+  CARDSHOP: "神秘商店",
   AUCTION: "拍賣官",
   PROJECTION: "投影",
   ADMIN: "Admin",

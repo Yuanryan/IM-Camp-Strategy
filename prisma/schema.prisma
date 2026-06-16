@@ -115,6 +115,8 @@ model MovableAsset {
   condition    String?        // JSON：{"region":"AURORA"} 條件觸發；null=無條件
   description  String         @default("")
   defaultUses  Int?           // null=永久；n=預設觸發次數上限
+  price        Int            @default(0)  // 神秘商店售價（光幣）；依 grade 給預設，admin 可調
+  shopStock    Int            @default(0)  // 神秘商店可購買庫存；0=不在商店上架
   teamItems    TeamItem[]
 }
 

@@ -7,6 +7,9 @@ import {
   PROPERTY_SEED,
   FUNCTION_CARDS,
   MOVABLE_ASSET_SEED,
+  ITEM_GRADE_PRICE,
+  DEFAULT_SHOP_STOCK,
+  CURSED_ASSET_NAMES,
   ROLE_LABEL,
   type Role,
 } from "../src/lib/game";
@@ -74,7 +77,15 @@ async function main() {
   }
 
   // 動產模板（skipDuplicates：重跑 seed 不覆蓋已建立的模板）
-  await prisma.movableAsset.createMany({ data: MOVABLE_ASSET_SEED, skipDuplicates: true });
+  // price/shopStock 依等級給預設；詛咒道具不上架（shopStock=0）。神秘商店與 admin 可再調。
+  await prisma.movableAsset.createMany({
+    data: MOVABLE_ASSET_SEED.map((a) => ({
+      ...a,
+      price: ITEM_GRADE_PRICE[a.grade] ?? 0,
+      shopStock: CURSED_ASSET_NAMES.has(a.name) ? 0 : DEFAULT_SHOP_STOCK,
+    })),
+    skipDuplicates: true,
+  });
 
   // 題庫由 prisma/load-questions.ts 維護，seed 不碰
 
