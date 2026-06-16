@@ -24,6 +24,7 @@ import {
   Landmark,
   Sword,
   Dices,
+  LoaderPinwheel,
 } from "lucide-react";
 
 // ─── Variants ────────────────────────────────────────────────────────────────
@@ -241,7 +242,7 @@ function ObjectiveSection() {
         <p className="text-slate-300 text-sm leading-relaxed">
           《IM 大富翁：迷霧資本戰》結合大富翁、投資策略、情報判斷與小隊交易。
           遊戲結算時，{" "}
-          <span className="neon-gold font-bold">現金光幣 ＋ 不動產市值 ＋ 動產市值 ＋ 特殊加成</span>{" "}
+          <span className="neon-gold font-bold">現金光幣 ＋ 不動產市值 ＋ 特殊加成</span>{" "}
           最高的隊伍獲勝。
         </p>
       </motion.div>
@@ -267,12 +268,11 @@ function ResourceSection() {
   const resources = [
     { icon: Coins, name: "光幣", desc: "主要貨幣，購買、升級、過路費、大樂透", color: "text-amber-400" },
     { icon: Dices, name: "骰子", desc: "移動工具，完成小遊戲取得，可累積使用", color: "text-purple-400" },
-    { icon: Zap, name: "特殊骰", desc: "事件三後可得，奇數／偶數／自選／超大", color: "text-cyan-400" },
-    { icon: Building2, name: "不動產", desc: "四大區域資產，可購買並升至三級", color: "text-emerald-400" },
-    { icon: Package, name: "動產", desc: "S/A/B 等級道具，自帶被動效果，隱藏市值結算時揭露", color: "text-rose-400" },
+    { icon: Building2, name: "不動產", desc: "四大區域資產，購買並升至三級，成為獨佔大富翁", color: "text-emerald-400" },
+    { icon: Package, name: "動產", desc: "S/A/B 等級道具，自帶被動效果", color: "text-rose-400" },
     { icon: Info, name: "情報牌", desc: "市場事件線索，真假參半，需自行判斷", color: "text-sky-400" },
-    { icon: ShoppingBag, name: "卡牌點數", desc: "過燈塔取得，在神秘商店購買功能卡", color: "text-violet-400" },
-    { icon: Sword, name: "功能卡", desc: "攻守策略：購地、護盾、情蒐等 8 種", color: "text-orange-400" },
+    { icon: ShoppingBag, name: "卡牌點數", desc: "玩遊戲或過燈塔取得，在神秘商店購買功能卡", color: "text-violet-400" },
+    { icon: Sword, name: "功能卡", desc: "主動進攻策略：購地、拆房等 5 種", color: "text-orange-400" },
   ];
 
   return (
@@ -303,8 +303,8 @@ function MapSection() {
     { icon: Star, name: "光源點", desc: "抽好運卡，完成任務可得骰子、光幣、動產或情報", color: "text-amber-400", border: "border-amber-500/25", from: "from-amber-500/10" },
     { icon: Map, name: "迷霧區", desc: "抽厄運卡，可能被扣光幣或執行懲罰任務", color: "text-slate-400", border: "border-slate-600/30", from: "from-slate-700/20" },
     { icon: Landmark, name: "資本據點", desc: "可購買或升級不動產；若有獨佔隊伍需繳過路費", color: "text-cyan-400", border: "border-cyan-500/25", from: "from-cyan-500/10" },
-    { icon: Ticket, name: "大樂透登記", desc: "免費登記一個號碼，額外加購依 50×2ⁿ 計算", color: "text-rose-400", border: "border-rose-500/25", from: "from-rose-500/10" },
-    { icon: Zap, name: "巧遇點燈人", desc: "燈塔（+光幣+點數）、契約、命運輪盤、大樂透開獎", color: "text-yellow-400", border: "border-yellow-500/25", from: "from-yellow-500/10" },
+    { icon: Ticket, name: "大樂透登記", desc: "免費登記一個號碼，後續加購依 50×2ⁿ 計算", color: "text-rose-400", border: "border-rose-500/25", from: "from-rose-500/10" },
+    { icon: Zap, name: "巧遇點燈人", desc: "燈塔（+光幣+點數）、神秘商店、命運輪盤、大樂透開獎", color: "text-yellow-400", border: "border-yellow-500/25", from: "from-yellow-500/10" },
   ];
 
   return (
@@ -314,9 +314,9 @@ function MapSection() {
 
       <motion.div variants={fogItem} className="glass rounded-2xl p-4 border border-amber-500/15">
         <p className="text-slate-300 text-sm leading-relaxed">
-          地圖共 <span className="neon-gold font-bold">36 格</span>。這不是輪流制——採{" "}
+          地圖共 <span className="neon-gold font-bold">36 格</span>。採用{" "}
           <span className="text-cyan-300 font-bold">任務骰子制</span>，
-          骰子從流動關主的小遊戲取得，可以累積，想走時才到地圖關主處使用。
+          從流動關主的小遊戲取得骰子，再到地圖處遊玩大富翁。
         </p>
       </motion.div>
 
@@ -335,11 +335,7 @@ function MapSection() {
         ))}
       </div>
 
-      <motion.div variants={fogItem} className="glass rounded-xl p-3.5 border border-slate-700/40">
-        <p className="text-slate-400 text-xs leading-relaxed">
-          <span className="text-slate-300 font-bold">特殊骰</span>（奇數／偶數／自選／超大）不可與普通骰混用，使用後立即交回關主，也可作為交易籌碼。
-        </p>
-      </motion.div>
+
     </motion.div>
   );
 }
@@ -408,7 +404,7 @@ function PropertySection() {
         <p className="text-slate-400 text-xs leading-relaxed">
           需先在該區擁有至少一棟三級不動產，才可能取得獨佔（「三級不動產最多」者勝出）。其他隊踩到該區資本據點需支付：
         </p>
-        <p className="text-amber-300 font-bold text-sm mt-1.5">該區所有不動產（升級後價值）總和 × 8%（四捨五入至 10）</p>
+        <p className="text-amber-300 font-bold text-sm mt-1.5">該區所有不動產（升級後價值）總和 × 8%</p>
         <p className="text-slate-400 text-xs leading-relaxed mt-1.5">
           不動產等級越高，計入過路費的價值也越高——蓋得越高，收得越多。
         </p>
@@ -424,7 +420,7 @@ function SpecialSection() {
     { n: "01", name: "晨霧退散", up: "極光金域 ↑", down: "晨霧棲城 ↓", color: "text-amber-400", border: "border-amber-500/25", from: "from-amber-500/8" },
     { n: "02", name: "影焰爆產", up: "影焰工域 ↑", down: "住宅教育 ↓", color: "text-rose-400", border: "border-rose-500/25", from: "from-rose-500/8", badge: "光靈啟動" },
     { n: "03", name: "靈序突破", up: "靈序研究 ↑", down: "傳統商業 ↓", color: "text-cyan-400", border: "border-cyan-500/25", from: "from-cyan-500/8", badge: "特殊骰啟動" },
-    { n: "04", name: "棲城翻身", up: "晨霧棲城 ↑", down: "前期最強區 ↓", color: "text-emerald-400", border: "border-emerald-500/25", from: "from-emerald-500/8", badge: "政府拍賣" },
+    { n: "04", name: "棲城翻身", up: "晨霧棲城 ↑", down: "前期最強區 ↓", color: "text-emerald-400", border: "border-emerald-500/25", from: "from-emerald-500/8", badge: "政府拍賣不動產" },
   ];
 
   const cards = [
@@ -432,9 +428,9 @@ function SpecialSection() {
     { name: "換地卡", effect: "與對手互換土地", cost: 20 },
     { name: "拆屋卡", effect: "拆除對手一層建設", cost: 30 },
     { name: "怪獸卡", effect: "摧毀對手一棟建設", cost: 70 },
-    { name: "護盾卡", effect: "抵擋一次攻擊或過路費", cost: 25 },
-    { name: "情蒐卡", effect: "得知指定對手資訊", cost: 15 },
-    { name: "市場預警", effect: "知道下次事件漲跌方向", cost: 50 },
+    // { name: "護盾卡", effect: "抵擋一次攻擊或過路費", cost: 25 },
+    // { name: "情蒐卡", effect: "得知指定對手資訊", cost: 15 },
+    // { name: "市場預警", effect: "知道下次事件漲跌方向", cost: 50 },
     { name: "換屋卡", effect: "與對手交換升級等級", cost: 20 },
   ];
 
@@ -491,7 +487,20 @@ function SpecialSection() {
         <p className="text-slate-400 text-xs leading-relaxed">
           踩到登記格可免費登記一個號碼（1～50）。第二個起加購費：
           <span className="text-rose-300 font-mono"> 50 × 2^(n-1)</span>
-          。開獎格觸發時，中獎隊伍獨得整個獎金池。
+          。獎金池增加兩倍！開獎格觸發時，中獎隊伍獨得整個獎金池。
+        </p>
+      </motion.div>
+
+      {/* Wheel of fortune */}
+      <motion.div variants={fogItem}
+        className="glass rounded-xl p-3.5 border border-cyan-500/20 bg-gradient-to-r from-cyan-500/8 to-transparent">
+        <div className="flex items-center gap-2 mb-1.5">
+          <LoaderPinwheel className="w-4 h-4 text-cyan-400" />
+          <p className="font-bold text-sm text-cyan-300">命運投資輪盤</p>
+        </div>
+        <p className="text-slate-400 text-xs leading-relaxed">
+          在地圖關站可押注光幣轉動輪盤——轉盤決定本次投資的<span className="text-cyan-300 font-bold">倍率</span>，
+          可能翻倍暴賺，也可能血本無歸。高風險高報酬？
         </p>
       </motion.div>
 
@@ -503,9 +512,9 @@ function SpecialSection() {
           <p className="font-bold text-sm text-amber-300">動產 · 被動效果</p>
         </div>
         <p className="text-slate-400 text-xs leading-relaxed">
-          動產不只是收藏品——每張都自帶<span className="text-amber-300 font-bold">被動效果</span>。例如：
+          動產不只是收藏品——每項都自帶<span className="text-amber-300 font-bold">被動效果</span>。例如：
           收路費加成、付路費減免、購買折扣、每輪複利或分紅、樂透加成抽成、輪盤保底等。
-          同類效果直接相加；隱藏市值仍於結算時才由交易所揭露。
+          可從光源點機率獲得、從神秘商店購買、私下交易或是在拍賣中心取得。
         </p>
       </motion.div>
 
@@ -517,9 +526,9 @@ function SpecialSection() {
           <p className="font-bold text-sm text-violet-300">隊間交易 · 政府拍賣</p>
         </div>
         <p className="text-slate-400 text-xs leading-relaxed">
-          <span className="text-violet-300 font-bold">交易</span>：隨時可與他隊交換光幣、卡牌點數、不動產、動產，須到交易所登記、雙方確認才生效。
+          <span className="text-violet-300 font-bold">交易</span>：隨時可與他隊交換光幣、卡牌點數、動產。
           {" "}
-          <span className="text-violet-300 font-bold">拍賣</span>：事件四後啟動政府拍賣，由拍賣官主持英式喊價——各隊現場喊價，得標立即扣款並過戶。
+          <span className="text-violet-300 font-bold">拍賣</span>：由拍賣官主持英式喊價——各隊現場喊價，得標贏得強力道具！
         </p>
       </motion.div>
     </motion.div>
@@ -534,16 +543,13 @@ function SettlementSection() {
     { text: "＋", color: "text-slate-500", border: "" },
     { text: "不動產市值", color: "text-cyan-300", glow: "shadow-[0_0_14px_rgba(34,211,238,0.35)]", border: "border-cyan-500/30" },
     { text: "＋", color: "text-slate-500", border: "" },
-    { text: "動產市值", color: "text-emerald-300", glow: "shadow-[0_0_14px_rgba(52,211,153,0.35)]", border: "border-emerald-500/30" },
-    { text: "＋", color: "text-slate-500", border: "" },
+    // { text: "動產市值", color: "text-emerald-300", glow: "shadow-[0_0_14px_rgba(52,211,153,0.35)]", border: "border-emerald-500/30" },
+    // { text: "＋", color: "text-slate-500", border: "" },
     { text: "特殊加成", color: "text-rose-300", glow: "shadow-[0_0_14px_rgba(251,113,133,0.35)]", border: "border-rose-500/30" },
   ];
 
   const rules = [
-    "有登記才算數——資產購買、升級、轉讓、大樂透號碼，全部需到交易所登記",
-    "口頭協議不承認，必須完成正式登記",
-    "升級費用依初始定價計算，不受市場事件影響",
-    "特殊骰使用後立即交回地圖關主",
+    "蓋房子、成為獨佔大富翁、發大財",
     "主持人擁有最終裁決權",
   ];
 
@@ -569,14 +575,6 @@ function SettlementSection() {
             </motion.span>
           ))}
         </div>
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.2 }}
-          className="text-slate-500 text-xs mt-3"
-        >
-          動產市值由交易所秘密帳本在遊戲結束時揭露
-        </motion.p>
       </motion.div>
 
       {/* Key rules */}
@@ -602,7 +600,7 @@ function SettlementSection() {
         >
           祝各隊旗開得勝！
         </motion.p>
-        <p className="text-slate-500 text-xs mt-1.5">記得到交易所登記，口頭不算數！</p>
+        {/* <p className="text-slate-500 text-xs mt-1.5">記得到交易所登記，口頭不算數！</p> */}
       </motion.div>
     </motion.div>
   );

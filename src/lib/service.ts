@@ -322,6 +322,12 @@ async function logAttack(tx: Tx, victimTeamId: number, note: string, byToken?: s
   await logLedger(tx, { teamId: victimTeamId, kind: "attack", delta: 0, note, byToken });
 }
 
+// 出卡後把該功能卡回補一張到神秘商店庫存（出完即用、用了就回流，總供給維持不變）。
+// 商店無此卡（市場預警卡等資訊卡）時靜默略過。
+async function restockCard(tx: Tx, cardType: string) {
+  await tx.functionCard.updateMany({ where: { type: cardType }, data: { remaining: { increment: 1 } } });
+}
+
 // 購地卡：強制收購對手一塊地。對手獲「初始定價 × 80%」補償（銀行出資），產權（含等級）轉給出卡隊。
 export async function cardSeizeLand(params: { propertyId: number; toTeamId: number; byToken?: string }) {
   const { propertyId, toTeamId, byToken } = params;
@@ -342,6 +348,7 @@ export async function cardSeizeLand(params: { propertyId: number; toTeamId: numb
     await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: toTeamId } });
     ledgerIds.push(await logLedger(tx, { teamId: toTeamId, kind: "property", delta: 0, note: `購地卡強制收購 ${prop.name}（來自隊 #${fromTeamId}）`, byToken }));
     await logAttack(tx, fromTeamId, `⚔ ${buyer.name} 用購地卡強制收購你的「${prop.name}」（補償 ${compensation}）`, byToken);
+    await restockCard(tx, "購地卡");
     const undo: UndoRecipe = {
       label: `購地卡 ${prop.name}`,
       ledgerIds,
@@ -367,6 +374,7 @@ export async function cardSwapLand(params: { propertyAId: number; propertyBId: n
     await tx.property.update({ where: { id: b.id }, data: { ownerTeamId: a.ownerTeamId } });
     const lid = await logLedger(tx, { teamId: a.ownerTeamId, kind: "property", delta: 0, note: `換地卡：${a.name} ⇄ ${b.name}`, byToken });
     await logAttack(tx, b.ownerTeamId, `⚔ ${attacker?.name ?? "對手"} 用換地卡把你的「${b.name}」換成了「${a.name}」`, byToken);
+    await restockCard(tx, "換地卡");
     const undo: UndoRecipe = {
       label: `換地卡 ${a.name} ⇄ ${b.name}`,
       ledgerIds: [lid],
@@ -395,6 +403,7 @@ export async function cardSwapHouse(params: { propertyAId: number; propertyBId: 
     await tx.property.update({ where: { id: b.id }, data: { level: a.level } });
     const lid = await logLedger(tx, { teamId: a.ownerTeamId, kind: "property", delta: 0, note: `換屋卡：${a.name}(${a.level}級) ⇄ ${b.name}(${b.level}級)`, byToken });
     await logAttack(tx, b.ownerTeamId, `⚔ ${attacker?.name ?? "對手"} 用換屋卡把你的「${b.name}」等級換成 ${a.level} 級`, byToken);
+    await restockCard(tx, "換屋卡");
     const undo: UndoRecipe = {
       label: `換屋卡 ${a.name} ⇄ ${b.name}`,
       ledgerIds: [lid],
@@ -426,6 +435,7 @@ export async function cardDemolish(params: { propertyId: number; byTeamId?: numb
     const lid = await logLedger(tx, { teamId: prop.ownerTeamId, kind: "property", delta: 0, note: `拆屋卡：${prop.name} ${prop.level}級 → ${prop.level - 1}級`, byToken });
     const atk = await attackerName(tx, byTeamId);
     await logAttack(tx, prop.ownerTeamId, `⚔ ${atk ? `${atk} 用拆屋卡把` : ""}你的「${prop.name}」${atk ? "降為" : "被拆屋卡降為"} ${prop.level - 1} 級`, byToken);
+    await restockCard(tx, "拆屋卡");
     const undo: UndoRecipe = {
       label: `拆屋卡 ${prop.name}`,
       ledgerIds: [lid],
@@ -447,6 +457,7 @@ export async function cardMonster(params: { propertyId: number; byTeamId?: numbe
     const lid = await logLedger(tx, { teamId: fromTeamId, kind: "property", delta: 0, note: `怪獸卡摧毀 ${prop.name}（降回未購買）`, byToken });
     const atk = await attackerName(tx, byTeamId);
     await logAttack(tx, fromTeamId, `⚔ ${atk ? `${atk} 用怪獸卡摧毀了你的` : "你的"}「${prop.name}」，你失去這塊地了`, byToken);
+    await restockCard(tx, "怪獸卡");
     const undo: UndoRecipe = {
       label: `怪獸卡 ${prop.name}`,
       ledgerIds: [lid],

@@ -160,6 +160,7 @@ function useShopDisplay<T>(
   }, [team, kind]);
 
   // 切換隊伍時：有鎖定就沿用，沒有才抽一次並鎖定。resolvedFor 確保每隊只解一次。
+  // 沿用鎖定時，會剔除「已無庫存」的項目，並從仍有庫存的池子補滿 3 個（避免展示已售完 / 停用的卡）。
   useEffect(() => {
     if (team === "") {
       resolvedFor.current = null;
@@ -167,9 +168,18 @@ function useShopDisplay<T>(
       return;
     }
     if (!pool || resolvedFor.current === team) return;
-    const saved = loadDraw(kind, team);
-    const next = saved ?? drawDisplay(pool, keyOf, 3, weightOf);
-    if (!saved) saveDraw(kind, team, next);
+    const inStock = new Set(pool.map(keyOf));
+    const saved = loadDraw(kind, team)?.filter((k) => inStock.has(k)) ?? null;
+    let next: string[];
+    if (saved && saved.length === 3) {
+      next = saved; // 鎖定仍全部有庫存，照舊
+    } else {
+      // 沒鎖定，或鎖定中有項目已售完 → 保留仍有庫存的，從剩餘池子補滿 3 個
+      const keep = saved ?? [];
+      const remaining = pool.filter((x) => !keep.includes(keyOf(x)));
+      next = [...keep, ...drawDisplay(remaining, keyOf, 3 - keep.length, weightOf)];
+    }
+    saveDraw(kind, team, next);
     resolvedFor.current = team;
     setKeys(next);
     setDealKey((k) => k + 1);

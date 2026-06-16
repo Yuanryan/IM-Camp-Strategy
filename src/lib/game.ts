@@ -566,7 +566,7 @@ export const FUNCTION_CARDS: {
   { type: "換屋卡", effect: "與對手互換一棟房屋的升級級別", cost: 30, defaultStock: 5 },
   { type: "拆屋卡", effect: "拆除對手一層房屋（降一級）", cost: 40, defaultStock: 5 },
   { type: "怪獸卡", effect: "摧毀對手一棟房屋，對手將失去該土地", cost: 90, defaultStock: 3 },
-  { type: "市場預警卡", effect: "得知下一次事件前某區漲跌方向", cost: 50, defaultStock: 2 },
+  { type: "市場預警卡", effect: "得知下一次事件前某區漲跌方向", cost: 50, defaultStock: 0 }, // 庫存 0＝暫時停用
 ];
 
 // 發放獎勵 / 懲罰的快捷預設（資料化，單一來源；前端共用元件 RewardButtons 讀取）
