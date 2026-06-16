@@ -323,6 +323,12 @@ export const ITEM_GRADE_COLORS: Record<string, string> = {
   B: "text-slate-300 border-slate-400/40 bg-white/5",
 };
 
+// 稀有度排序權重：S < A < B（數字越小越靠前）；未知級別排最後。
+const GRADE_RANK: Record<string, number> = { S: 0, A: 1, B: 2 };
+export function GRADE_ORDER(grade: string): number {
+  return GRADE_RANK[grade] ?? 99;
+}
+
 // 疊加效果：同類效果直接相加（道具數量由發放端控管，不用遞減）
 // e.g. [0.20, 0.20, 0.08] → 0.48
 export function stackEffects(values: number[]): number {

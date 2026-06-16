@@ -258,7 +258,7 @@ export function MapView() {
               <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 py-3 text-center text-sm font-semibold text-emerald-300">
                 {anyMonopoly && team !== ""
                   ? "該隊為唯一獨佔者・不需過路費"
-                  : "目前無可付費的獨佔區・不需過路費"}
+                  : "目前無獨佔區・不需過路費"}
               </div>
             )}
 

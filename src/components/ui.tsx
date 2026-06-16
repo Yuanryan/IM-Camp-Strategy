@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from "react"
 import { createPortal } from "react-dom";
 import { useMotionValue, animate } from "framer-motion";
 import { RadioTower, Gavel, ChevronDown, Swords } from "lucide-react";
-import { EVENTS, EffectType, ITEM_GRADE_COLORS } from "@/lib/game";
+import { EVENTS, EffectType, ITEM_GRADE_COLORS, GRADE_ORDER } from "@/lib/game";
 import type { ActiveItemView, AuctionSnapshot } from "@/lib/snapshot";
 
 // 等寬霓虹數字
@@ -324,6 +324,8 @@ export function AssetPicker({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const selected = value === "" ? undefined : assets.find((a) => a.id === value);
+  // 清單依稀有度排序：S → A → B（同級維持原順序）
+  const sortedAssets = [...assets].sort((a, b) => GRADE_ORDER(a.grade) - GRADE_ORDER(b.grade));
 
   // 量測 trigger 位置 → 以 fixed 定位 portal 內的清單（脫離 overflow/stacking 限制）
   const measure = useCallback(() => {
@@ -385,7 +387,7 @@ export function AssetPicker({
             >
               {placeholder}
             </button>
-            {assets.map((a) => (
+            {sortedAssets.map((a) => (
               <button
                 key={a.id}
                 type="button"

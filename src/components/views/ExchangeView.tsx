@@ -31,7 +31,6 @@ export function ExchangeView() {
   const [tab, setTab] = useState<"props" | "cards">("props");
   const [team, setTeam] = useState<number | "">("");
   const [discount, setDiscount] = useState(0);
-  const [price, setPrice] = useState(0);
   const [region, setRegion] = useState<string>("AURORA");
 
   if (!snap) return <p className="text-sm text-slate-400">載入中…</p>;
@@ -155,11 +154,9 @@ export function ExchangeView() {
                         className="w-full btn-amber"
                         onAction={() => act(() => postJson("/api/exchange/upgrade", { propertyId: p.id, discount }), `已升級 ${p.name}`)} />
                     )}
-                    {p.ownerTeamId && (
-                      <ActionButton label="過戶" className="w-full chip"
-                        disabled={team === ""}
-                        onAction={() => team === "" ? Promise.resolve("請先選目標隊") :
-                          act(() => postJson("/api/exchange/transfer", { propertyId: p.id, toTeamId: team, price }), `已過戶 ${p.name}`)} />
+                    {p.ownerTeamId != null && p.ownerTeamId !== team && (
+                      <ActionButton label="已被購買" className="w-full chip" disabled
+                        onAction={() => Promise.resolve()} />
                     )}
                   </div>
                 </div>
