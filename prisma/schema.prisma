@@ -196,6 +196,7 @@ model Question {
   prompt     String
   answer     String?
   difficulty String?
+  options    String? // 三選一干擾項，以 | 分隔；正解仍存 answer。執行時 [answer, ...options] 洗牌
 }
 
 // 稽核總帳：每筆數值變動都記錄，可反向沖銷

@@ -23,7 +23,7 @@ async function sendQuestion(method: string, body: unknown) {
 
 type QData = {
   games: string[];
-  questions: { id: number; gameName: string; prompt: string; answer: string | null; difficulty: string | null }[];
+  questions: { id: number; gameName: string; prompt: string; answer: string | null; difficulty: string | null; options: string | null }[];
 };
 
 export function MobileView() {
@@ -261,40 +261,116 @@ function Timer() {
   );
 }
 
+const LEVELS = ["簡單", "中等", "困難"] as const;
+// 口型題的 difficulty 形如「歌名・困難」，取「・」前為類型
+const typeOf = (d: string | null) => (d && d.includes("・") ? d.split("・")[0] : null);
+// 穩定洗牌：同一 id 產生相同順序（避免每次 render 跳動）
+function shuffleStable<T>(arr: T[], seed: number): T[] {
+  const a = [...arr];
+  let s = seed * 9301 + 49297;
+  for (let i = a.length - 1; i > 0; i--) {
+    s = (s * 9301 + 49297) % 233280;
+    const j = Math.floor((s / 233280) * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 function Questions() {
   const { data } = useSWR<QData>("/api/questions", fetcher);
   const [game, setGame] = useState<string>("");
+  const [level, setLevel] = useState<string>("");
+  const [type, setType] = useState<string>("");
   const [idx, setIdx] = useState(0);
   const [show, setShow] = useState(false);
 
+  const resetTo = (g: string) => { setGame(g); setLevel(""); setType(""); setIdx(0); setShow(false); };
+
   if (!data) return <Card title="題庫"><p className="text-sm text-slate-400">載入中…</p></Card>;
-  const pool = game ? data.questions.filter((q) => q.gameName === game) : [];
+
+  const gamePool = game ? data.questions.filter((q) => q.gameName === game) : [];
+  // 此遊戲實際存在的難度 / 類型，動態決定要不要顯示篩選列
+  const levels = LEVELS.filter((lv) => gamePool.some((q) => q.difficulty?.includes(lv)));
+  const types = [...new Set(gamePool.map((q) => typeOf(q.difficulty)).filter((t): t is string => !!t))];
+
+  const pool = gamePool.filter(
+    (q) =>
+      (level === "" || q.difficulty?.includes(level)) &&
+      (type === "" || typeOf(q.difficulty) === type),
+  );
   const q = pool[idx];
+  const opts = q?.options ? shuffleStable([q.answer ?? "", ...q.options.split("|")], q.id) : null;
 
   return (
     <Card title="題庫（抽題 / 看答案）">
       <div className="mb-3 flex flex-wrap gap-2">
         {data.games.map((g) => (
-          <button key={g} onClick={() => { setGame(g); setIdx(0); setShow(false); }}
+          <button key={g} onClick={() => resetTo(g)}
             className={`rounded-lg px-4 py-2 text-sm font-medium ${game === g ? "bg-cyan-500 text-slate-950" : "chip"}`}>{g}</button>
         ))}
       </div>
+
+      {game && types.length > 0 && (
+        <div className="mb-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-slate-500">類型</span>
+          <FilterChip label="全部" active={type === ""} onClick={() => { setType(""); setIdx(0); setShow(false); }} />
+          {types.map((t) => (
+            <FilterChip key={t} label={t} active={type === t} onClick={() => { setType(t); setIdx(0); setShow(false); }} />
+          ))}
+        </div>
+      )}
+      {game && levels.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-slate-500">難度</span>
+          <FilterChip label="全部" active={level === ""} onClick={() => { setLevel(""); setIdx(0); setShow(false); }} />
+          {levels.map((lv) => (
+            <FilterChip key={lv} label={lv} active={level === lv} onClick={() => { setLevel(lv); setIdx(0); setShow(false); }} />
+          ))}
+        </div>
+      )}
+
       {game && (
-        pool.length === 0 ? <p className="text-sm text-slate-400">此遊戲尚無題目（可在「題庫管理」分頁新增）</p> : (
+        pool.length === 0 ? <p className="text-sm text-slate-400">此條件下尚無題目（可調整篩選或在「題庫管理」分頁新增）</p> : (
           <div className="rounded-xl border border-white/10 bg-white/5 p-4">
             <div className="text-xs text-slate-500">第 {idx + 1} / {pool.length} 題 {q.difficulty && `・${q.difficulty}`}</div>
             <div className="my-2 text-xl font-bold">{q.prompt}</div>
-            {show && q.answer && <div className="text-emerald-300">答案：{q.answer}</div>}
+            {opts ? (
+              <div className="mt-2 space-y-1.5">
+                {opts.map((o, i) => {
+                  const correct = o === q.answer;
+                  return (
+                    <div key={i}
+                      className={`rounded-lg border px-3 py-2 text-sm ${
+                        show && correct ? "border-emerald-400 bg-emerald-500/15 text-emerald-200 font-semibold" : "border-white/10 bg-white/5"
+                      }`}>
+                      <span className="mr-2 text-slate-400">{"ABC"[i]}</span>{o}
+                      {show && correct && <span className="ml-2">✓</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              show && q.answer && <div className="text-emerald-300">答案：{q.answer}</div>
+            )}
             <div className="mt-3 flex gap-2">
               <button onClick={() => { setIdx(Math.floor(Math.random() * pool.length)); setShow(false); }}
                 className="chip rounded-lg px-4 py-2 text-sm hover:bg-white/20">抽一題</button>
-              <button onClick={() => setShow((s) => !s)} className="chip px-4 py-2 text-sm">{show ? "隱藏答案" : "看答案"}</button>
+              <button onClick={() => setShow((s) => !s)} className="chip px-4 py-2 text-sm">{show ? (opts ? "隱藏正解" : "隱藏答案") : (opts ? "公布答案" : "看答案")}</button>
               <button onClick={() => { setIdx((i) => (i + 1) % pool.length); setShow(false); }} className="chip px-4 py-2 text-sm">下一題</button>
             </div>
           </div>
         )
       )}
     </Card>
+  );
+}
+
+function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick}
+      className={`rounded-md px-3 py-1 text-xs font-medium transition ${active ? "bg-cyan-500 text-slate-950" : "chip"}`}>
+      {label}
+    </button>
   );
 }
 
@@ -353,6 +429,7 @@ function NewQuestionForm({ games, defaultGame, onDone }: { games: string[]; defa
   const [prompt, setPrompt] = useState("");
   const [answer, setAnswer] = useState("");
   const [difficulty, setDifficulty] = useState("");
+  const [options, setOptions] = useState("");
 
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -373,12 +450,16 @@ function NewQuestionForm({ games, defaultGame, onDone }: { games: string[]; defa
         <div className="mb-1">答案（可空白）</div>
         <input value={answer} onChange={(e) => setAnswer(e.target.value)} className="fld w-full" />
       </label>
+      <label className="text-xs text-slate-400 sm:col-span-2">
+        <div className="mb-1">三選一干擾項（冷知識用，可空白；用 | 分隔兩個錯誤選項）</div>
+        <input value={options} onChange={(e) => setOptions(e.target.value)} placeholder="例如：食指|無名指" className="fld w-full" />
+      </label>
       <div className="sm:col-span-2">
         <ActionButton label="新增題目" disabled={!gameName.trim() || !prompt.trim()}
           onAction={async () => {
             if (!gameName.trim() || !prompt.trim()) return "需填遊戲名稱與題目";
-            await sendQuestion("POST", { gameName: gameName.trim(), prompt: prompt.trim(), answer, difficulty });
-            setPrompt(""); setAnswer("");
+            await sendQuestion("POST", { gameName: gameName.trim(), prompt: prompt.trim(), answer, difficulty, options });
+            setPrompt(""); setAnswer(""); setOptions("");
             await onDone();
             return "已新增";
           }} />
@@ -393,12 +474,14 @@ function QuestionRow({ q, games, onDone }: { q: QRow; games: string[]; onDone: (
   const [prompt, setPrompt] = useState(q.prompt);
   const [answer, setAnswer] = useState(q.answer ?? "");
   const [difficulty, setDifficulty] = useState(q.difficulty ?? "");
+  const [options, setOptions] = useState(q.options ?? "");
 
   const reset = () => {
     setGameName(q.gameName);
     setPrompt(q.prompt);
     setAnswer(q.answer ?? "");
     setDifficulty(q.difficulty ?? "");
+    setOptions(q.options ?? "");
   };
 
   // 檢視模式：唯讀，按「編輯」才展開
@@ -407,10 +490,11 @@ function QuestionRow({ q, games, onDone }: { q: QRow; games: string[]; onDone: (
       <div className="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-white/5 p-3 transition-all hover:bg-white/10">
         <div className="min-w-0">
           <p className="break-words text-sm text-slate-100">{q.prompt}</p>
-          {(q.answer || q.difficulty) && (
+          {(q.answer || q.difficulty || q.options) && (
             <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-500">
               {q.answer && <span>答案：<span className="text-emerald-300">{q.answer}</span></span>}
               {q.difficulty && <span>難度：{q.difficulty}</span>}
+              {q.options && <span>干擾項：{q.options.split("|").join("、")}</span>}
             </div>
           )}
         </div>
@@ -431,11 +515,12 @@ function QuestionRow({ q, games, onDone }: { q: QRow; games: string[]; onDone: (
           {games.map((g) => <option key={g} value={g}>{g}</option>)}
         </select>
       </div>
+      <input value={options} onChange={(e) => setOptions(e.target.value)} placeholder="三選一干擾項（冷知識用，| 分隔，例如：食指|無名指）" className="fld mt-2 w-full" />
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <ActionButton label="儲存"
           onAction={async () => {
             if (!prompt.trim()) return "題目不可空白";
-            await sendQuestion("PATCH", { id: q.id, gameName, prompt: prompt.trim(), answer, difficulty });
+            await sendQuestion("PATCH", { id: q.id, gameName, prompt: prompt.trim(), answer, difficulty, options });
             await onDone();
             setEditing(false);
             return "已儲存";

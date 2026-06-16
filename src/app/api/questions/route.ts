@@ -23,6 +23,7 @@ export const POST = apiRoute(["MOBILE", "ADMIN"], async ({ body }) => {
       prompt: str(body, "prompt"),
       answer: optStr(body.answer),
       difficulty: optStr(body.difficulty),
+      options: optStr(body.options),
     },
   });
   return q;
@@ -37,6 +38,7 @@ export const PATCH = apiRoute(["MOBILE", "ADMIN"], async ({ body }) => {
       prompt: str(body, "prompt"),
       answer: optStr(body.answer),
       difficulty: optStr(body.difficulty),
+      options: optStr(body.options),
     },
   });
   return q;
