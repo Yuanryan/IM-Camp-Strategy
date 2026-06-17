@@ -6,6 +6,16 @@ import type { ReactNode } from "react";
 import type { Snapshot } from "@/lib/snapshot";
 import type { UndoRecipe } from "@/lib/game";
 
+// 停用驗證時，小隊身分無法從 cookie 取得（dev session 一律 fallback 到第一隊），
+// 故把當前檢視的 teamId 夾在 query 上，讓 server 知道現在是「以哪一隊操作」。
+//
+// authDisabled 由 snapshot 帶下來（env 或執行期 Admin 旗標任一開啟即為 true）。
+// 旗標關閉時原樣回傳——server 端身分認 cookie，沒帶 teamId 就 fallback 到第一隊（見 auth.ts）。
+export function withTeam(url: string, teamId: number, authDisabled: boolean): string {
+  if (!authDisabled) return url;
+  return url + (url.includes("?") ? "&" : "?") + `teamId=${teamId}`;
+}
+
 // 動作按鈕的回傳：字串＝成功訊息；物件＝成功訊息＋（選用）幾秒內可撤銷的配方
 export type ActionResult = { message?: string; undo?: UndoRecipe };
 

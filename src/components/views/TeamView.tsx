@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { fetcher, useSnapshot, postJson, toast, confirmDialog } from "@/components/client";
+import { fetcher, useSnapshot, postJson, toast, confirmDialog, withTeam } from "@/components/client";
 import { Card } from "@/components/Shell";
 import { Num, PriceTag, LevelDots, EventBanner, AuctionBanner, AttackBanner, BottomNav } from "@/components/ui";
 import { TradeView } from "@/components/views/TradeView";
@@ -15,9 +15,12 @@ const LEVEL_TAG = ["已購", "1級", "2級", "3級"];
 
 export function TeamView({ teamId }: { teamId: number }) {
   const { snap, error, mutate } = useSnapshot(3000);
-  const { data: trades } = useSWR<{ incoming: unknown[] }>("/api/trade", fetcher, {
-    refreshInterval: 3000,
-  });
+  const authDisabled = snap?.authDisabled ?? false;
+  const { data: trades } = useSWR<{ incoming: unknown[] }>(
+    withTeam("/api/trade", teamId, authDisabled),
+    fetcher,
+    { refreshInterval: 3000 },
+  );
   const [tab, setTab] = useState<"assets" | "trade" | "guide">("assets");
   const incoming = trades?.incoming?.length ?? 0;
 
@@ -192,7 +195,7 @@ export function TeamView({ teamId }: { teamId: number }) {
           </Card>
           
           {/* ── 我的道具 ────────────────────────────────────────── */}
-          <ItemsCard me={me} teams={snap.teams} onDone={mutate} />
+          <ItemsCard me={me} teams={snap.teams} onDone={mutate} authDisabled={authDisabled} />
           
           {/* ── Lottery ────────────────────────────────────────── */}
           <Card title={`大樂透號碼（第 ${snap.lottery.period} 期）`}>
@@ -236,10 +239,12 @@ function ItemsCard({
   me,
   teams,
   onDone,
+  authDisabled,
 }: {
   me: Snapshot["teams"][number];
   teams: Snapshot["teams"];
   onDone: () => void | Promise<unknown>;
+  authDisabled: boolean;
 }) {
   const items = me.items ?? [];
   return (
@@ -267,7 +272,7 @@ function ItemsCard({
               </div>
               <p className="mt-1 text-xs text-slate-400">{item.description}</p>
               {item.effectType === "PIRACY" && (
-                <PiracyTarget item={item} myId={me.id} teams={teams} onDone={onDone} />
+                <PiracyTarget item={item} myId={me.id} teams={teams} onDone={onDone} authDisabled={authDisabled} />
               )}
             </li>
           ))}
@@ -283,11 +288,13 @@ function PiracyTarget({
   myId,
   teams,
   onDone,
+  authDisabled,
 }: {
   item: Snapshot["teams"][number]["items"][number];
   myId: number;
   teams: Snapshot["teams"];
   onDone: () => void | Promise<unknown>;
+  authDisabled: boolean;
 }) {
   const [busy, setBusy] = useState(false);
 
@@ -306,7 +313,7 @@ function PiracyTarget({
     if (!(await confirmDialog(`鎖定「${targetName}」為印記目標？此選擇無法更改。`))) return;
     setBusy(true);
     try {
-      await postJson("/api/items/mark", { itemId: item.id, markTeamId: targetId });
+      await postJson(withTeam("/api/items/mark", myId, authDisabled), { itemId: item.id, markTeamId: targetId });
       await onDone();
       toast(`俠盜印記已鎖定 ${targetName}`, "ok");
     } catch (e) {

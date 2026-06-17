@@ -5,11 +5,26 @@ import { prisma } from "./db";
 import { ROLE_HOME, type Role } from "./game";
 
 export const SESSION_COOKIE = "session";
+// 執行期切換 authDisabled 時，連同這個「非 httpOnly」cookie 一起寫，
+// 讓 middleware（proxy.ts）能同步判斷而不必每次連 DB（見 proxy.ts / api/admin/auth-toggle）。
+export const AUTH_OFF_COOKIE = "auth_off";
 
 // 開發用：設環境變數 AUTH_DISABLED=1 即可跳過所有登入 / 權限檢查。
 // ⚠️ 正式上線（Vercel）千萬不要設這個。
-export const AUTH_OFF =
+// 這是「開機就生效」的逃生門；另有執行期可由 Admin 切換的 DB 旗標（見 authOff()）。
+export const AUTH_OFF_ENV =
   process.env.AUTH_DISABLED === "1" || process.env.AUTH_DISABLED === "true";
+
+// 真正判斷是否停用驗證：env 旗標 OR DB 執行期旗標（GameState.authDisabled）。
+// 任何 server 端授權邏輯都應 await 這個，而不是只看 env。
+export async function authOff(): Promise<boolean> {
+  if (AUTH_OFF_ENV) return true;
+  const state = await prisma.gameState.findUnique({
+    where: { id: 1 },
+    select: { authDisabled: true },
+  });
+  return state?.authDisabled ?? false;
+}
 
 // 開發用：設環境變數 DEV_LOGIN_BUTTONS=1，首頁的角色清單會變成「一鍵登入」按鈕，
 // 不必掃 QR 即可用該角色身分登入（透過 /api/login?role=<ROLE> 撈該角色的 token）。
@@ -35,7 +50,7 @@ const devSession = (role: Role, teamId: number | null = null): Session => ({
 
 // 從 cookie 讀出目前登入身分（無則回 null）
 export async function getSession(): Promise<Session | null> {
-  if (AUTH_OFF) return devSession("ADMIN");
+  if (await authOff()) return devSession("ADMIN");
   const store = await cookies();
   const token = store.get(SESSION_COOKIE)?.value;
   if (!token) return null;
@@ -53,7 +68,7 @@ export async function getSession(): Promise<Session | null> {
 // 在頁面 / route handler 中強制要求特定角色。
 // 未登入 → 導向登入提示；角色不符 → 導回自己的首頁。
 export async function requireRole(...roles: Role[]): Promise<Session> {
-  if (AUTH_OFF) {
+  if (await authOff()) {
     const role = (roles[0] ?? "ADMIN") as Role;
     if (role === "TEAM") {
       const t = await prisma.team.findFirst({ orderBy: { id: "asc" } });
@@ -78,7 +93,7 @@ export class AuthError extends Error {
 
 // req 只在 AUTH_OFF 時用來讀 ?teamId= dev 參數，prod 傳 null 即可。
 export async function requireRoleApi(req: NextRequest | null, ...roles: Role[]): Promise<Session> {
-  if (AUTH_OFF) {
+  if (await authOff()) {
     const role = (roles[0] ?? "ADMIN") as Role;
     if (role === "TEAM") {
       // Dev: 先從 ?teamId= 讀，讀不到才 fallback 到第一隊

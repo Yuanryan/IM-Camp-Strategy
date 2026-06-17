@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import useSWR from "swr";
-import { fetcher, useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
+import { fetcher, useSnapshot, postJson, ActionButton, TeamSelect, withTeam } from "@/components/client";
 import { Card } from "@/components/Shell";
 import { Num, TeamItemBadges } from "@/components/ui";
 import { EffectType, ITEM_GRADE_COLORS } from "@/lib/game";
@@ -43,7 +43,8 @@ function TradeAmt({ coins, points, items }: { coins: number; points: number; ite
 
 export function TradeView({ teamId }: { teamId: number }) {
   const { snap } = useSnapshot(3000);
-  const { data, mutate } = useSWR<TradeData>("/api/trade", fetcher, { refreshInterval: 3000 });
+  const authDisabled = snap?.authDisabled ?? false;
+  const { data, mutate } = useSWR<TradeData>(withTeam("/api/trade", teamId, authDisabled), fetcher, { refreshInterval: 3000 });
   const [to, setTo] = useState<number | "">("");
   const [coins, setCoins] = useState(0);
   const [points, setPoints] = useState(0);
@@ -85,7 +86,7 @@ export function TradeView({ teamId }: { teamId: number }) {
 
   // 拒絕（收受方按）— 自己餘額不變，只需刷新列表
   const act = async (tradeId: number, action: string, ok: string) => {
-    await postJson("/api/trade/action", { tradeId, action });
+    await postJson(withTeam("/api/trade/action", teamId, authDisabled), { tradeId, action });
     await mutate();
     return ok;
   };
@@ -138,7 +139,7 @@ export function TradeView({ teamId }: { teamId: number }) {
             onAction={async () => {
               if (to === "") return "請先選對象";
               if (nothingToSend) return "請輸入交易內容";
-              await postJson("/api/trade", { toTeamId: to, coins, cardPoints: points, itemIds });
+              await postJson(withTeam("/api/trade", teamId, authDisabled), { toTeamId: to, coins, cardPoints: points, itemIds });
               await mutate();
               setCoins(0);
               setPoints(0);
@@ -171,7 +172,7 @@ export function TradeView({ teamId }: { teamId: number }) {
                     onAction={async () => {
                       setBusyId(t.id);
                       try {
-                        await postJson("/api/trade/action", { tradeId: t.id, action: "accept" });
+                        await postJson(withTeam("/api/trade/action", teamId, authDisabled), { tradeId: t.id, action: "accept" });
                         await mutate();
                         setResult({
                           status: "success",
@@ -216,7 +217,7 @@ export function TradeView({ teamId }: { teamId: number }) {
                 <ActionButton label="取消" className="chip"
                   onAction={async () => {
                     try {
-                      await postJson("/api/trade/action", { tradeId: t.id, action: "cancel" });
+                      await postJson(withTeam("/api/trade/action", teamId, authDisabled), { tradeId: t.id, action: "cancel" });
                       await mutate();
                       setResult({ status: "canceled", detail: <span>已取消給 {t.toTeamName} 的交易（<TradeAmt coins={t.coins} points={t.cardPoints} /> 退回）</span> });
                     } catch (e) {

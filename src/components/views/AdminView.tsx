@@ -2,19 +2,21 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import { fetcher, useSnapshot, postJson, ActionButton } from "@/components/client";
+import { fetcher, useSnapshot, postJson, ActionButton, confirmDialog } from "@/components/client";
 import { Card } from "@/components/Shell";
 import { Num, AssetPicker } from "@/components/ui";
 import { REGIONS, REGION_UI, EFFECT_TYPE_LABELS, ITEM_GRADE_COLORS } from "@/lib/game";
 import type { Snapshot } from "@/lib/snapshot";
 
 const STATION_LINKS = [
-  ["主持人控台", "/host"],
+  ["主持人", "/host"],
   ["交易所", "/exchange"],
   ["地圖關主", "/map"],
   ["流動關主", "/mobile"],
   ["神秘商店", "/shop"],
+  ["拍賣中心", "/auction"],
   ["投影", "/projection"],
+  ["小隊頁面", "/team?teamId=1"],
 ];
 
 export function AdminView() {
@@ -31,7 +33,8 @@ export function AdminView() {
         </div>
       </Card>
 
-      <LoginLinksCard />
+      {/* <AuthToggleCard authDisabled={snap.authDisabled} onChange={mutate} /> */}
+      <LoginLinksCard authDisabled={snap.authDisabled} />
       <TeamEditor snap={snap} onChange={mutate} />
       <PropertyEditor snap={snap} onChange={mutate} />
       <CardEditor />
@@ -42,18 +45,88 @@ export function AdminView() {
   );
 }
 
+// 執行期「停用驗證」開關：開啟＝無 cookie 訪客視為 ADMIN、各 team API 接受 ?teamId= 覆寫。
+// ⚠️ 開啟＝對外完全不設防，僅供現場測試 / 救援。
+function AuthToggleCard({
+  authDisabled,
+  onChange,
+}: {
+  authDisabled: boolean;
+  onChange: () => void | Promise<unknown>;
+}) {
+  return (
+    <Card title="驗證開關（測試用）">
+      <div className="flex flex-wrap items-center gap-3">
+        <span
+          className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold ${
+            authDisabled
+              ? "border-rose-400/50 bg-rose-500/10 text-rose-200"
+              : "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
+          }`}
+        >
+          <span
+            className={`h-2 w-2 rounded-full ${authDisabled ? "bg-rose-400 shadow-[0_0_6px_rgba(244,63,94,0.8)]" : "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.8)]"}`}
+          />
+          目前：{authDisabled ? "已停用驗證（不設防）" : "驗證生效中"}
+        </span>
+
+        {authDisabled ? (
+          <ActionButton
+            label="重新啟用驗證"
+            className="btn-emerald"
+            onAction={async () => {
+              await postJson("/api/admin/auth-toggle", { enabled: false });
+              await onChange();
+              return "已重新啟用驗證";
+            }}
+          />
+        ) : (
+          <ActionButton
+            label="停用驗證"
+            className="btn-rose"
+            onAction={async () => {
+              if (
+                !(await confirmDialog(
+                  "確定要停用驗證？\n停用後任何人不需登入即可進入所有頁面（含 Admin），各小隊頁可用 ?teamId= 切換身分。僅供測試使用",
+                ))
+              )
+                return;
+              await postJson("/api/admin/auth-toggle", { enabled: true });
+              await onChange();
+              return "已停用驗證（請盡快關閉）";
+            }}
+          />
+        )}
+      </div>
+      <p className="mt-2 text-xs text-slate-500">
+        僅供開發測試使用，請勿在正式環境停用。
+      </p>
+    </Card>
+  );
+}
+
 type TokenRow = {
   id: number;
   role: string;
   roleLabel: string;
   label: string;
+  teamId: number | null;
   url: string;
   qr: string;
 };
 
+// 停用驗證時，token / cookie 登入失效（dev session 一律 ADMIN+第一隊），
+// 故 TEAM 列改用 /team?teamId=N 直連（頁面會讀這個參數切換身分）；其餘角色維持 token 連結。
+function effectiveUrl(row: TokenRow, authDisabled: boolean): string {
+  if (authDisabled && row.role === "TEAM" && row.teamId != null) {
+    return `/team?teamId=${row.teamId}`;
+  }
+  return row.url;
+}
+
 // 登入連結 / QR：列出所有角色與小隊的一鍵登入連結與 QR code。
 // 現場若臨時要在新裝置登入某站別 / 某隊，可在此直接掃描或複製連結。
-function LoginLinksCard() {
+function LoginLinksCard({ authDisabled }: { authDisabled: boolean }) {
   const { data } = useSWR<{ tokens: TokenRow[] }>("/api/admin/tokens", fetcher);
   const [copied, setCopied] = useState<number | null>(null);
   const [copiedAll, setCopiedAll] = useState(false);
@@ -61,7 +134,7 @@ function LoginLinksCard() {
 
   const copy = async (row: TokenRow) => {
     try {
-      await navigator.clipboard.writeText(row.url);
+      await navigator.clipboard.writeText(effectiveUrl(row, authDisabled));
       setCopied(row.id);
       setTimeout(() => setCopied((c) => (c === row.id ? null : c)), 1500);
     } catch {
@@ -73,7 +146,7 @@ function LoginLinksCard() {
   const copyAll = async () => {
     if (!data) return;
     const text = data.tokens
-      .map((r) => `${r.roleLabel} ${r.label}\t${r.url}`)
+      .map((r) => `${r.roleLabel} ${r.label}\t${effectiveUrl(r, authDisabled)}`)
       .join("\n");
     try {
       await navigator.clipboard.writeText(text);
@@ -124,6 +197,7 @@ function LoginLinksCard() {
             showQr={showQr}
             copied={copied}
             onCopy={copy}
+            authDisabled={authDisabled}
           />
           <TokenSection
             heading="小隊"
@@ -131,6 +205,7 @@ function LoginLinksCard() {
             showQr={showQr}
             copied={copied}
             onCopy={copy}
+            authDisabled={authDisabled}
           />
         </div>
       )}
@@ -145,12 +220,14 @@ function TokenSection({
   showQr,
   copied,
   onCopy,
+  authDisabled,
 }: {
   heading: string;
   rows: TokenRow[];
   showQr: boolean;
   copied: number | null;
   onCopy: (row: TokenRow) => void;
+  authDisabled: boolean;
 }) {
   if (rows.length === 0) return null;
   return (
@@ -161,7 +238,7 @@ function TokenSection({
       </div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
         {rows.map((row) => (
-          <TokenTile key={row.id} row={row} showQr={showQr} copied={copied} onCopy={onCopy} />
+          <TokenTile key={row.id} row={row} showQr={showQr} copied={copied} onCopy={onCopy} authDisabled={authDisabled} />
         ))}
       </div>
     </div>
@@ -169,16 +246,19 @@ function TokenSection({
 }
 
 // 單一 token 卡片：身分標籤 + QR + 開啟 / 複製。
+// 停用驗證時，「開啟」對 TEAM 列改用 /team?teamId= 直連（見 effectiveUrl）；QR 仍維持 token 連結。
 function TokenTile({
   row,
   showQr,
   copied,
   onCopy,
+  authDisabled,
 }: {
   row: TokenRow;
   showQr: boolean;
   copied: number | null;
   onCopy: (row: TokenRow) => void;
+  authDisabled: boolean;
 }) {
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-white/10 bg-white/5 p-2.5">
@@ -198,7 +278,7 @@ function TokenTile({
       )}
       <div className="mt-auto flex gap-1.5">
         <a
-          href={row.url}
+          href={effectiveUrl(row, authDisabled)}
           target="_blank"
           rel="noreferrer"
           className="chip flex-1 px-2 py-1 text-center text-xs hover:bg-white/20"

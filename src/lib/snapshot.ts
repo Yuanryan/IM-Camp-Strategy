@@ -80,6 +80,8 @@ export type AuctionSnapshot = {
 
 export type Snapshot = {
   phase: string;
+  // 執行期「停用驗證」旗標：client 用它決定是否要在 team API 夾 ?teamId=（見 withTeam）
+  authDisabled: boolean;
   activeEvents: number[];
   event4Penalty: string | null;
   lottery: {
@@ -277,6 +279,12 @@ export async function getSnapshot(): Promise<Snapshot> {
 
   return {
     phase: state?.phase ?? "SETUP",
+    // env 旗標或 DB 旗標任一開啟即視為停用驗證（client 據此夾 ?teamId=）。
+    // 直接讀 env（不 import auth.ts，避免把 next/headers 依賴拉進來）。
+    authDisabled:
+      process.env.AUTH_DISABLED === "1" ||
+      process.env.AUTH_DISABLED === "true" ||
+      (state?.authDisabled ?? false),
     activeEvents,
     event4Penalty,
     lottery: {

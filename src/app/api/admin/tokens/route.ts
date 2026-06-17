@@ -34,6 +34,7 @@ export const GET = apiRoute(["ADMIN"], async ({ req }) => {
         role: t.role,
         roleLabel: ROLE_LABEL[t.role as Role] ?? t.role,
         label: t.label,
+        teamId: t.teamId, // TEAM 列才有；停用驗證時用來組 /team?teamId= 直連
         url,
         qr: await QRCode.toDataURL(url, { width: 220, margin: 1 }),
       };

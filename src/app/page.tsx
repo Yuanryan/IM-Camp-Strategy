@@ -59,7 +59,7 @@ export default async function Home({
         {DEV_LOGIN ? (
           <>
             <p className="mt-5 text-xs font-semibold uppercase tracking-widest text-amber-300/80">
-              開發捷徑・點選即以該角色登入
+              點選即以該角色登入
             </p>
             <ul className="mt-2 grid grid-cols-3 gap-2 text-center text-xs font-medium">
               {Object.entries(ROLE_LABEL).map(([role, label]) => (

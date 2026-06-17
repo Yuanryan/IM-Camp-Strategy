@@ -163,6 +163,10 @@ model LotteryNumber {
 model GameState {
   id            Int      @id @default(1)
   phase         String   @default("SETUP") // SETUP RUNNING SETTLED
+  // 執行期「停用驗證」開關（由 Admin 頁切換）。為 true 時等同 env AUTH_DISABLED：
+  // 無 cookie 訪客視為 ADMIN dev session、各 team API 接受 ?teamId= 覆寫（fallback 第一隊）。
+  // ⚠️ 開啟＝對外完全不設防，僅供現場測試 / 救援使用。
+  authDisabled  Boolean  @default(false)
   activeEvents  String   @default("") // CSV，例如 "1,2"
   event4Penalty String? // 事件四「前次漲最多區域」由主持人選定
   lotteryPeriod Int      @default(1)
