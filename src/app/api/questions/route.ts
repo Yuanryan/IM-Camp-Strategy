@@ -3,7 +3,9 @@ import { prisma } from "@/lib/db";
 
 const optStr = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
 
-export const GET = apiRoute(["MOBILE", "ADMIN"], async ({ req }) => {
+// GET 開放 MAP：好運 / 厄運卡的任務（冷知識 / 繞口令 / 比手畫腳 / 默契）需在地圖關主頁抽題。
+// 編輯（POST/PATCH/DELETE）仍限 MOBILE/ADMIN。
+export const GET = apiRoute(["MOBILE", "MAP", "ADMIN"], async ({ req }) => {
   const game = req.nextUrl.searchParams.get("game");
   const where = game ? { gameName: game } : {};
   const questions = await prisma.question.findMany({ where, orderBy: { id: "asc" } });

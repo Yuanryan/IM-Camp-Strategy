@@ -511,6 +511,7 @@ export type GoodCard = {
   success: number; // 成功獎勵光幣
   fail: number; // 失敗獎勵光幣
   criteria: string; // 判定
+  game?: string; // 任務需題庫時，對應的 gameName（地圖關主抽卡後直接抽題）
 };
 
 export type BadOutcome = { label: string; deduct: number }; // deduct 為要扣的光幣（正數）
@@ -521,26 +522,27 @@ export type BadCard = {
   difficulty?: string;
   criteria?: string;
   outcomes: BadOutcome[];
+  game?: string; // 任務需題庫時，對應的 gameName
 };
 
 // 好運卡：光幣牌
 export const GOOD_LUCK_CARDS: GoodCard[] = [
   { name: "晨光大禮", task: "跟關主猜拳，過半數隊員贏過關主", difficulty: "簡單", success: 150, fail: 0, criteria: "半數以上勝利" },
-  { name: "繁星獎池", task: "冷知識 5 題答對 3 題", difficulty: "中等", success: 250, fail: 0, criteria: "答對 3 題" },
+  { name: "繁星獎池", task: "冷知識 5 題答對 3 題", difficulty: "中等", success: 250, fail: 0, criteria: "答對 3 題", game: "冷知識" },
   { name: "資本大賞", task: "全隊用身體呈現指定國字，隊輔猜出 3 題", difficulty: "中等", success: 300, fail: 0, criteria: "猜出 3 題" },
-  { name: "光幣雙倍", task: "繞口令完成 3 題", difficulty: "中等", success: 300, fail: 0, criteria: "完成 3 題" },
+  { name: "光幣雙倍", task: "繞口令完成 3 題", difficulty: "中等", success: 300, fail: 0, criteria: "完成 3 題", game: "繞口令" },
   { name: "迷霧財寶", task: "說出 10 位工人的本名", difficulty: "困難", success: 500, fail: 100, criteria: "名字正確" },
-  { name: "福星高照", task: "比手畫腳，3 分鐘內猜對 8 題", difficulty: "中等", success: 300, fail: 0, criteria: "猜對 8 題" },
-  { name: "默契滿分", task: "默契大考驗（關鍵字全隊同動作），完成 3 題", difficulty: "簡單", success: 150, fail: 0, criteria: "完成 3 題" },
+  { name: "福星高照", task: "比手畫腳，3 分鐘內猜對 8 題", difficulty: "中等", success: 300, fail: 0, criteria: "猜對 8 題", game: "比手畫腳" },
+  { name: "默契滿分", task: "默契大考驗（關鍵字全隊同動作），完成 3 題", difficulty: "簡單", success: 150, fail: 0, criteria: "完成 3 題", game: "默契大考驗" },
 ];
 
 // 厄運卡：扣錢牌 + 懲罰任務牌
 export const BAD_LUCK_CARDS: BadCard[] = [
   { name: "迷霧收費站", kind: "扣錢牌", content: "減免任務：猜拳，過半數隊員贏過關主", criteria: "半數以上勝利", outcomes: [{ label: "未完成", deduct: 200 }, { label: "完成減免", deduct: 100 }] },
   { name: "資本寒流", kind: "扣錢牌", content: "減免任務：每人做 15 下波比跳", criteria: "全員完成", outcomes: [{ label: "未完成", deduct: 300 }, { label: "完成減免", deduct: 100 }] },
-  { name: "黑市稅捐", kind: "扣錢牌", content: "減免任務：繞口令完成 2 題", criteria: "完成 2 題", outcomes: [{ label: "未完成", deduct: 200 }, { label: "完成減免", deduct: 100 }] },
-  { name: "迷霧罰款", kind: "扣錢牌", content: "減免任務：冷知識 5 題答對 3 題", criteria: "答對 3 題", outcomes: [{ label: "未完成", deduct: 100 }, { label: "完成減免", deduct: 50 }] },
-  { name: "暗影徵收", kind: "扣錢牌", content: "減免任務：默契大考驗 5 題完成 3 題", criteria: "完成 3 題", outcomes: [{ label: "未完成", deduct: 100 }, { label: "完成減免", deduct: 50 }] },
+  { name: "黑市稅捐", kind: "扣錢牌", content: "減免任務：繞口令完成 2 題", criteria: "完成 2 題", outcomes: [{ label: "未完成", deduct: 200 }, { label: "完成減免", deduct: 100 }], game: "繞口令" },
+  { name: "迷霧罰款", kind: "扣錢牌", content: "減免任務：冷知識 5 題答對 3 題", criteria: "答對 3 題", outcomes: [{ label: "未完成", deduct: 100 }, { label: "完成減免", deduct: 50 }], game: "冷知識" },
+  { name: "暗影徵收", kind: "扣錢牌", content: "減免任務：默契大考驗 5 題完成 3 題", criteria: "完成 3 題", outcomes: [{ label: "未完成", deduct: 100 }, { label: "完成減免", deduct: 50 }], game: "默契大考驗" },
   { name: "影焰稅單", kind: "扣錢牌", content: "減免任務：說出 10 位工人的本名", criteria: "名字正確", outcomes: [{ label: "未完成", deduct: 100 }, { label: "完成減免", deduct: 0 }] },
   { name: "大頭貼時刻", kind: "懲罰任務牌", content: "全隊鬼臉五連拍，關主拍照存檔", difficulty: "簡單", outcomes: [{ label: "完成", deduct: 0 }, { label: "未完成", deduct: 100 }] },
   { name: "訓練時間", kind: "懲罰任務牌", content: "每人捲腹 10 下", difficulty: "簡單", outcomes: [{ label: "完成", deduct: 0 }, { label: "未完成", deduct: 100 }] },
@@ -601,6 +603,77 @@ export const MAP_REWARD_PRESETS: RewardPreset[] = [
 export const MOBILE_REWARD_PRESETS: RewardPreset[] = [
   { label: "光幣 +200", coins: 200, note: "小遊戲獎勵 光幣", tone: "good" },
   { label: "卡牌點數 +20", cardPoints: 20, note: "小遊戲獎勵 卡牌點數", tone: "good" },
+];
+
+// ── 流動關卡：七款小遊戲（單一事實來源）─────────────────────────
+// hasBank=true 者題目存於 Question 表（gameName 相同）；false 者為純規則卡（海帶拳 / 憤怒企業）。
+// time/winRule/reward 為關主執行時的提示文字；mobile 頁照此渲染卡片，順序即清單順序。
+export type MobileGame = {
+  name: string;
+  hasBank: boolean;
+  versus: "team-vs-host" | "team-vs-team" | "coop"; // 對抗形式（決定徽章與文案）
+  time?: string; // 時間限制提示
+  rule: string; // 過關 / 勝負條件（一句話）
+  reward?: string; // 獎勵提示（如「每對 3 題給 1 張動產卡」）
+  note?: string; // 補充說明
+};
+
+export const MOBILE_GAMES: MobileGame[] = [
+  {
+    name: "猜歌",
+    hasBank: true,
+    versus: "coop",
+    time: "限時 1 分鐘",
+    rule: "1 分鐘內猜對 5 題過關",
+    note: "歌單可讓隊員選類型（中／英／日／韓／樂團），也可關主隨機抽。",
+  },
+  {
+    name: "憤怒企業",
+    hasBank: false,
+    versus: "team-vs-host",
+    rule: "小隊推 3 人與關主 PK，三戰兩勝",
+    note: "輪流說出企業品牌名（只要品牌名即可），答不出或重複即失敗。",
+  },
+  {
+    name: "比手畫腳",
+    hasBank: true,
+    versus: "coop",
+    time: "計時 3 分鐘",
+    rule: "3 分鐘內完成指定題數",
+    reward: "每對 3 題給 1 張動產卡",
+    note: "題庫由關主自選難度（簡單／中等／困難）。",
+  },
+  {
+    name: "默契大考驗",
+    hasBank: true,
+    versus: "coop",
+    time: "約 3 分鐘",
+    rule: "10 題對 6 題過關",
+    note: "關主自選難度。關主念關鍵字，全隊同時比同一動作，相同才算對。",
+  },
+  {
+    name: "口型猜答案",
+    hasBank: true,
+    versus: "team-vs-team",
+    time: "約 5 分鐘",
+    rule: "出 15 題，猜對較多的小隊勝",
+    note: "關主只動口型不出聲，小隊搶答。",
+  },
+  {
+    name: "海帶拳",
+    hasBank: false,
+    versus: "team-vs-team",
+    rule: "勝者繼續，最先被淘汰完的小隊輸",
+    note: "兩隊每個人都玩，輸的人淘汰，由下一位接著上。",
+  },
+  {
+    name: "跳跳Tempo",
+    hasBank: true,
+    versus: "team-vs-team",
+    time: "3 分鐘",
+    rule: "挑錯即淘汰；先被淘汰完、或 3分鐘時間到時人數較少的小隊敗",
+    note: "兩隊隊員穿插站，關主念清單，符合主題跳 O 邊、不符跳 X 邊，跳錯或晚跳淘汰。",
+  },
 ];
 
 // 角色定義

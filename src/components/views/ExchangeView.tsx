@@ -155,7 +155,7 @@ export function ExchangeView() {
                         onAction={() => act(() => postJson("/api/exchange/upgrade", { propertyId: p.id, discount }), `已升級 ${p.name}`)} />
                     )}
                     {p.ownerTeamId != null && p.ownerTeamId !== team && (
-                      <ActionButton label="已被購買" className="w-full chip" disabled
+                      <ActionButton label="已售出" className="w-full chip" disabled
                         onAction={() => Promise.resolve()} />
                     )}
                   </div>

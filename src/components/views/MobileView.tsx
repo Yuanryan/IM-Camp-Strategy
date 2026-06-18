@@ -6,8 +6,9 @@ import { fetcher, useSnapshot, TeamSelect, ActionButton } from "@/components/cli
 import { RewardButtons, CustomGive } from "@/components/RewardPanel";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, EventBanner, HudTabs, TeamItemBadges } from "@/components/ui";
-import { MOBILE_REWARD_PRESETS, EffectType } from "@/lib/game";
-import { Gamepad2, BookOpen, Timer as TimerIcon, Pause, Play, RotateCcw } from "lucide-react";
+import { QuestionBank, type QData } from "@/components/QuestionBank";
+import { MOBILE_REWARD_PRESETS, MOBILE_GAMES, type MobileGame, EffectType } from "@/lib/game";
+import { Gamepad2, BookOpen, Timer as TimerIcon, Pause, Play, RotateCcw, Swords, Users, Handshake, Clock, Trophy, Gift } from "lucide-react";
 
 // 題庫 CRUD（流動關主可編輯）
 async function sendQuestion(method: string, body: unknown) {
@@ -20,11 +21,6 @@ async function sendQuestion(method: string, body: unknown) {
   if (!r.ok) throw new Error(d.error ?? "操作失敗");
   return d;
 }
-
-type QData = {
-  games: string[];
-  questions: { id: number; gameName: string; prompt: string; answer: string | null; difficulty: string | null; options: string | null }[];
-};
 
 export function MobileView() {
   const { snap, mutate } = useSnapshot(4000);
@@ -40,8 +36,8 @@ export function MobileView() {
         active={tab}
         onChange={setTab}
         tabs={[
-          ["ops", "關主操作", <Gamepad2 className="h-4 w-4" />],
-          ["bank", "題庫管理", <BookOpen className="h-4 w-4" />],
+          ["ops", "關主操作", <Gamepad2 key="ops" className="h-4 w-4" />],
+          ["bank", "題庫管理", <BookOpen key="bank" className="h-4 w-4" />],
         ] as const}
       />
 
@@ -59,7 +55,7 @@ export function MobileView() {
               relevantTypes={[EffectType.GOOD_CARD_BONUS, EffectType.BAD_CARD_REDUCE, EffectType.WHEEL_ON_GOOD_CARD, EffectType.DOUBLE_OR_NOTHING, EffectType.REMINDER]}
             />
           </StickyTeam>
-          <Questions />
+          <Games />
           <Timer />
 
           <Card title="發放獎勵（光幣 / 卡牌點數）">
@@ -246,116 +242,64 @@ function TimeField({ value, max, align, label, onCommit }: {
   );
 }
 
-const LEVELS = ["簡單", "中等", "困難"] as const;
-// 口型題的 difficulty 形如「歌名・困難」，取「・」前為類型
-const typeOf = (d: string | null) => (d && d.includes("・") ? d.split("・")[0] : null);
-// 穩定洗牌：同一 id 產生相同順序（避免每次 render 跳動）
-function shuffleStable<T>(arr: T[], seed: number): T[] {
-  const a = [...arr];
-  let s = seed * 9301 + 49297;
-  for (let i = a.length - 1; i > 0; i--) {
-    s = (s * 9301 + 49297) % 233280;
-    const j = Math.floor((s / 233280) * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
+// 對抗形式 → 徽章樣式 / 圖示 / 文案
+const VERSUS_META: Record<MobileGame["versus"], { label: string; icon: React.ReactNode; cls: string }> = {
+  "team-vs-host": { label: "小隊 vs 關主", icon: <Swords className="h-3.5 w-3.5" />, cls: "border-amber-400/40 bg-amber-500/15 text-amber-300" },
+  "team-vs-team": { label: "小隊對抗", icon: <Users className="h-3.5 w-3.5" />, cls: "border-violet-400/40 bg-violet-500/15 text-violet-300" },
+  "coop": { label: "全隊合作", icon: <Handshake className="h-3.5 w-3.5" />, cls: "border-emerald-400/40 bg-emerald-500/15 text-emerald-300" },
+};
 
-function Questions() {
-  const { data } = useSWR<QData>("/api/questions", fetcher);
-  const [game, setGame] = useState<string>("");
-  const [level, setLevel] = useState<string>("");
-  const [type, setType] = useState<string>("");
-  const [idx, setIdx] = useState(0);
-  const [show, setShow] = useState(false);
-
-  const resetTo = (g: string) => { setGame(g); setLevel(""); setType(""); setIdx(0); setShow(false); };
-
-  if (!data) return <Card title="題庫"><p className="text-sm text-slate-400">載入中…</p></Card>;
-
-  const gamePool = game ? data.questions.filter((q) => q.gameName === game) : [];
-  // 此遊戲實際存在的難度 / 類型，動態決定要不要顯示篩選列
-  const levels = LEVELS.filter((lv) => gamePool.some((q) => q.difficulty?.includes(lv)));
-  const types = [...new Set(gamePool.map((q) => typeOf(q.difficulty)).filter((t): t is string => !!t))];
-
-  const pool = gamePool.filter(
-    (q) =>
-      (level === "" || q.difficulty?.includes(level)) &&
-      (type === "" || typeOf(q.difficulty) === type),
-  );
-  const q = pool[idx];
-  const opts = q?.options ? shuffleStable([q.answer ?? "", ...q.options.split("|")], q.id) : null;
+// 流動關卡：選遊戲 → 看規則 →（有題庫者）抽題
+function Games() {
+  const [name, setName] = useState<string>(MOBILE_GAMES[0]?.name ?? "");
+  const game = MOBILE_GAMES.find((g) => g.name === name) ?? MOBILE_GAMES[0];
 
   return (
-    <Card title="題庫（抽題 / 看答案）">
-      <div className="mb-3 flex flex-wrap gap-2">
-        {data.games.map((g) => (
-          <button key={g} onClick={() => resetTo(g)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium ${game === g ? "bg-cyan-500 text-slate-950" : "chip"}`}>{g}</button>
+    <Card title={<div className="flex items-center gap-2"><Gamepad2 className="h-5 w-5 text-cyan-400" /> 流動關卡</div>}>
+      <div className="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1 py-1.5">
+        {MOBILE_GAMES.map((g) => (
+          <button key={g.name} onClick={() => setName(g.name)}
+            className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition ${name === g.name ? "bg-cyan-500 text-slate-950" : "chip"}`}>
+            {g.name}
+          </button>
         ))}
       </div>
 
-      {game && types.length > 0 && (
-        <div className="mb-2 flex flex-wrap items-center gap-1.5">
-          <span className="text-xs text-slate-500">類型</span>
-          <FilterChip label="全部" active={type === ""} onClick={() => { setType(""); setIdx(0); setShow(false); }} />
-          {types.map((t) => (
-            <FilterChip key={t} label={t} active={type === t} onClick={() => { setType(t); setIdx(0); setShow(false); }} />
-          ))}
-        </div>
-      )}
-      {game && levels.length > 0 && (
-        <div className="mb-3 flex flex-wrap items-center gap-1.5">
-          <span className="text-xs text-slate-500">難度</span>
-          <FilterChip label="全部" active={level === ""} onClick={() => { setLevel(""); setIdx(0); setShow(false); }} />
-          {levels.map((lv) => (
-            <FilterChip key={lv} label={lv} active={level === lv} onClick={() => { setLevel(lv); setIdx(0); setShow(false); }} />
-          ))}
-        </div>
-      )}
-
-      {game && (
-        pool.length === 0 ? <p className="text-sm text-slate-400">此條件下尚無題目（可調整篩選或在「題庫管理」分頁新增）</p> : (
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <div className="text-xs text-slate-500">第 {idx + 1} / {pool.length} 題 {q.difficulty && `・${q.difficulty}`}</div>
-            <div className="my-2 text-xl font-bold">{q.prompt}</div>
-            {opts ? (
-              <div className="mt-2 space-y-1.5">
-                {opts.map((o, i) => {
-                  const correct = o === q.answer;
-                  return (
-                    <div key={i}
-                      className={`rounded-lg border px-3 py-2 text-sm ${
-                        show && correct ? "border-emerald-400 bg-emerald-500/15 text-emerald-200 font-semibold" : "border-white/10 bg-white/5"
-                      }`}>
-                      <span className="mr-2 text-slate-400">{"ABC"[i]}</span>{o}
-                      {show && correct && <span className="ml-2">✓</span>}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              show && q.answer && <div className="text-emerald-300">答案：{q.answer}</div>
-            )}
-            <div className="mt-3 flex gap-2">
-              <button onClick={() => { setIdx(Math.floor(Math.random() * pool.length)); setShow(false); }}
-                className="chip rounded-lg px-4 py-2 text-sm hover:bg-white/20">抽一題</button>
-              <button onClick={() => setShow((s) => !s)} className="chip px-4 py-2 text-sm">{show ? (opts ? "隱藏正解" : "隱藏答案") : (opts ? "公布答案" : "看答案")}</button>
-              <button onClick={() => { setIdx((i) => (i + 1) % pool.length); setShow(false); }} className="chip px-4 py-2 text-sm">下一題</button>
-            </div>
-          </div>
-        )
-      )}
+      {game && <GameRules game={game} />}
+      {game?.hasBank && <div className="mt-4"><QuestionBank key={game.name} game={game.name} /></div>}
     </Card>
   );
 }
 
-function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+// 規則卡：對抗徽章 + 時間 / 過關 / 獎勵 / 補充
+function GameRules({ game }: { game: MobileGame }) {
+  const v = VERSUS_META[game.versus];
   return (
-    <button onClick={onClick}
-      className={`rounded-md px-3 py-1 text-xs font-medium transition ${active ? "bg-cyan-500 text-slate-950" : "chip"}`}>
-      {label}
-    </button>
+    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${v.cls}`}>
+          {v.icon}{v.label}
+        </span>
+        {game.time && (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-slate-300">
+            <Clock className="h-3.5 w-3.5" />{game.time}
+          </span>
+        )}
+      </div>
+      <div className="space-y-2 text-sm">
+        <div className="flex items-start gap-2">
+          <Trophy className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+          <span><span className="text-slate-400">過關 / 勝負：</span><span className="font-medium text-slate-100">{game.rule}</span></span>
+        </div>
+        {game.reward && (
+          <div className="flex items-start gap-2">
+            <Gift className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+            <span><span className="text-slate-400">獎勵：</span><span className="font-medium text-emerald-200">{game.reward}</span></span>
+          </div>
+        )}
+        {game.note && <p className="pt-1 text-xs leading-relaxed text-slate-400">{game.note}</p>}
+      </div>
+    </div>
   );
 }
 

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ActionButton, postJson } from "@/components/client";
 import { CustomGive } from "@/components/RewardPanel";
+import { QuestionBank } from "@/components/QuestionBank";
 import {
   GOOD_LUCK_CARDS,
   BAD_LUCK_CARDS,
@@ -121,6 +122,11 @@ export function LuckDraw({
           </div>
           <p className="mb-1 text-sm text-slate-200">{good.task}</p>
           <p className="mb-3 text-xs text-slate-500">判定：{good.criteria}</p>
+          {good.game && (
+            <div className="mb-3 rounded-lg border border-white/10 bg-slate-950/40 p-3">
+              <QuestionBank key={good.name} game={good.game} />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <ActionButton
               label={goodLabel("成功", good.success * mult)}
@@ -155,6 +161,11 @@ export function LuckDraw({
           <p className="mb-1 text-sm text-slate-200">{bad.content}</p>
           {bad.criteria && (
             <p className="mb-3 text-xs text-slate-500">判定：{bad.criteria}</p>
+          )}
+          {bad.game && (
+            <div className="mb-3 rounded-lg border border-white/10 bg-slate-950/40 p-3">
+              <QuestionBank key={bad.name} game={bad.game} />
+            </div>
           )}
           <div className={`grid gap-2 ${bad.outcomes.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
             {bad.outcomes.map((o, i) => (
