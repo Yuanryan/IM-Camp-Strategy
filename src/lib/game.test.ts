@@ -32,6 +32,9 @@ import {
   applyPropertyDividend,
   applyPiracy,
   applyAllianceBonus,
+  computeMobileReward,
+  MOBILE_REWARD_RATES,
+  MOBILE_GAMES,
 } from "./game";
 
 // ── 動產效果疊加（相加，無遞減）──────────────────────────────
@@ -569,6 +572,73 @@ describe("MOVABLE_ASSET_SEED", () => {
         expect(Number.isInteger(a.defaultUses)).toBe(true);
         expect(a.defaultUses).toBeGreaterThan(0);
       }
+    }
+  });
+});
+
+// ── 流動關卡表現制獎勵（computeMobileReward）──────────────────────
+describe("computeMobileReward（表現制：答對越多給越多）", () => {
+  it("光幣＝每題費率 × 答對題數（簡單 10 / 中等 20 / 困難 30）", () => {
+    expect(computeMobileReward("簡單", 5, "coins").amount).toBe(50);
+    expect(computeMobileReward("中等", 5, "coins").amount).toBe(100);
+    expect(computeMobileReward("困難", 5, "coins").amount).toBe(150);
+  });
+
+  it("卡牌點數＝每題費率 × 答對題數（簡單 2 / 中等 4 / 困難 6）", () => {
+    expect(computeMobileReward("簡單", 5, "cardPoints").amount).toBe(10);
+    expect(computeMobileReward("中等", 5, "cardPoints").amount).toBe(20);
+    expect(computeMobileReward("困難", 5, "cardPoints").amount).toBe(30);
+  });
+
+  it("骰子＝每 10 題給的張數 × floor(題數 / 10)，未滿 10 題不給", () => {
+    expect(computeMobileReward("困難", 9, "coins").dice).toBe(0);
+    expect(computeMobileReward("困難", 10, "coins").dice).toBe(3); // 困難 3/10
+    expect(computeMobileReward("中等", 25, "coins").dice).toBe(4); // 中等 2/10 × 2
+    expect(computeMobileReward("簡單", 30, "coins").dice).toBe(3); // 簡單 1/10 × 3
+  });
+
+  it("題數為 0 / 負數時獎勵與骰子皆為 0；小數無條件捨去", () => {
+    expect(computeMobileReward("困難", 0, "coins")).toEqual({ amount: 0, dice: 0 });
+    expect(computeMobileReward("困難", -3, "coins")).toEqual({ amount: 0, dice: 0 });
+    expect(computeMobileReward("中等", 3.9, "coins").amount).toBe(60); // floor(3.9)=3 × 20
+  });
+
+  it("費率表單調遞增（困難 ≥ 中等 ≥ 簡單），骰子率亦然", () => {
+    const { 簡單, 中等, 困難 } = MOBILE_REWARD_RATES;
+    expect(困難.coinsPerQ).toBeGreaterThan(中等.coinsPerQ);
+    expect(中等.coinsPerQ).toBeGreaterThan(簡單.coinsPerQ);
+    expect(困難.dicePer10).toBeGreaterThanOrEqual(中等.dicePer10);
+    expect(中等.dicePer10).toBeGreaterThanOrEqual(簡單.dicePer10);
+  });
+});
+
+// ── 流動關卡設定完整性 ───────────────────────────────────────────
+describe("MOBILE_GAMES 設定", () => {
+  it("每款遊戲都有 rewardConfig，且模式合法", () => {
+    for (const g of MOBILE_GAMES) {
+      expect(g.rewardConfig).toBeDefined();
+      if (g.rewardConfig.mode === "per-question") {
+        expect(g.rewardConfig.difficulties.length).toBeGreaterThan(0);
+      } else {
+        expect(g.rewardConfig.mode).toBe("win-lose");
+        expect(g.rewardConfig.winCoins).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+
+  it("per-question 的難度都在費率表內", () => {
+    for (const g of MOBILE_GAMES) {
+      if (g.rewardConfig.mode === "per-question") {
+        for (const d of g.rewardConfig.difficulties) {
+          expect(MOBILE_REWARD_RATES[d]).toBeDefined();
+        }
+      }
+    }
+  });
+
+  it("無題庫的遊戲（憤怒企業 / 海帶拳）為 win-lose", () => {
+    for (const g of MOBILE_GAMES) {
+      if (!g.hasBank) expect(g.rewardConfig.mode).toBe("win-lose");
     }
   });
 });

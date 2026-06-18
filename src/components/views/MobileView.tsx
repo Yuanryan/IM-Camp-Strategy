@@ -1,14 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import useSWR from "swr";
-import { fetcher, useSnapshot, TeamSelect, ActionButton } from "@/components/client";
-import { RewardButtons, CustomGive } from "@/components/RewardPanel";
+import { fetcher, useSnapshot, TeamSelect, ActionButton, postJson } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, EventBanner, HudTabs, TeamItemBadges } from "@/components/ui";
-import { QuestionBank, type QData } from "@/components/QuestionBank";
-import { MOBILE_REWARD_PRESETS, MOBILE_GAMES, type MobileGame, EffectType } from "@/lib/game";
-import { Gamepad2, BookOpen, Timer as TimerIcon, Pause, Play, RotateCcw, Swords, Users, Handshake, Clock, Trophy, Gift } from "lucide-react";
+import { QuestionBank, QuestionFilters, deriveFilters, type QData } from "@/components/QuestionBank";
+import { useGameTimer, TimerRing, TimerPill, type GameTimer } from "@/components/GameTimer";
+import {
+  MOBILE_GAMES, type MobileGame, type MobileDifficulty, type RewardKind,
+  computeMobileReward, MOBILE_REWARD_RATES,
+} from "@/lib/game";
+import { Gamepad2, BookOpen, Play, RotateCcw, Swords, Users, Handshake, Clock, Trophy, Gift, Coins, Ticket, Dices, Plus, Minus, Flag } from "lucide-react";
 
 // 題庫 CRUD（流動關主可編輯）
 async function sendQuestion(method: string, body: unknown) {
@@ -52,19 +55,10 @@ export function MobileView() {
             </div>
             <TeamItemBadges
               items={snap.teams.find((t) => t.id === team)?.items ?? []}
-              relevantTypes={[EffectType.GOOD_CARD_BONUS, EffectType.BAD_CARD_REDUCE, EffectType.WHEEL_ON_GOOD_CARD, EffectType.DOUBLE_OR_NOTHING, EffectType.REMINDER]}
+              relevantTypes={[]}
             />
           </StickyTeam>
-          <Games />
-          <Timer />
-
-          <Card title="發放獎勵（光幣 / 卡牌點數）">
-            <RewardButtons teamId={team} presets={MOBILE_REWARD_PRESETS} onDone={mutate} endpoint="/api/mobile/reward" />
-            <div className="mt-3 border-t border-white/10 pt-3">
-              <CustomGive teamId={team} onDone={mutate} endpoint="/api/mobile/reward" />
-            </div>
-            <p className="mt-2 text-xs text-slate-500">骰子、情報牌、特殊骰、功能卡兌換券為實體發放，請隊輔記錄，不在系統登記。</p>
-          </Card>
+          <Games teams={snap.teams} team={team} mutate={mutate} />
         </>
       ) : (
         <QuestionManager />
@@ -74,174 +68,6 @@ export function MobileView() {
 }
 
 
-function Timer() {
-  const [sec, setSec] = useState(0);
-  const [totalSec, setTotalSec] = useState(0); 
-  const [running, setRunning] = useState(false);
-
-  useEffect(() => {
-    if (!running) return;
-    const id = setInterval(() => {
-      setSec((s) => {
-        if (s > 1) return s - 1;
-        setRunning(false);
-        return 0;
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, [running]);
-
-  const setTime = (newSec: number) => {
-    const v = Math.max(0, Math.min(99 * 60 + 59, Math.floor(newSec)));
-    setSec(v);
-    setTotalSec(v);
-  };
-  const adjustTime = (amount: number) => setTime(sec + amount);
-  // 暫停時可直接輸入：分 / 秒各一格，立即套用到 sec 與 totalSec（圓環滿格基準）
-  const editMin = (m: number) => setTime((Number.isFinite(m) ? Math.max(0, m) : 0) * 60 + (sec % 60));
-  const editSec = (s: number) => setTime(Math.floor(sec / 60) * 60 + (Number.isFinite(s) ? Math.min(59, Math.max(0, s)) : 0));
-
-  const mm = String(Math.floor(sec / 60)).padStart(2, "0");
-  const ss = String(sec % 60).padStart(2, "0");
-  const isDanger = running && sec <= 10 && sec > 0;
-
-  // SVG 圓環計算邏輯
-  const radius = 120;
-  const stroke = 8;
-  const normalizedRadius = radius - stroke * 2;
-  const circumference = normalizedRadius * 2 * Math.PI;
-  const strokeDashoffset = totalSec > 0 ? circumference - (sec / totalSec) * circumference : circumference;
-
-  return (
-    <Card title={<div className="flex items-center gap-2"><TimerIcon className="h-5 w-5 text-rose-400" /> 任務計時器</div>}>
-      <div className="flex flex-col items-center gap-6 rounded-lg border border-white/5 bg-slate-950/50 p-6">
-        
-        {/* 圓環與時間顯示區 (Relative Container) */}
-        <div className="relative flex items-center justify-center w-[280px] h-[280px] md:w-[320px] md:h-[320px]">
-          
-          {/* 背景軌道圓環 */}
-          <svg className="absolute inset-0 w-full h-full -rotate-90 transform" viewBox="0 0 240 240">
-            <circle
-              cx="120"
-              cy="120"
-              r={normalizedRadius}
-              fill="transparent"
-              strokeWidth={stroke}
-              className="stroke-slate-800/50"
-            />
-            {/* 動態進度圓環 */}
-            <circle
-              cx="120"
-              cy="120"
-              r={normalizedRadius}
-              fill="transparent"
-              strokeWidth={stroke}
-              strokeDasharray={circumference + " " + circumference}
-              style={{ strokeDashoffset, transition: "stroke-dashoffset 1s linear" }}
-              strokeLinecap="round"
-              className={`transition-colors duration-300 ${
-                isDanger 
-                  ? "stroke-rose-500 drop-shadow-[0_0_8px_rgba(225,29,72,0.4)]" 
-                  : "stroke-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.25)]"
-              }`}
-            />
-          </svg>
-
-          {/* 中央資訊區：使用絕對定位讓動畫不互相干擾 */}
-          <div className="absolute inset-0 flex items-center justify-center">
-            
-            {/* 時間數字 (暫停時偏上，開始時滑到中央並放大) */}
-            <div className={`absolute transition-all duration-500 ease-out ${
-              running
-                ? "translate-y-0 scale-[1.15] md:scale-[1.2]" // 執行中：回到正中心並放大 15%~25%
-                : "-translate-y-5 md:-translate-y-6 scale-100"  // 暫停時：稍微往上提給按鈕空間
-            }`}>
-              {running ? (
-                <Num className={`text-6xl md:text-7xl font-black font-mono tracking-widest ${
-                  isDanger ? "text-rose-500 drop-shadow-[0_0_15px_rgba(225,29,72,0.8)] animate-pulse" :
-                  "text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.6)]"
-                }`}>
-                  {mm}:{ss}
-                </Num>
-              ) : (
-                // 暫停時：分 / 秒可直接輸入
-                <div className="flex items-center justify-center py-2 leading-none text-6xl md:text-7xl font-black font-mono tracking-widest text-slate-200">
-                  <TimeField value={Math.floor(sec / 60)} max={99} align="right" label="分鐘" onCommit={editMin} />
-                  <span className="px-0.5">:</span>
-                  <TimeField value={sec % 60} max={59} align="left" label="秒數" onCommit={editSec} />
-                </div>
-              )}
-            </div>
-
-            {/* 微調按鈕群 (暫停時顯示在時間下方，開始時往下降並淡出) */}
-            <div className={`absolute flex gap-2 transition-all duration-500 ease-out ${
-              running 
-                ? "opacity-0 translate-y-16 md:translate-y-20 pointer-events-none scale-90" // 執行中：往下沉並隱藏
-                : "opacity-100 translate-y-10 md:translate-y-12 scale-100"                   // 暫停時：顯示在正下方
-            }`}>
-              <button onClick={() => adjustTime(-30)} 
-                className="flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 border border-white/10 px-3 py-1.5 text-xs md:text-sm font-bold text-slate-300 transition-colors active:scale-95">
-                -30s
-              </button>
-              <button onClick={() => adjustTime(30)} 
-                className="flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 border border-white/10 px-3 py-1.5 text-xs md:text-sm font-bold text-slate-300 transition-colors active:scale-95">
-                +30s
-              </button>
-              <button onClick={() => adjustTime(60)} 
-                className="flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 border border-white/10 px-3 py-1.5 text-xs md:text-sm font-bold text-slate-300 transition-colors active:scale-95">
-                +1m
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* 底部大按鈕操作區 (Play/Pause & Reset) */}
-        <div className="flex w-full gap-3 mt-2 md:px-8">
-          <button onClick={() => setRunning((r) => !r)} disabled={sec === 0}
-            className={`group flex flex-1 items-center justify-center gap-2 rounded-xl px-6 py-4 md:py-5 text-base md:text-lg font-bold tracking-widest transition-all active:scale-[0.98] disabled:scale-100 disabled:opacity-40 ${
-              running
-                ? "border border-amber-500/50 bg-amber-500/20 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)] hover:bg-amber-500/30"
-                : "border border-cyan-500/50 bg-cyan-500/20 text-cyan-400 shadow-[0_0_15px_rgba(34,211,238,0.3)] hover:bg-cyan-500/30 hover:shadow-[0_0_20px_rgba(34,211,238,0.5)]"
-            }`}>
-            {running ? <><Pause className="h-6 w-6" /></> : <><Play className="h-6 w-6" /></>}
-          </button>
-          
-          <button onClick={() => { setSec(0); setTotalSec(0); setRunning(false); }}
-            className="group flex flex-1 max-w-[120px] items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-4 md:py-5 text-sm md:text-base font-bold text-slate-400 transition-all hover:border-rose-500/30 hover:bg-rose-500/20 hover:text-rose-300 active:scale-[0.98]">
-            <RotateCcw className="h-5 w-5 opacity-80 group-hover:opacity-100 transition-opacity" />
-          </button>
-        </div>
-
-      </div>
-    </Card>
-  );
-}
-
-// 計時器暫停時的「分 / 秒」輸入格：本地 draft 讓你能清空並連打兩位數，
-// 失焦時再對齊回標準值；外部（±按鈕）改值時也會同步。
-function TimeField({ value, max, align, label, onCommit }: {
-  value: number; max: number; align: "left" | "right"; label: string; onCommit: (n: number) => void;
-}) {
-  const [draft, setDraft] = useState<string | null>(null);
-  // 編輯中顯示原始 draft（不補零、不設 maxLength → 鍵入時 onChange 才能取最後兩位覆蓋）；
-  // 失焦時補零成兩位數（如 00、05）
-  const shown = draft !== null ? draft : String(value).padStart(2, "0");
-  return (
-    <input
-      type="text" inputMode="numeric" pattern="[0-9]*" aria-label={label}
-      value={shown}
-      onFocus={() => setDraft("")}
-      onChange={(e) => {
-        const digits = e.target.value.replace(/\D/g, "").slice(-2);
-        setDraft(digits);
-        onCommit(Math.min(max, digits === "" ? 0 : parseInt(digits, 10)));
-      }}
-      onBlur={() => setDraft(null)}
-      className={`w-[2.2ch] bg-transparent leading-none outline-none focus:text-cyan-300 ${align === "right" ? "text-right" : "text-left"}`}
-    />
-  );
-}
-
 // 對抗形式 → 徽章樣式 / 圖示 / 文案
 const VERSUS_META: Record<MobileGame["versus"], { label: string; icon: React.ReactNode; cls: string }> = {
   "team-vs-host": { label: "小隊 vs 關主", icon: <Swords className="h-3.5 w-3.5" />, cls: "border-amber-400/40 bg-amber-500/15 text-amber-300" },
@@ -249,8 +75,11 @@ const VERSUS_META: Record<MobileGame["versus"], { label: string; icon: React.Rea
   "coop": { label: "全隊合作", icon: <Handshake className="h-3.5 w-3.5" />, cls: "border-emerald-400/40 bg-emerald-500/15 text-emerald-300" },
 };
 
-// 流動關卡：選遊戲 → 看規則 →（有題庫者）抽題
-function Games() {
+type Done = () => void | Promise<unknown>;
+type TeamLite = { id: number; name: string };
+
+// 流動關卡：選遊戲 → 看規則 →（有題庫者）抽題 → 表現制發獎
+function Games({ teams, team, mutate }: { teams: TeamLite[]; team: number | ""; mutate: Done }) {
   const [name, setName] = useState<string>(MOBILE_GAMES[0]?.name ?? "");
   const game = MOBILE_GAMES.find((g) => g.name === name) ?? MOBILE_GAMES[0];
 
@@ -265,9 +94,137 @@ function Games() {
         ))}
       </div>
 
-      {game && <GameRules game={game} />}
-      {game?.hasBank && <div className="mt-4"><QuestionBank key={game.name} game={game.name} /></div>}
+      {/* key={game.name}：切換遊戲時重置答對數 / 難度 / 幣別等所有關卡狀態 */}
+      {game && <GameSession key={game.name} game={game} teams={teams} team={team} mutate={mutate} />}
     </Card>
+  );
+}
+
+type Phase = "brief" | "play" | "settle";
+
+// 單一關卡：說明 → 進行中 → 計分 三階段。計時器與答對數綁在關卡生命週期內。
+function GameSession({ game, teams, team, mutate }: { game: MobileGame; teams: TeamLite[]; team: number | ""; mutate: Done }) {
+  const [phase, setPhase] = useState<Phase>("brief");
+  const [count, setCount] = useState(0);
+  const [expanded, setExpanded] = useState(false); // 進行中：把角落膠囊展開成大圓環
+  // 題庫篩選（說明階段選好，帶入進行中）；題目本身在進行中才抽 / 顯示
+  const [type, setType] = useState("");
+  const [level, setLevel] = useState("");
+  // 時間到 → 自動進入計分（在計時器事件回呼中觸發，非 effect 同步 setState）
+  const timer = useGameTimer(game.seconds ?? 0, () => setPhase("settle"));
+
+  const toPlay = () => { timer.start(); setPhase("play"); };
+  const toSettle = () => { timer.pause(); setPhase("settle"); };
+  const replay = () => { setCount(0); setExpanded(false); timer.setTime(game.seconds ?? 0); setPhase("brief"); };
+
+  // ── 說明：規則 + 題型選擇（不抽題）+ 浮動計時器（可預先設定）+ 開始 ──
+  if (phase === "brief") {
+    return (
+      <div className="space-y-4">
+        <GameRules game={game} />
+        {game.hasBank && (
+          <BriefFilters game={game.name} type={type} level={level} onType={setType} onLevel={setLevel} />
+        )}
+        <button onClick={toPlay}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-500/50 bg-cyan-500/20 py-4 text-lg font-bold tracking-widest text-cyan-300 transition hover:bg-cyan-500/30 active:scale-[0.99]">
+          <Play className="h-5 w-5" /> 開始遊戲
+        </button>
+        <FloatingTimer timer={timer} expanded={expanded} setExpanded={setExpanded} />
+      </div>
+    );
+  }
+
+  // ── 計分：表現制 / 勝負發獎（無題庫、無計時器）──
+  if (phase === "settle") {
+    return (
+      <div className="space-y-4">
+        <SettleHeader game={game} count={count} />
+        <RewardCalculator game={game} teams={teams} team={team} count={count} setCount={setCount} mutate={mutate} onDoneReplay={replay} />
+        <button onClick={replay} className="chip w-full py-2.5 text-sm hover:bg-white/15">
+          <RotateCcw className="mr-1.5 inline h-4 w-4" /> 重新開始
+        </button>
+      </div>
+    );
+  }
+
+  // ── 進行中：抽題（用說明選好的題型）+ 答對計數 + 浮動計時器（時間到自動計分）──
+  return (
+    <div className="space-y-4">
+      {/* 進行中精簡列：對抗徽章 + 即時答對數 */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-3">
+        <span className="text-sm font-semibold text-cyan-200">{game.name}・進行中</span>
+        {game.hasBank && (
+          <span className="text-sm text-slate-300">答對 <Num className="text-xl font-black text-emerald-300">{count}</Num> 題</span>
+        )}
+      </div>
+
+      {game.hasBank && (
+        <QuestionBank
+          game={game.name} onCorrect={() => setCount((c) => c + 1)}
+          showFilters={false} type={type} level={level} onType={setType} onLevel={setLevel}
+        />
+      )}
+      {!game.hasBank && (
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+          <p className="mb-1 font-medium text-slate-100">{game.rule}</p>
+          {game.note && <p className="text-xs leading-relaxed text-slate-400">{game.note}</p>}
+        </div>
+      )}
+
+      <button onClick={toSettle}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-500/50 bg-amber-500/20 py-4 text-lg font-bold tracking-widest text-amber-300 transition hover:bg-amber-500/30 active:scale-[0.99]">
+        <Flag className="h-5 w-5" /> 結束・計分
+      </button>
+
+      <FloatingTimer timer={timer} expanded={expanded} setExpanded={setExpanded} />
+    </div>
+  );
+}
+
+// 浮動計時器：角落膠囊；點擊展開成置中大圓環覆蓋層（可調整 / 啟動）。說明與進行中共用。
+function FloatingTimer({
+  timer, expanded, setExpanded,
+}: {
+  timer: GameTimer; expanded: boolean; setExpanded: (v: boolean) => void;
+}) {
+  if (expanded) {
+    return (
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" onClick={() => setExpanded(false)}>
+        <div className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+          <TimerRing timer={timer} />
+          <button onClick={() => setExpanded(false)} className="chip mt-3 w-full py-2 text-sm">收合</button>
+        </div>
+      </div>
+    );
+  }
+  return <TimerPill timer={timer} onExpand={() => setExpanded(true)} />;
+}
+
+// 說明階段的題型選擇：抓題庫只為列出「實際存在的難度 / 類型」chips，不顯示任何題目。
+function BriefFilters({
+  game, type, level, onType, onLevel,
+}: {
+  game: string; type: string; level: string; onType: (v: string) => void; onLevel: (v: string) => void;
+}) {
+  const { data } = useSWR<QData>("/api/questions", fetcher);
+  if (!data) return <p className="text-sm text-slate-400">載入題型…</p>;
+  const { levels, types } = deriveFilters(data.questions, game);
+  if (levels.length === 0 && types.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+      <div className="mb-2 text-xs font-semibold text-slate-400">選擇題型</div>
+      <QuestionFilters levels={levels} types={types} level={level} type={type} onLevel={onLevel} onType={onType} />
+    </div>
+  );
+}
+
+// 計分頁首：提示本關成績
+function SettleHeader({ game, count }: { game: MobileGame; count: number }) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
+      <span className="text-sm font-semibold text-slate-200">{game.name}・計分</span>
+      {game.hasBank && <span className="text-sm text-slate-400">本關答對 <span className="font-black text-emerald-300">{count}</span> 題</span>}
+    </div>
   );
 }
 
@@ -294,11 +251,222 @@ function GameRules({ game }: { game: MobileGame }) {
         {game.reward && (
           <div className="flex items-start gap-2">
             <Gift className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
-            <span><span className="text-slate-400">獎勵：</span><span className="font-medium text-emerald-200">{game.reward}</span></span>
+            <span><span className="text-slate-400">額外獎勵：</span><span className="font-medium text-emerald-200">{game.reward}</span></span>
           </div>
         )}
         {game.note && <p className="pt-1 text-xs leading-relaxed text-slate-400">{game.note}</p>}
       </div>
+    </div>
+  );
+}
+
+// 骰子提示（實體發放，不寫 DB）：顯示「發 N 顆骰子」
+function DiceHint({ n }: { n: number }) {
+  if (n <= 0) return null;
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-purple-400/40 bg-purple-500/15 px-3 py-1 text-sm font-bold text-purple-200">
+      <Dices className="h-4 w-4" /> 發 {n} 顆骰子
+    </span>
+  );
+}
+
+// 表現制發獎：依答對題數 × 難度算光幣 / 點數（擇一），骰子為實體提示。
+// win-lose 模式：team-vs-host（憤怒企業）單隊勝 / 敗；team-vs-team（海帶拳 / 口型 / 跳跳Tempo）選勝方 / 敗方一次發雙方。
+function RewardCalculator({
+  game, teams, team, count, setCount, mutate, onDoneReplay,
+}: {
+  game: MobileGame; teams: TeamLite[]; team: number | ""; count: number; setCount: (n: number) => void; mutate: Done;
+  onDoneReplay?: () => void; // 發放成功後回到「說明」階段（重置該關）
+}) {
+  const cfg = game.rewardConfig;
+  const [diff, setDiff] = useState<MobileDifficulty>(
+    cfg.mode === "per-question" ? cfg.difficulties[0] : "中等",
+  );
+  const [kind, setKind] = useState<RewardKind>("coins");
+
+  // 共用送出：發光幣或點數，note 帶遊戲 / 難度 / 題數，成功後回到說明階段
+  const give = async (coins: number, cardPoints: number, note: string, diceForNote: number) => {
+    if (team === "") return "請先選小隊";
+    if (coins === 0 && cardPoints === 0) return "獎勵為 0，無需發放";
+    const r = await postJson("/api/mobile/reward", { teamId: team, coins, cardPoints, note });
+    await mutate();
+    const diceMsg = diceForNote > 0 ? `，另發 ${diceForNote} 顆骰子（實體）` : "";
+    const dblMsg = r.doubled !== null && r.doubled !== undefined ? `（${r.doubled ? "雙倍！" : "歸零…"}）` : "";
+    onDoneReplay?.();
+    return { message: `${note}${dblMsg}${diceMsg}`, undo: r.undo };
+  };
+
+  // ── 勝 / 敗模式 ──
+  if (cfg.mode === "win-lose") {
+    // 小隊對抗：選勝方 / 敗方，一次發雙方
+    if (game.versus === "team-vs-team") {
+      return <WinLoseVersus game={game} cfg={cfg} teams={teams} defaultWinner={team} mutate={mutate} onDoneReplay={onDoneReplay} />;
+    }
+    // vs 關主：單隊勝 / 敗
+    return (
+      <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+        <div className="mb-3 text-sm font-semibold text-cyan-200">發放獎勵</div>
+        <div className="grid grid-cols-2 gap-2">
+          <ActionButton
+            label={<span className="flex items-center justify-center gap-1.5"><Trophy className="h-4 w-4" />勝　+{cfg.winCoins} 光幣{cfg.winDice > 0 ? ` ＋${cfg.winDice} 骰` : ""}</span>}
+            className="btn-emerald"
+            disabled={team === ""}
+            onAction={() => give(cfg.winCoins, 0, `${game.name}（勝）+${cfg.winCoins} 光幣`, cfg.winDice)}
+          />
+          <ActionButton
+            label={<span className="flex items-center justify-center gap-1.5">敗　+{cfg.loseCoins} 光幣</span>}
+            className="chip"
+            disabled={team === ""}
+            onAction={() => give(cfg.loseCoins, 0, `${game.name}（敗）+${cfg.loseCoins} 光幣`, 0)}
+          />
+        </div>
+        <p className="mt-2 text-xs text-slate-500">骰子為實體發放，請隊輔發給小隊。</p>
+      </div>
+    );
+  }
+
+  // ── 表現制（per-question）模式 ──
+  const { amount, dice } = computeMobileReward(diff, count, kind);
+  const rate = MOBILE_REWARD_RATES[diff];
+  const perQ = kind === "coins" ? rate.coinsPerQ : rate.pointsPerQ;
+  const unit = kind === "coins" ? "光幣" : "點數";
+
+  return (
+    <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+      <div className="mb-3 text-sm font-semibold text-cyan-200">發放獎勵</div>
+
+      {/* 難度（單一難度時不顯示） */}
+      {cfg.difficulties.length > 1 && (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-slate-500">難度</span>
+          {cfg.difficulties.map((d) => (
+            <button key={d} onClick={() => setDiff(d)}
+              className={`rounded-md px-3 py-1 text-xs font-medium transition ${diff === d ? "bg-cyan-500 text-slate-950" : "chip"}`}>
+              {d}
+            </button>
+          ))}
+          <span className="ml-1 text-[11px] text-slate-500">每題 {rate.coinsPerQ} 光幣 / {rate.pointsPerQ} 點・每 10 題 {rate.dicePer10} 骰</span>
+        </div>
+      )}
+
+      {/* 答對題數 stepper（與題庫「✓ 答對」共用） */}
+      <div className="mb-3 flex items-center gap-3">
+        <span className="text-xs text-slate-500">答對題數</span>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setCount(Math.max(0, count - 1))}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-200 hover:bg-white/15 active:scale-95">
+            <Minus className="h-4 w-4" />
+          </button>
+          <Num className="w-12 text-center text-2xl font-black tabular-nums text-cyan-300">{count}</Num>
+          <button onClick={() => setCount(count + 1)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-slate-200 hover:bg-white/15 active:scale-95">
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
+        {count > 0 && (
+          <button onClick={() => setCount(0)} className="text-xs text-slate-500 underline hover:text-slate-300">歸零</button>
+        )}
+      </div>
+
+      {/* 幣別切換（擇一） */}
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <button onClick={() => setKind("coins")}
+          className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+            kind === "coins" ? "border-amber-400/50 bg-amber-500/20 text-amber-200" : "border-white/10 bg-white/5 text-slate-400 hover:bg-white/10"
+          }`}>
+          <Coins className="h-4 w-4" /> 光幣
+        </button>
+        <button onClick={() => setKind("cardPoints")}
+          className={`flex items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+            kind === "cardPoints" ? "border-violet-400/50 bg-violet-500/20 text-violet-200" : "border-white/10 bg-white/5 text-slate-400 hover:bg-white/10"
+          }`}>
+          <Ticket className="h-4 w-4" /> 卡牌點數
+        </button>
+      </div>
+
+      {/* 即時試算 */}
+      <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-slate-950/40 p-3">
+        <div className="text-sm text-slate-400">
+          {count} 題 × {perQ} = <Num className="text-2xl font-black text-cyan-300">{amount}</Num> <span className="text-slate-300">{unit}</span>
+        </div>
+        <DiceHint n={dice} />
+      </div>
+
+      <ActionButton
+        label={`發放 ${amount} ${unit}`}
+        className="w-full btn-emerald"
+        disabled={team === "" || amount === 0}
+        onAction={() => {
+          const coins = kind === "coins" ? amount : 0;
+          const pts = kind === "cardPoints" ? amount : 0;
+          return give(coins, pts, `${game.name}・${diff} 答對 ${count} 題 +${amount} ${unit}`, dice);
+        }}
+      />
+    </div>
+  );
+}
+
+type WinLoseCfg = Extract<MobileGame["rewardConfig"], { mode: "win-lose" }>;
+
+// 小隊對抗結算：選勝方 / 敗方，一鍵發雙方獎勵（合併 undo，一次撤銷可還原兩隊）。
+function WinLoseVersus({
+  game, cfg, teams, defaultWinner, mutate, onDoneReplay,
+}: {
+  game: MobileGame; cfg: WinLoseCfg; teams: TeamLite[];
+  defaultWinner: number | ""; mutate: Done; onDoneReplay?: () => void;
+}) {
+  const [winner, setWinner] = useState<number | "">(defaultWinner);
+  const [loser, setLoser] = useState<number | "">("");
+  const nameOf = (id: number | "") => teams.find((t) => t.id === id)?.name ?? "";
+
+  const settle = async () => {
+    if (winner === "" || loser === "") return "請選擇勝方與敗方";
+    if (winner === loser) return "勝方與敗方不能是同一隊";
+    // 兩筆發放分開送（後端各自處理動產效果 / undo），再把 ledgerIds 合併成單一 undo
+    const rw = await postJson("/api/mobile/reward", {
+      teamId: winner, coins: cfg.winCoins, cardPoints: 0,
+      note: `${game.name}（勝）+${cfg.winCoins} 光幣`,
+    });
+    const rl = await postJson("/api/mobile/reward", {
+      teamId: loser, coins: cfg.loseCoins, cardPoints: 0,
+      note: `${game.name}（敗）+${cfg.loseCoins} 光幣`,
+    });
+    await mutate();
+    const ledgerIds = [...(rw.undo?.ledgerIds ?? []), ...(rl.undo?.ledgerIds ?? [])];
+    const undo = ledgerIds.length ? { label: `${game.name} 勝負發獎`, ledgerIds } : undefined;
+    const diceMsg = cfg.winDice > 0 ? `，勝方另發 ${cfg.winDice} 顆骰子（實體）` : "";
+    onDoneReplay?.();
+    return {
+      message: `${nameOf(winner)} +${cfg.winCoins}（勝）／${nameOf(loser)} +${cfg.loseCoins}（敗）${diceMsg}`,
+      undo,
+    };
+  };
+
+  return (
+    <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-4">
+      <div className="mb-3 text-sm font-semibold text-cyan-200">發放獎勵</div>
+      <div className="space-y-2">
+        <label className="flex flex-wrap items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 p-2.5">
+          <span className="inline-flex items-center gap-1.5 text-sm font-bold text-emerald-300">勝方</span>
+          <TeamSelect teams={teams} value={winner} onChange={setWinner} placeholder="選擇勝方" />
+          <span className="ml-auto text-sm font-semibold text-emerald-200">+{cfg.winCoins} 光幣{cfg.winDice > 0 ? ` ＋${cfg.winDice} 骰子` : ""}</span>
+        </label>
+        <label className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-2.5">
+          <span className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-300">敗方</span>
+          <TeamSelect teams={teams} value={loser} onChange={setLoser} placeholder="選擇敗方" />
+          <span className="ml-auto text-sm font-semibold text-slate-300">+{cfg.loseCoins} 光幣</span>
+        </label>
+      </div>
+
+      <div className="mt-3">
+        <ActionButton
+          label="發放雙方獎勵"
+          className="w-full btn-emerald"
+          disabled={winner === "" || loser === "" || winner === loser}
+          onAction={settle}
+        />
+      </div>
+      <p className="mt-2 text-xs text-slate-500">骰子為實體發放，請隊輔發給勝方小隊。</p>
     </div>
   );
 }

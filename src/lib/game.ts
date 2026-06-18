@@ -605,17 +605,54 @@ export const MOBILE_REWARD_PRESETS: RewardPreset[] = [
   { label: "卡牌點數 +20", cardPoints: 20, note: "小遊戲獎勵 卡牌點數", tone: "good" },
 ];
 
+// ── 流動關卡獎勵公式（單一事實來源）──────────────────────────────
+// 表現制：答對越多題給越多獎勵。難度越高，每題給的光幣 / 點數與每 10 題的骰子越多。
+// 光幣與點數「擇一」發放（關主用 toggle 選），骰子為實體（畫面只顯示張數，不寫 DB）。
+export type MobileDifficulty = "簡單" | "中等" | "困難";
+export type RewardKind = "coins" | "cardPoints";
+
+export const MOBILE_REWARD_RATES: Record<
+  MobileDifficulty,
+  { coinsPerQ: number; pointsPerQ: number; dicePer10: number }
+> = {
+  簡單: { coinsPerQ: 10, pointsPerQ: 2, dicePer10: 1 },
+  中等: { coinsPerQ: 20, pointsPerQ: 4, dicePer10: 2 },
+  困難: { coinsPerQ: 30, pointsPerQ: 6, dicePer10: 3 },
+};
+
+// 依難度 / 答對題數 / 擇一幣別，算出最終獎勵。dice = 每滿 10 題給的實體骰子數（無條件捨去）。
+export function computeMobileReward(
+  difficulty: MobileDifficulty,
+  correct: number,
+  kind: RewardKind,
+): { amount: number; dice: number } {
+  const r = MOBILE_REWARD_RATES[difficulty];
+  const n = Math.max(0, Math.floor(correct));
+  const amount = (kind === "coins" ? r.coinsPerQ : r.pointsPerQ) * n;
+  const dice = r.dicePer10 * Math.floor(n / 10);
+  return { amount, dice };
+}
+
+// 每款遊戲的獎勵形式：
+//  - per-question：表現制計算機（difficulties 列出此遊戲可選難度；單一則不顯示難度選擇）
+//  - win-lose：PK / 淘汰賽，依勝負給固定獎勵（dice 為實體張數）
+export type MobileRewardConfig =
+  | { mode: "per-question"; difficulties: MobileDifficulty[] }
+  | { mode: "win-lose"; winCoins: number; winDice: number; loseCoins: number };
+
 // ── 流動關卡：七款小遊戲（單一事實來源）─────────────────────────
 // hasBank=true 者題目存於 Question 表（gameName 相同）；false 者為純規則卡（海帶拳 / 憤怒企業）。
-// time/winRule/reward 為關主執行時的提示文字；mobile 頁照此渲染卡片，順序即清單順序。
+// time/rule/reward 為關主執行時的提示文字；mobile 頁照此渲染卡片，順序即清單順序。
 export type MobileGame = {
   name: string;
   hasBank: boolean;
   versus: "team-vs-host" | "team-vs-team" | "coop"; // 對抗形式（決定徽章與文案）
-  time?: string; // 時間限制提示
+  time?: string; // 時間限制提示（顯示文字）
+  seconds?: number; // 預設計時秒數（進行中計時器初始值；無則不預載，關主可手動設定）
   rule: string; // 過關 / 勝負條件（一句話）
-  reward?: string; // 獎勵提示（如「每對 3 題給 1 張動產卡」）
+  reward?: string; // 額外實體獎勵提示（如「每對 3 題給 1 張動產卡」）
   note?: string; // 補充說明
+  rewardConfig: MobileRewardConfig; // 系統發獎方式（計算機 / 勝負）
 };
 
 export const MOBILE_GAMES: MobileGame[] = [
@@ -623,9 +660,11 @@ export const MOBILE_GAMES: MobileGame[] = [
     name: "猜歌",
     hasBank: true,
     versus: "coop",
-    time: "限時 1 分鐘",
-    rule: "1 分鐘內猜對 5 題過關",
-    note: "歌單可讓隊員選類型（中／英／日／韓／樂團），也可關主隨機抽。",
+    time: "3 分鐘",
+    seconds: 180,
+    rule: "3 分鐘內答對越多題越多獎勵",
+    note: "關主自行準備歌單。",
+    rewardConfig: { mode: "per-question", difficulties: ["中等"] },
   },
   {
     name: "憤怒企業",
@@ -633,46 +672,54 @@ export const MOBILE_GAMES: MobileGame[] = [
     versus: "team-vs-host",
     rule: "小隊推 3 人與關主 PK，三戰兩勝",
     note: "輪流說出企業品牌名（只要品牌名即可），答不出或重複即失敗。",
+    rewardConfig: { mode: "win-lose", winCoins: 150, winDice: 2, loseCoins: 50 },
   },
   {
     name: "比手畫腳",
     hasBank: true,
     versus: "coop",
-    time: "計時 3 分鐘",
-    rule: "3 分鐘內完成指定題數",
-    reward: "每對 3 題給 1 張動產卡",
-    note: "題庫由關主自選難度（簡單／中等／困難）。",
+    time: "3 分鐘",
+    seconds: 180,
+    note: "關主念關鍵字，全隊同時比同一動作，相同算一題。",
+    rule: "3 分鐘內完成越多題越多獎勵",
+    rewardConfig: { mode: "per-question", difficulties: ["簡單", "中等", "困難"] },
   },
   {
     name: "默契大考驗",
     hasBank: true,
     versus: "coop",
-    time: "約 3 分鐘",
-    rule: "10 題對 6 題過關",
+    time: "3 分鐘",
+    seconds: 180,
+    rule: "3 分鐘內答對越多題越多獎勵",
     note: "關主自選難度。關主念關鍵字，全隊同時比同一動作，相同才算對。",
+    rewardConfig: { mode: "per-question", difficulties: ["簡單", "中等", "困難"] },
   },
   {
     name: "口型猜答案",
     hasBank: true,
     versus: "team-vs-team",
-    time: "約 5 分鐘",
-    rule: "出 15 題，猜對較多的小隊勝",
-    note: "關主只動口型不出聲，小隊搶答。",
+    time: "3 分鐘",
+    seconds: 180,
+    rule: "出 15 題，兩隊比拚，猜對較多的小隊勝",
+    note: "關主只動口型不出聲，小隊搶答；用題庫抽題出題。",
+    rewardConfig: { mode: "win-lose", winCoins: 150, winDice: 2, loseCoins: 50 },
   },
   {
     name: "海帶拳",
     hasBank: false,
     versus: "team-vs-team",
-    rule: "勝者繼續，最先被淘汰完的小隊輸",
-    note: "兩隊每個人都玩，輸的人淘汰，由下一位接著上。",
+    rule: "兩隊每個人都玩，最先被淘汰完的小隊輸",
+    rewardConfig: { mode: "win-lose", winCoins: 100, winDice: 1, loseCoins: 50 },
   },
   {
     name: "跳跳Tempo",
     hasBank: true,
     versus: "team-vs-team",
     time: "3 分鐘",
-    rule: "挑錯即淘汰；先被淘汰完、或 3分鐘時間到時人數較少的小隊敗",
+    seconds: 180,
+    rule: "挑錯即淘汰；先被淘汰完、或 3分鐘到時人數較少的小隊敗",
     note: "兩隊隊員穿插站，關主念清單，符合主題跳 O 邊、不符跳 X 邊，跳錯或晚跳淘汰。",
+    rewardConfig: { mode: "win-lose", winCoins: 100, winDice: 1, loseCoins: 50 },
   },
 ];
 
