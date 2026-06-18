@@ -26,9 +26,13 @@ import {
   roundTo10,
   stackEffects,
   upgradeFee,
+  rollRewardForm,
+  coinsToPoints,
+  pickAssetGrade,
   TOLL_RATE,
   type EffectType,
   type RegionCode,
+  type RewardForm,
   type UndoRecipe,
 } from "./game";
 
@@ -1069,14 +1073,52 @@ export async function applyGoodCard(params: {
     }
 
     const finalReward = Math.max(0, afterBonus);
-    if (finalReward > 0) {
-      await tx.team.update({ where: { id: teamId }, data: { coins: { increment: finalReward } } });
-    }
     await decrementUses(tx, [...bonusEffect.usedIds, ...wheelUsedIds]);
     const noteWithWheel = wheelMult !== null ? `${note}（輪盤 ×${wheelMult}）` : note;
-    const lid = await logLedger(tx, { teamId, kind: "coins", delta: finalReward, note: noteWithWheel, byToken });
-    const undo: UndoRecipe = { label: noteWithWheel, ledgerIds: [lid] };
-    return { ok: true, baseReward, finalReward, wheelMult, undo };
+
+    // 獎勵形式隨機骰：40% 光幣 / 40% 卡牌點數 / 20% 動產。
+    //  - 光幣＝卡面金額；卡牌點數＝金額 ÷ 5（5:1）；動產＝依稀有度加權抽一張實際發放。
+    //  - 獎勵為 0（失敗且卡面 fail=0）時不骰、不發。
+    let form: RewardForm = "coins";
+    let grantedAsset: string | null = null;
+    let grantedGrade: string | null = null;
+    let pointsGiven = 0;
+    const ledgerIds: number[] = [];
+    const itemIds: number[] = [];
+    if (finalReward > 0) {
+      form = rollRewardForm();
+      if (form === "asset") {
+        // 依稀有度加權抽級別（B70/A25/S5，僅在 DB 實際存在的級別中抽），再於該級別隨機一張。
+        const assets = await tx.movableAsset.findMany();
+        const grades = [...new Set(assets.map((a) => a.grade))];
+        const grade = pickAssetGrade(grades);
+        const pool = grade ? assets.filter((a) => a.grade === grade) : assets;
+        const asset = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+        if (asset) {
+          const item = await tx.teamItem.create({ data: { teamId, assetId: asset.id, usesRemaining: asset.defaultUses ?? null } });
+          grantedAsset = asset.name;
+          grantedGrade = asset.grade;
+          itemIds.push(item.id);
+          ledgerIds.push(await logLedger(tx, { teamId, kind: "items", delta: 0, note: `${noteWithWheel}（隨機動產：${asset.name}・${asset.grade} 級）`, byToken }));
+        } else {
+          form = "coins"; // 無動產模板時退回光幣，避免發不出獎勵
+        }
+      }
+      if (form === "coins") {
+        await tx.team.update({ where: { id: teamId }, data: { coins: { increment: finalReward } } });
+        ledgerIds.push(await logLedger(tx, { teamId, kind: "coins", delta: finalReward, note: noteWithWheel, byToken }));
+      } else if (form === "cardPoints") {
+        pointsGiven = coinsToPoints(finalReward); // 5 光幣 = 1 點數
+        await tx.team.update({ where: { id: teamId }, data: { cardPoints: { increment: pointsGiven } } });
+        ledgerIds.push(await logLedger(tx, { teamId, kind: "cardPoints", delta: pointsGiven, note: `${noteWithWheel}（${finalReward} 光幣→${pointsGiven} 點數）`, byToken }));
+      }
+    } else {
+      // 獎勵 0：仍記一筆 0 光幣 ledger，維持原本「成功/失敗都有紀錄」行為與可撤銷性
+      ledgerIds.push(await logLedger(tx, { teamId, kind: "coins", delta: 0, note: noteWithWheel, byToken }));
+    }
+
+    const undo: UndoRecipe = { label: noteWithWheel, ledgerIds, ...(itemIds.length ? { itemIds } : {}) };
+    return { ok: true, baseReward, finalReward, wheelMult, form, grantedAsset, grantedGrade, pointsGiven, undo };
   });
 }
 
@@ -1324,10 +1366,11 @@ export async function undoAction(params: {
   ledgerIds: number[];
   property?: { id: number; ownerTeamId: number | null; level: number };
   properties?: { id: number; ownerTeamId: number | null; level: number }[];
+  itemIds?: number[];
   byToken?: string;
   isAdmin?: boolean;
 }) {
-  const { ledgerIds, property, properties, byToken, isAdmin } = params;
+  const { ledgerIds, property, properties, itemIds, byToken, isAdmin } = params;
   const ids = [...new Set((ledgerIds ?? []).filter((n) => Number.isInteger(n)))];
   if (!ids.length) throw new Error("沒有可撤銷的項目");
 
@@ -1369,6 +1412,12 @@ export async function undoAction(params: {
         where: { id: p.id },
         data: { ownerTeamId: p.ownerTeamId ?? null, level: p.level },
       });
+    }
+
+    // 動產：刪除撤銷對象發出的 TeamItem（如好運卡骰到動產）
+    const itemsToDelete = [...new Set((itemIds ?? []).filter((n) => Number.isInteger(n)))];
+    if (itemsToDelete.length) {
+      await tx.teamItem.deleteMany({ where: { id: { in: itemsToDelete } } });
     }
 
     return { ok: true, undone: ids.length };

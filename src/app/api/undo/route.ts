@@ -17,10 +17,12 @@ export const POST = apiRoute(["EXCHANGE", "MAP", "MOBILE", "HOST"], async ({ bod
   const properties = Array.isArray(body.properties)
     ? (body.properties as PropIn[]).map(parseProp).filter((x): x is NonNullable<typeof x> => x != null)
     : undefined;
+  const itemIds = Array.isArray(body.itemIds) ? body.itemIds.map(Number) : [];
   return undoAction({
     ledgerIds,
     property,
     properties,
+    itemIds,
     byToken: session.label,
     isAdmin: session.role === "ADMIN",
   });

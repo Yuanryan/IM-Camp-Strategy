@@ -17,7 +17,6 @@ export function MapView() {
   const [team, setTeam] = useState<number | "">("");
   const [coins, setCoins] = useState(0);
   const [points, setPoints] = useState(0);
-  const [note, setNote] = useState("");
   const [tollRegion, setTollRegion] = useState("AURORA");
   const [tab, setTab] = useState<"map" | "lottery" | "wheel">("map");
   const [openItemId, setOpenItemId] = useState<number | null>(null);
@@ -257,8 +256,8 @@ export function MapView() {
             ) : (
               <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 py-3 text-center text-sm font-semibold text-emerald-300">
                 {anyMonopoly && team !== ""
-                  ? "該隊為唯一獨佔者・不需過路費"
-                  : "目前無獨佔區・不需過路費"}
+                  ? "此區域由該隊獨佔・不需過路費"
+                  : "目前無獨佔區域・不需過路費"}
               </div>
             )}
 
@@ -290,15 +289,6 @@ export function MapView() {
                     className="fld w-24"
                   />
                 </label>
-                <label className="min-w-0 flex-1 text-xs text-slate-400">
-                  <div className="mb-1">備註</div>
-                  <input
-                    value={note}
-                    onChange={(e) => setNote(e.target.value)}
-                    placeholder="例如：好運卡效果"
-                    className="fld w-full"
-                  />
-                </label>
                 <ActionButton
                   label="套用"
                   disabled={team === ""}
@@ -315,7 +305,6 @@ export function MapView() {
                     const n = note || "自訂";
                     setCoins(0);
                     setPoints(0);
-                    setNote("");
                     return { message: `${cur?.name}：${n}`, undo: r.undo as UndoRecipe | undefined };
                   }}
                 />

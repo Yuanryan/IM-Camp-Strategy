@@ -554,6 +554,50 @@ export const BAD_LUCK_CARDS: BadCard[] = [
   { name: "部首大考驗", kind: "懲罰任務牌", content: "90 秒內寫出指定數量含該部首的字", difficulty: "困難", outcomes: [{ label: "完成", deduct: 0 }, { label: "失敗", deduct: 100 }] },
 ];
 
+// 加權隨機抽樣（rng∈[0,1)）：依各項 weight 比例回傳其 value；空陣列回 null。
+// 權重不必總和為 1（會除以總和正規化）。
+export function weightedPick<T>(items: { value: T; weight: number }[], rng: () => number = Math.random): T | null {
+  const total = items.reduce((s, i) => s + Math.max(0, i.weight), 0);
+  if (total <= 0) return items[0]?.value ?? null;
+  let r = rng() * total;
+  for (const it of items) {
+    r -= Math.max(0, it.weight);
+    if (r < 0) return it.value;
+  }
+  return items[items.length - 1]?.value ?? null; // 浮點誤差保險
+}
+
+// 好運卡獎勵「形式」隨機骰：成功時用同一筆金額換成 40% 光幣 / 40% 卡牌點數 / 20% 動產。
+// 動產為系統實際發放（隨機一張，依稀有度加權）；此函式只決定形式。
+export type RewardForm = "coins" | "cardPoints" | "asset";
+export const REWARD_FORM_WEIGHTS: { value: RewardForm; weight: number }[] = [
+  { value: "coins", weight: 0.4 },
+  { value: "cardPoints", weight: 0.4 },
+  { value: "asset", weight: 0.2 },
+];
+export function rollRewardForm(rng: () => number = Math.random): RewardForm {
+  return weightedPick(REWARD_FORM_WEIGHTS, rng) ?? "coins";
+}
+
+// 光幣 ↔ 卡牌點數 兌換比：5 光幣 = 1 點數。好運卡骰中「點數」時，給 round(光幣金額 / 5)。
+export const COINS_PER_POINT = 5;
+export function coinsToPoints(coins: number): number {
+  return Math.max(0, Math.round(coins / COINS_PER_POINT));
+}
+
+// 動產稀有度抽取權重：B 級最常見、S 級最稀有（B 70 / A 25 / S 5）。
+export const ASSET_GRADE_WEIGHTS: { value: string; weight: number }[] = [
+  { value: "B", weight: 70 },
+  { value: "A", weight: 25 },
+  { value: "S", weight: 5 },
+];
+// 依稀有度權重抽一個「該場實際存在」的級別；候選級別由呼叫端（DB 有哪些 grade）傳入過濾。
+export function pickAssetGrade(availableGrades: string[], rng: () => number = Math.random): string | null {
+  const pool = ASSET_GRADE_WEIGHTS.filter((g) => availableGrades.includes(g.value));
+  if (pool.length === 0) return availableGrades[0] ?? null;
+  return weightedPick(pool, rng);
+}
+
 // 功能卡清單（cost = 卡牌點數，企畫書未定，預設值可於 admin 調整）
 export const FUNCTION_CARDS: {
   type: string;
@@ -580,6 +624,8 @@ export type UndoRecipe = {
   property?: { id: number; ownerTeamId: number | null; level: number };
   // 一次影響多塊不動產時（換地 / 換屋）逐筆還原；與 property 單筆並存。
   properties?: { id: number; ownerTeamId: number | null; level: number }[];
+  // 撤銷時需刪除的 TeamItem（如好運卡骰到動產時發出的那張）
+  itemIds?: number[];
 };
 
 export type RewardTone = "good" | "bad" | "gold" | "spirit";
@@ -593,11 +639,6 @@ export type RewardPreset = {
 
 export const MAP_REWARD_PRESETS: RewardPreset[] = [
   { label: "中央燈塔 +300光幣 +30點", coins: 300, cardPoints: 30, tone: "gold" },
-  { label: "契約贊助 +100", coins: 100, tone: "good" },
-  { label: "契約違約 -100", coins: -100, tone: "bad" },
-  { label: "光源點 +200", coins: 200, tone: "good" },
-  { label: "迷霧區 -200", coins: -200, tone: "bad" },
-  { label: "財靈 +150", coins: 150, tone: "spirit" },
 ];
 
 export const MOBILE_REWARD_PRESETS: RewardPreset[] = [

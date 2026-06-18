@@ -153,6 +153,25 @@ export function TimerPill({ timer, onExpand }: { timer: GameTimer; onExpand?: ()
   );
 }
 
+// 浮動計時器：角落小膠囊；點擊展開成置中大圓環覆蓋層（可調整 / 啟動）。多處共用。
+export function FloatingTimer({
+  timer, expanded, setExpanded,
+}: {
+  timer: GameTimer; expanded: boolean; setExpanded: (v: boolean) => void;
+}) {
+  if (expanded) {
+    return (
+      <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" onClick={() => setExpanded(false)}>
+        <div className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+          <TimerRing timer={timer} />
+          <button onClick={() => setExpanded(false)} className="chip mt-3 w-full py-2 text-sm">收合</button>
+        </div>
+      </div>
+    );
+  }
+  return <TimerPill timer={timer} onExpand={() => setExpanded(true)} />;
+}
+
 // 計時器暫停時的「分 / 秒」輸入格：本地 draft 讓你能清空並連打兩位數，失焦時補零對齊。
 function TimeField({ value, max, align, label, onCommit }: {
   value: number; max: number; align: "left" | "right"; label: string; onCommit: (n: number) => void;

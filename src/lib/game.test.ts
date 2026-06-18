@@ -35,6 +35,13 @@ import {
   computeMobileReward,
   MOBILE_REWARD_RATES,
   MOBILE_GAMES,
+  rollRewardForm,
+  REWARD_FORM_WEIGHTS,
+  weightedPick,
+  coinsToPoints,
+  COINS_PER_POINT,
+  pickAssetGrade,
+  ASSET_GRADE_WEIGHTS,
 } from "./game";
 
 // ── 動產效果疊加（相加，無遞減）──────────────────────────────
@@ -640,5 +647,96 @@ describe("MOBILE_GAMES 設定", () => {
     for (const g of MOBILE_GAMES) {
       if (!g.hasBank) expect(g.rewardConfig.mode).toBe("win-lose");
     }
+  });
+});
+
+// ── 好運卡獎勵形式隨機骰（rollRewardForm）──────────────────────
+describe("rollRewardForm（40% 光幣 / 40% 點數 / 20% 動產）", () => {
+  it("權重總和為 1", () => {
+    expect(REWARD_FORM_WEIGHTS.reduce((s, w) => s + w.weight, 0)).toBeCloseTo(1);
+  });
+
+  it("依 rng 落點對應形式（邊界）", () => {
+    expect(rollRewardForm(() => 0)).toBe("coins");      // [0, 0.4)
+    expect(rollRewardForm(() => 0.39)).toBe("coins");
+    expect(rollRewardForm(() => 0.4)).toBe("cardPoints"); // [0.4, 0.8)
+    expect(rollRewardForm(() => 0.79)).toBe("cardPoints");
+    expect(rollRewardForm(() => 0.8)).toBe("asset");      // [0.8, 1)
+    expect(rollRewardForm(() => 0.999)).toBe("asset");
+  });
+
+  it("rng 回傳 1（理論不會，但浮點保險）仍給合法形式", () => {
+    expect(["coins", "cardPoints", "asset"]).toContain(rollRewardForm(() => 1));
+  });
+
+  it("大量取樣分布接近 40/40/20", () => {
+    let i = 0;
+    const seq = Array.from({ length: 3000 }, (_, k) => ((k * 0.000333) % 1)); // 均勻掃描 [0,1)
+    const rng = () => seq[i++ % seq.length];
+    const counts = { coins: 0, cardPoints: 0, asset: 0 } as Record<string, number>;
+    for (let n = 0; n < seq.length; n++) counts[rollRewardForm(rng)]++;
+    expect(counts.coins / seq.length).toBeCloseTo(0.4, 1);
+    expect(counts.cardPoints / seq.length).toBeCloseTo(0.4, 1);
+    expect(counts.asset / seq.length).toBeCloseTo(0.2, 1);
+  });
+});
+
+// ── 加權抽樣 weightedPick ─────────────────────────────────────
+describe("weightedPick", () => {
+  it("依比例落點（權重不必總和為 1）", () => {
+    const items = [{ value: "a", weight: 70 }, { value: "b", weight: 25 }, { value: "c", weight: 5 }];
+    expect(weightedPick(items, () => 0)).toBe("a");        // [0, 70)
+    expect(weightedPick(items, () => 0.69)).toBe("a");
+    expect(weightedPick(items, () => 0.70)).toBe("b");     // [70, 95)
+    expect(weightedPick(items, () => 0.94)).toBe("b");
+    expect(weightedPick(items, () => 0.95)).toBe("c");     // [95, 100)
+    expect(weightedPick(items, () => 0.999)).toBe("c");
+  });
+  it("空陣列回 null；全 0 權重回第一項", () => {
+    expect(weightedPick([], () => 0.5)).toBeNull();
+    expect(weightedPick([{ value: "x", weight: 0 }], () => 0.5)).toBe("x");
+  });
+});
+
+// ── 光幣→點數 5:1（coinsToPoints）────────────────────────────
+describe("coinsToPoints（5 光幣 = 1 點數）", () => {
+  it("比例為 5", () => expect(COINS_PER_POINT).toBe(5));
+  it("整除 / 四捨五入 / 非負", () => {
+    expect(coinsToPoints(250)).toBe(50);
+    expect(coinsToPoints(300)).toBe(60);
+    expect(coinsToPoints(12)).toBe(2);   // 12/5=2.4 → 2
+    expect(coinsToPoints(13)).toBe(3);   // 13/5=2.6 → 3
+    expect(coinsToPoints(0)).toBe(0);
+    expect(coinsToPoints(-100)).toBe(0);
+  });
+});
+
+// ── 動產稀有度加權 pickAssetGrade（B70 / A25 / S5）────────────
+describe("pickAssetGrade（稀有度加權）", () => {
+  it("權重總和 100，B > A > S", () => {
+    expect(ASSET_GRADE_WEIGHTS.reduce((s, g) => s + g.weight, 0)).toBe(100);
+    const w = Object.fromEntries(ASSET_GRADE_WEIGHTS.map((g) => [g.value, g.weight]));
+    expect(w.B).toBeGreaterThan(w.A);
+    expect(w.A).toBeGreaterThan(w.S);
+  });
+  it("只在「實際存在的級別」中抽（過濾後重新正規化）", () => {
+    // 只有 A、S 可用時，rng=0 應落在權重較大的 A
+    expect(pickAssetGrade(["A", "S"], () => 0)).toBe("A");
+    expect(pickAssetGrade(["A", "S"], () => 0.999)).toBe("S");
+    // 只有一種級別時必中該級別
+    expect(pickAssetGrade(["S"], () => 0.5)).toBe("S");
+    // 沒有任何已知級別時退回傳入的第一個
+    expect(pickAssetGrade(["X"], () => 0.5)).toBe("X");
+    expect(pickAssetGrade([], () => 0.5)).toBeNull();
+  });
+  it("大量取樣分布接近 70/25/5", () => {
+    let i = 0;
+    const seq = Array.from({ length: 4000 }, (_, k) => ((k * 0.00025) % 1));
+    const rng = () => seq[i++ % seq.length];
+    const counts: Record<string, number> = { B: 0, A: 0, S: 0 };
+    for (let n = 0; n < seq.length; n++) counts[pickAssetGrade(["B", "A", "S"], rng)!]++;
+    expect(counts.B / seq.length).toBeCloseTo(0.7, 1);
+    expect(counts.A / seq.length).toBeCloseTo(0.25, 1);
+    expect(counts.S / seq.length).toBeCloseTo(0.05, 1);
   });
 });

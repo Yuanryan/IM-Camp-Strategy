@@ -97,12 +97,13 @@ export function QuestionBank({
   const [typeState, setTypeState] = useState<string>("");
   const [idx, setIdx] = useState(0);
   const [show, setShow] = useState(false);
+  const [picked, setPicked] = useState<string | null>(null); // 互動作答：已選的選項（顯示正解後跳下一題）
 
   // 受控優先；未受控則用內建 state
   const level = levelProp ?? levelState;
   const type = typeProp ?? typeState;
-  const setLevel = (v: string) => { (onLevelProp ?? setLevelState)(v); setIdx(0); setShow(false); };
-  const setType = (v: string) => { (onTypeProp ?? setTypeState)(v); setIdx(0); setShow(false); };
+  const setLevel = (v: string) => { (onLevelProp ?? setLevelState)(v); setIdx(0); setShow(false); setPicked(null); };
+  const setType = (v: string) => { (onTypeProp ?? setTypeState)(v); setIdx(0); setShow(false); setPicked(null); };
 
   if (!data) return <p className="text-sm text-slate-400">載入中…</p>;
 
@@ -116,6 +117,21 @@ export function QuestionBank({
   );
   const q = pool[idx];
   const opts = q?.options ? shuffleStable([q.answer ?? "", ...q.options.split("|")], q.id) : null;
+  // 互動作答模式：計分關卡（onCorrect）+ 三選一題；點選項直接判定。
+  const interactive = !!onCorrect && !!opts;
+
+  const next = () => { setIdx(Math.floor(Math.random() * pool.length)); setShow(false); setPicked(null); };
+  // 點選項：對 → 計入答對並跳題；錯 → 顯示正解後跳題。
+  const choose = (o: string) => {
+    if (picked) return; // 已作答，等跳題
+    setPicked(o);
+    if (o === q.answer) {
+      onCorrect?.();
+      setTimeout(next, 650);
+    } else {
+      setTimeout(next, 1100); // 留長一點讓人看到正解
+    }
+  };
 
   return (
     <div>
@@ -134,14 +150,29 @@ export function QuestionBank({
               <div className="mt-2 space-y-1.5">
                 {opts.map((o, i) => {
                   const correct = o === q.answer;
-                  return (
-                    <div key={i}
-                      className={`rounded-lg border px-3 py-2 text-sm ${
-                        show && correct ? "border-emerald-400 bg-emerald-500/15 text-emerald-200 font-semibold" : "border-white/10 bg-white/5"
-                      }`}>
+                  // 互動：作答後標出正解（綠）與選錯（紅）；未作答則為可點按鈕。
+                  // 非互動：沿用「看答案」揭曉。
+                  const revealed = interactive ? picked !== null : show;
+                  const isPickedWrong = interactive && picked === o && !correct;
+                  const base = "w-full rounded-lg border px-3 py-2 text-left text-sm transition";
+                  const cls = revealed && correct
+                    ? "border-emerald-400 bg-emerald-500/15 text-emerald-200 font-semibold"
+                    : isPickedWrong
+                      ? "border-rose-400 bg-rose-500/15 text-rose-200 line-through"
+                      : "border-white/10 bg-white/5";
+                  const content = (
+                    <>
                       <span className="mr-2 text-slate-400">{"ABC"[i]}</span>{o}
-                      {show && correct && <span className="ml-2">✓</span>}
-                    </div>
+                      {revealed && correct && <span className="ml-2">✓</span>}
+                    </>
+                  );
+                  return interactive ? (
+                    <button key={i} onClick={() => choose(o)} disabled={picked !== null}
+                      className={`${base} ${cls} ${picked === null ? "hover:bg-white/10 active:scale-[0.99]" : "cursor-default"}`}>
+                      {content}
+                    </button>
+                  ) : (
+                    <div key={i} className={`${base} ${cls}`}>{content}</div>
                   );
                 })}
               </div>
@@ -149,15 +180,14 @@ export function QuestionBank({
               show && q.answer && <div className="text-emerald-300">答案：{q.answer}</div>
             )}
             <div className="mt-3 flex flex-wrap gap-2">
-              {/* 流動關卡：答對 → 計入答對數並跳下一題 */}
-              {onCorrect && (
-                <button onClick={() => { onCorrect(); setIdx(Math.floor(Math.random() * pool.length)); setShow(false); }}
+              {/* 互動三選一：點選項即判定，無需 ✓答對 / 看答案；其餘模式保留按鈕 */}
+              {!interactive && onCorrect && (
+                <button onClick={() => { onCorrect(); next(); }}
                   className="btn-emerald rounded-lg px-4 py-2 text-sm font-bold">✓ 答對</button>
               )}
-              <button onClick={() => { setIdx(Math.floor(Math.random() * pool.length)); setShow(false); }}
-                className="btn-rose rounded-lg px-4 py-2 text-sm hover:bg-white/20">跳過</button>
-              {/* 只有「有正解可揭曉」（含干擾項或填寫答案）的題目才顯示看答案 */}
-              {(opts || q.answer) && (
+              <button onClick={next}
+                className="btn-rose rounded-lg px-4 py-2 text-sm hover:bg-white/20">{interactive ? "下一題" : "跳過"}</button>
+              {!interactive && (opts || q.answer) && (
                 <button onClick={() => setShow((s) => !s)} className="chip px-4 py-2 text-sm">{show ? (opts ? "隱藏正解" : "隱藏答案") : (opts ? "公布答案" : "看答案")}</button>
               )}
             </div>

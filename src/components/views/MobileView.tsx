@@ -6,7 +6,7 @@ import { fetcher, useSnapshot, TeamSelect, ActionButton, postJson } from "@/comp
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, EventBanner, HudTabs, TeamItemBadges } from "@/components/ui";
 import { QuestionBank, QuestionFilters, deriveFilters, type QData } from "@/components/QuestionBank";
-import { useGameTimer, TimerRing, TimerPill, type GameTimer } from "@/components/GameTimer";
+import { useGameTimer, FloatingTimer } from "@/components/GameTimer";
 import {
   MOBILE_GAMES, type MobileGame, type MobileDifficulty, type RewardKind,
   computeMobileReward, MOBILE_REWARD_RATES,
@@ -179,25 +179,6 @@ function GameSession({ game, teams, team, mutate }: { game: MobileGame; teams: T
       <FloatingTimer timer={timer} expanded={expanded} setExpanded={setExpanded} />
     </div>
   );
-}
-
-// 浮動計時器：角落膠囊；點擊展開成置中大圓環覆蓋層（可調整 / 啟動）。說明與進行中共用。
-function FloatingTimer({
-  timer, expanded, setExpanded,
-}: {
-  timer: GameTimer; expanded: boolean; setExpanded: (v: boolean) => void;
-}) {
-  if (expanded) {
-    return (
-      <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm" onClick={() => setExpanded(false)}>
-        <div className="w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
-          <TimerRing timer={timer} />
-          <button onClick={() => setExpanded(false)} className="chip mt-3 w-full py-2 text-sm">收合</button>
-        </div>
-      </div>
-    );
-  }
-  return <TimerPill timer={timer} onExpand={() => setExpanded(true)} />;
 }
 
 // 說明階段的題型選擇：抓題庫只為列出「實際存在的難度 / 類型」chips，不顯示任何題目。
