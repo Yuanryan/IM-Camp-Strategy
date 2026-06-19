@@ -299,13 +299,11 @@ export function MapView() {
                       teamId: team,
                       coins,
                       cardPoints: points,
-                      note: note || "自訂",
                     });
                     await mutate();
-                    const n = note || "自訂";
                     setCoins(0);
                     setPoints(0);
-                    return { message: `${cur?.name}：${n}`, undo: r.undo as UndoRecipe | undefined };
+                    return { message: `${cur?.name}：自訂`, undo: r.undo as UndoRecipe | undefined };
                   }}
                 />
               </div>
