@@ -1,26 +1,43 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import {
+  useCallback,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Trophy, Crown, Landmark, Gavel, Ticket, RadioTower, Gem, WifiOff } from "lucide-react";
 import { useSnapshot } from "@/components/client";
 import { Num, AnimatedNum, PriceTag, LevelDots } from "@/components/ui";
-import { EVENTS, REGIONS, REGION_UI } from "@/lib/game";
+import { REGIONS, REGION_UI } from "@/lib/game";
 import {
   AuctionHammerOverlay,
   HammerImagePreloader,
-  useAuctionAnimation,
 } from "@/components/views/projection/AuctionHammerOverlay";
 import { AuctionStageOverlay } from "@/components/views/projection/AuctionStageOverlay";
-import { getAuctionStage } from "@/lib/auction-animation";
+import {
+  detectAuctionCue,
+  getAuctionStage,
+  type AuctionAnimationSnapshot,
+} from "@/lib/auction-animation";
+import {
+  addProjectionAnimations,
+  buildAuctionAnimationItem,
+  buildEventTickerEntries,
+  buildLotteryAnimationItem,
+  completeProjectionAnimation,
+  type LotteryDrawResult,
+  type ProjectionAnimationItem,
+  type ProjectionAnimationQueueState,
+} from "@/lib/projection-animation";
 import type { Snapshot, TeamView } from "@/lib/snapshot";
 
 export function ProjectionView() {
   const { snap, error } = useSnapshot(2000, "/api/public/snapshot");
-  // 偵測「新的一次開獎」→ 自動播放開獎動畫覆蓋層（hook 必須在任何 early return 之前呼叫）
-  const draw = useLotteryDraw(snap?.lottery.lastDraw ?? null);
-  // 偵測同一拍賣品加價 / 新成交，逐幀切換 public/hammer 的兩張圖片。
-  const auctionAnimation = useAuctionAnimation(snap?.auction ?? null);
+  const { activeAnimation, completeActiveAnimation } =
+    useProjectionAnimationQueue(snap ?? null);
 
   if (error) return <FullMsg text="連線錯誤，重試中…" tone="error" />;
   if (!snap) return <FullMsg text="載入中…" tone="loading" />;
@@ -68,14 +85,19 @@ export function ProjectionView() {
         )}
       </AnimatePresence>
 
-      {/* 大樂透優先於法槌動畫；兩者都顯示在常駐拍賣舞台上方。 */}
+      {/* 一次性全螢幕動畫排隊：大樂透 → 拍賣。市場事件改由 Header 跑馬燈常駐顯示。 */}
       <AnimatePresence mode="wait">
-        {draw ? (
-          <DrawOverlay key={`lottery-${draw.result.at}`} draw={draw} />
-        ) : auctionAnimation ? (
+        {activeAnimation?.kind === "lottery" ? (
+          <LotteryDrawOverlay
+            key={activeAnimation.id}
+            result={activeAnimation.result}
+            onComplete={completeActiveAnimation}
+          />
+        ) : activeAnimation?.kind === "auction" ? (
           <AuctionHammerOverlay
-            key={`${auctionAnimation.cue.kind}-${auctionAnimation.cue.lotId}-${auctionAnimation.cue.amount}`}
-            animation={auctionAnimation}
+            key={activeAnimation.id}
+            cue={activeAnimation.cue}
+            onComplete={completeActiveAnimation}
           />
         ) : null}
       </AnimatePresence>
@@ -83,63 +105,96 @@ export function ProjectionView() {
   );
 }
 
-/* ── 開獎偵測 + 自動播放 ─────────────────────────────────────────
-   投影頁不主動開獎；它輪詢快照，發現 lastDraw.at 變新就重播動畫。
-   首次載入時記住當前 at 但不播放（避免重整頁面就跳開獎）。 */
-type LastDraw = NonNullable<Snapshot["lottery"]["lastDraw"]>;
-type DrawState = { phase: "rolling" | "revealed"; rollNum: number; result: LastDraw };
+/* ── 一次性投影動畫偵測與排隊 ───────────────────────────────── */
+const EMPTY_ANIMATION_QUEUE: ProjectionAnimationQueueState = {
+  active: null,
+  waiting: [],
+};
 
-// 開獎動畫時間表（ms）
-const ROLL_MS = 2100; // 滾號
-const HOLD_MS = 4000; // 定號後停留（之後由 AnimatePresence 淡出卸載）
+type ProjectionQueueAction =
+  | { type: "add"; items: ProjectionAnimationItem[] }
+  | { type: "complete" };
 
-function useLotteryDraw(lastDraw: LastDraw | null): DrawState | null {
-  const [draw, setDraw] = useState<DrawState | null>(null);
+function projectionQueueReducer(
+  state: ProjectionAnimationQueueState,
+  action: ProjectionQueueAction,
+): ProjectionAnimationQueueState {
+  return action.type === "add"
+    ? addProjectionAnimations(state, action.items)
+    : completeProjectionAnimation(state);
+}
+
+function toAuctionAnimationSnapshot(
+  auction: Snapshot["auction"],
+): AuctionAnimationSnapshot {
+  return {
+    live: auction.live
+      ? {
+          id: auction.live.id,
+          title: auction.live.title,
+          currentBid: auction.live.currentBid,
+        }
+      : null,
+    recentlySold: auction.recentlySold,
+  };
+}
+
+function useProjectionAnimationQueue(snapshot: Snapshot | null) {
+  const [queue, dispatchQueue] = useReducer(
+    projectionQueueReducer,
+    EMPTY_ANIMATION_QUEUE,
+  );
   const initialized = useRef(false);
-  const rollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const previousDrawAt = useRef<string | null>(null);
+  const previousAuction = useRef<AuctionAnimationSnapshot | null>(null);
 
-  // 最新的開獎內容放 ref，讓觸發 effect 只依賴原始字串 at（避免每次輪詢的新物件
-  // 參考觸發 cleanup 而中斷動畫）。
-  const at = lastDraw?.at ?? null;
-  const latest = useRef<LastDraw | null>(null);
   useEffect(() => {
-    latest.current = lastDraw;
-  }, [lastDraw]);
+    if (!snapshot) return;
 
-  // 監看 at：首見只記錄、其後變動才觸發
-  useEffect(() => {
-    if (!at) return;
+    const currentAuction = toAuctionAnimationSnapshot(snapshot.auction);
     if (!initialized.current) {
-      initialized.current = true; // 首次載入記住當前開獎，不重播
+      initialized.current = true;
+      previousDrawAt.current = snapshot.lottery.lastDraw?.at ?? null;
+      previousAuction.current = currentAuction;
       return;
     }
-    const res = latest.current;
-    if (!res) return;
-    // 啟動：滾號 → 定號停留 → 卸載（淡出由 AnimatePresence exit 處理）
-    setDraw({ phase: "rolling", rollNum: rnd(), result: res });
-    const revealT = setTimeout(() => {
-      setDraw((d) => (d ? { ...d, phase: "revealed", rollNum: res.number } : d));
-    }, ROLL_MS);
-    const closeT = setTimeout(() => setDraw(null), ROLL_MS + HOLD_MS);
-    return () => {
-      clearTimeout(revealT);
-      clearTimeout(closeT);
-    };
-  }, [at]);
 
-  // rolling 階段：每 70ms 翻一個隨機號碼
-  useEffect(() => {
-    if (draw?.phase !== "rolling") return;
-    rollTimer.current = setInterval(() => {
-      setDraw((d) => (d ? { ...d, rollNum: rnd() } : d));
-    }, 70);
-    return () => {
-      if (rollTimer.current) clearInterval(rollTimer.current);
-    };
-  }, [draw?.phase]);
+    const additions: ProjectionAnimationItem[] = [];
+    const draw = snapshot.lottery.lastDraw;
+    if (draw && draw.at !== previousDrawAt.current) {
+      additions.push(buildLotteryAnimationItem(draw));
+    }
 
-  return draw;
+    const auctionCue = detectAuctionCue(
+      previousAuction.current,
+      currentAuction,
+    );
+    if (auctionCue) {
+      additions.push(buildAuctionAnimationItem(auctionCue));
+    }
+
+    previousDrawAt.current = draw?.at ?? null;
+    previousAuction.current = currentAuction;
+
+    if (additions.length > 0) {
+      dispatchQueue({ type: "add", items: additions });
+    }
+  }, [snapshot]);
+
+  const completeActiveAnimation = useCallback(() => {
+    dispatchQueue({ type: "complete" });
+  }, []);
+
+  return {
+    activeAnimation: queue.active,
+    completeActiveAnimation,
+  };
 }
+
+// 開獎動畫時間表（ms）
+const ROLL_MS = 2100;
+const HOLD_MS = 4000;
+
 function rnd() {
   return Math.floor(Math.random() * 50) + 1;
 }
@@ -153,8 +208,6 @@ function Header({ snap }: { snap: Snapshot }) {
       : snap.phase === "RUNNING"
         ? { label: "進行中", cls: "bg-emerald-500/15 text-emerald-300 ring-emerald-400/40", dot: "bg-emerald-400 animate-pulse" }
         : { label: "準備中", cls: "bg-slate-500/15 text-slate-300 ring-slate-400/30", dot: "bg-slate-400" };
-
-  const eventNames = snap.activeEvents.map((i) => EVENTS[i]?.name).filter(Boolean) as string[];
 
   return (
     <header className="glass overflow-hidden rounded-3xl px-6 py-4">
@@ -184,16 +237,79 @@ function Header({ snap }: { snap: Snapshot }) {
         </div>
       </div>
 
-      {eventNames.length > 0 && (
-        <div className="breathe mt-4 flex items-center gap-3 rounded-2xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2.5">
-          <RadioTower className="h-5 w-5 shrink-0 text-cyan-400" />
-          <span className="shrink-0 text-sm font-bold uppercase tracking-widest text-cyan-200">市場事件</span>
-          <span className="truncate text-base font-semibold text-cyan-100/90">
-            {eventNames.join("　|　")}
-          </span>
-        </div>
-      )}
+      <MarketEventTicker
+        activeEvents={snap.activeEvents}
+        penaltyRegion={snap.event4Penalty}
+      />
     </header>
+  );
+}
+
+function MarketEventTicker({
+  activeEvents,
+  penaltyRegion,
+}: {
+  activeEvents: number[];
+  penaltyRegion: string | null;
+}) {
+  const reduceMotion = useReducedMotion();
+  const entries = buildEventTickerEntries(activeEvents, penaltyRegion);
+  if (entries.length === 0) return null;
+
+  const duration = Math.max(
+    24,
+    entries.reduce((total, entry) => total + entry.text.length, 0) / 5,
+  );
+
+  const tickerContent = (
+    <>
+      {entries.map((entry) => (
+        <span
+          key={entry.eventIndex}
+          className="inline-flex shrink-0 items-center gap-3"
+        >
+          <span className="rounded-md bg-cyan-300/12 px-2 py-0.5 text-xs font-black text-cyan-200 ring-1 ring-cyan-300/20">
+            EVENT {String(entry.eventIndex).padStart(2, "0")}
+          </span>
+          <span>{entry.text}</span>
+          <span className="px-4 text-cyan-300/45">◆</span>
+        </span>
+      ))}
+    </>
+  );
+
+  return (
+    <div className="breathe mt-4 flex items-center gap-3 overflow-hidden rounded-2xl border border-cyan-400/40 bg-cyan-400/10 px-4 py-2.5">
+      <RadioTower className="h-5 w-5 shrink-0 text-cyan-400" />
+      <span className="shrink-0 text-sm font-bold uppercase tracking-widest text-cyan-200">
+        市場事件
+      </span>
+      <div
+        className="min-w-0 flex-1 overflow-hidden text-base font-semibold text-cyan-100/90"
+        aria-live="polite"
+      >
+        {reduceMotion ? (
+          <div className="flex flex-wrap gap-x-3 gap-y-1">
+            {tickerContent}
+          </div>
+        ) : (
+          <motion.div
+            className="flex w-max whitespace-nowrap"
+            animate={{ x: ["0%", "-50%"] }}
+            transition={{
+              duration,
+              ease: "linear",
+              repeat: Infinity,
+            }}
+          >
+            <div className="flex shrink-0 pr-12">{tickerContent}</div>
+            <div className="flex shrink-0 pr-12" aria-hidden="true">
+              {tickerContent}
+            </div>
+          </motion.div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -472,11 +588,36 @@ function SectionTitle({
   );
 }
 
-/* ── 開獎動畫覆蓋層（投影大螢幕版・唯讀自動播放）─────────────── */
-function DrawOverlay({ draw }: { draw: DrawState }) {
-  const revealed = draw.phase === "revealed";
-  const res = draw.result;
+/* ── 開獎動畫覆蓋層（由統一佇列控制播放）─────────────────────── */
+function LotteryDrawOverlay({
+  result,
+  onComplete,
+}: {
+  result: LotteryDrawResult;
+  onComplete: () => void;
+}) {
+  const [revealed, setRevealed] = useState(false);
+  const [rollNum, setRollNum] = useState(rnd);
+  const res = result;
   const isWin = !!res.winnerName;
+
+  useEffect(() => {
+    const rollTimer = window.setInterval(() => setRollNum(rnd()), 70);
+    const revealTimer = window.setTimeout(() => {
+      window.clearInterval(rollTimer);
+      setRollNum(result.number);
+      setRevealed(true);
+    }, ROLL_MS);
+    const closeTimer = window.setTimeout(
+      onComplete,
+      ROLL_MS + HOLD_MS,
+    );
+    return () => {
+      window.clearInterval(rollTimer);
+      window.clearTimeout(revealTimer);
+      window.clearTimeout(closeTimer);
+    };
+  }, [onComplete, result.number]);
 
   return (
     <motion.div
@@ -508,7 +649,7 @@ function DrawOverlay({ draw }: { draw: DrawState }) {
         }}
       >
         <Num className={`text-[9rem] font-black leading-none ${revealed ? "neon-emerald" : "text-cyan-200"}`}>
-          {draw.rollNum}
+          {rollNum}
         </Num>
       </div>
 

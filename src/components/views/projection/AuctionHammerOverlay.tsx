@@ -1,112 +1,17 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Gavel } from "lucide-react";
 import { Num } from "@/components/ui";
 import {
-  detectAuctionCue,
   getHammerFrames,
-  type AuctionAnimationSnapshot,
   type AuctionCue,
 } from "@/lib/auction-animation";
-import type { Snapshot } from "@/lib/snapshot";
-
-export type AuctionAnimationState = {
-  cue: AuctionCue;
-  frameIndex: number;
-};
 
 const BID_AFTER_STRIKE_MS = 350;
 const SOLD_AFTER_STRIKE_MS = 7_000;
-
-export function useAuctionAnimation(
-  auction: Snapshot["auction"] | null,
-): AuctionAnimationState | null {
-  const [animation, setAnimation] = useState<AuctionAnimationState | null>(null);
-  const previous = useRef<AuctionAnimationSnapshot | null>(null);
-  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  const hasAuction = auction !== null;
-  const liveId = auction?.live?.id ?? null;
-  const liveTitle = auction?.live?.title ?? null;
-  const currentBid = auction?.live?.currentBid ?? null;
-  const sold = auction?.recentlySold[0] ?? null;
-  const soldId = sold?.id ?? null;
-  const soldTitle = sold?.title ?? null;
-  const soldWinner = sold?.winnerTeamName ?? null;
-  const soldPrice = sold?.finalPrice ?? null;
-  const soldAt = sold?.soldAt ?? null;
-
-  useEffect(() => {
-    if (!hasAuction) return;
-
-    const current: AuctionAnimationSnapshot = {
-      live:
-        liveId != null && liveTitle != null && currentBid != null
-          ? { id: liveId, title: liveTitle, currentBid }
-          : null,
-      recentlySold:
-        soldId != null &&
-        soldTitle != null &&
-        soldWinner != null &&
-        soldPrice != null &&
-        soldAt != null
-          ? [
-              {
-                id: soldId,
-                title: soldTitle,
-                winnerTeamName: soldWinner,
-                finalPrice: soldPrice,
-                soldAt,
-              },
-            ]
-          : [],
-    };
-    const cue = detectAuctionCue(previous.current, current);
-    previous.current = current;
-    if (!cue) return;
-
-    for (const timer of timers.current) clearTimeout(timer);
-    timers.current = [];
-
-    const frames = getHammerFrames(cue.kind);
-    setAnimation({ cue, frameIndex: 0 });
-
-    let elapsed = frames[0].durationMs;
-    for (let index = 1; index < frames.length; index += 1) {
-      timers.current.push(
-        setTimeout(() => {
-          setAnimation({ cue, frameIndex: index });
-        }, elapsed),
-      );
-      elapsed += frames[index].durationMs;
-    }
-
-    const holdMs = cue.kind === "sold" ? SOLD_AFTER_STRIKE_MS : BID_AFTER_STRIKE_MS;
-    timers.current.push(setTimeout(() => setAnimation(null), elapsed + holdMs));
-  }, [
-    currentBid,
-    hasAuction,
-    liveId,
-    liveTitle,
-    soldAt,
-    soldId,
-    soldPrice,
-    soldTitle,
-    soldWinner,
-  ]);
-
-  useEffect(
-    () => () => {
-      for (const timer of timers.current) clearTimeout(timer);
-    },
-    [],
-  );
-
-  return animation;
-}
 
 const HAMMER_IMAGES = {
   raised: {
@@ -143,17 +48,34 @@ export function HammerImagePreloader() {
 }
 
 export function AuctionHammerOverlay({
-  animation,
+  cue,
+  onComplete,
 }: {
-  animation: AuctionAnimationState;
+  cue: AuctionCue;
+  onComplete: () => void;
 }) {
-  const { cue, frameIndex } = animation;
+  const [frameIndex, setFrameIndex] = useState(0);
   const frames = getHammerFrames(cue.kind);
   const frame = frames[Math.min(frameIndex, frames.length - 1)];
   const image = HAMMER_IMAGES[frame.pose];
   const struck = frame.pose === "struck";
   const sold = cue.kind === "sold";
   const finalStrike = sold && frameIndex === frames.length - 1;
+
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    let elapsed = frames[0].durationMs;
+    for (let index = 1; index < frames.length; index += 1) {
+      timers.push(setTimeout(() => setFrameIndex(index), elapsed));
+      elapsed += frames[index].durationMs;
+    }
+    const holdMs =
+      cue.kind === "sold" ? SOLD_AFTER_STRIKE_MS : BID_AFTER_STRIKE_MS;
+    timers.push(setTimeout(onComplete, elapsed + holdMs));
+    return () => {
+      for (const timer of timers) clearTimeout(timer);
+    };
+  }, [cue.kind, frames, onComplete]);
 
   return (
     <motion.div
