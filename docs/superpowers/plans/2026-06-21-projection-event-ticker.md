@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Replace the uncommitted newspaper event overlay with a persistent projection-header ticker containing each active event's name, news, and calculated impacts.
+**Goal:** Keep a persistent projection-header ticker containing each active event's name, news, and calculated impacts, while restoring a one-time newspaper animation for newly activated events.
 
-**Architecture:** Keep event-impact formatting as pure tested logic, add a pure ticker-entry builder, and render the entries through a focused `MarketEventTicker` component. Remove event items from the transient animation queue so only lottery and auction overlays remain serialized.
+**Architecture:** Keep event-impact formatting and event-difference detection as pure tested logic, render active events through `MarketEventTicker`, and serialize newly activated event newspapers with lottery and auction overlays.
 
 **Tech Stack:** Next.js 16, React 19, TypeScript, Framer Motion, Vitest, Tailwind CSS.
 
@@ -16,11 +16,11 @@
 - [x] Implement `buildEventTickerEntries(activeEvents, penaltyRegion)`.
 - [x] Run focused tests.
 
-### Task 2: Remove event overlay behavior
+### Task 2: Coordinate event overlay behavior
 
-- [x] Remove event timing, detection, builders, and queue variants.
-- [x] Delete `EventNewspaperOverlay.tsx`.
-- [x] Update queue tests to cover lottery-before-auction behavior.
+- [x] Keep event timing, detection, builders, and queue variants tested.
+- [x] Restore `EventNewspaperOverlay.tsx` for newly activated events.
+- [x] Update queue tests to cover event-before-lottery-before-auction behavior.
 
 ### Task 3: Header ticker UI
 

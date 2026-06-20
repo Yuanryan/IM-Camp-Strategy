@@ -17,6 +17,7 @@ import {
   HammerImagePreloader,
 } from "@/components/views/projection/AuctionHammerOverlay";
 import { AuctionStageOverlay } from "@/components/views/projection/AuctionStageOverlay";
+import { EventNewspaperOverlay } from "@/components/views/projection/EventNewspaperOverlay";
 import { ProjectionArenaDashboard } from "@/components/views/projection/ProjectionArenaDashboard";
 import {
   detectAuctionCue,
@@ -26,8 +27,10 @@ import {
 import {
   addProjectionAnimations,
   buildAuctionAnimationItem,
+  buildEventAnimationItems,
   buildLotteryAnimationItem,
   completeProjectionAnimation,
+  detectAddedEvents,
   type LotteryDrawResult,
   type ProjectionAnimationItem,
   type ProjectionAnimationQueueState,
@@ -66,7 +69,14 @@ export function ProjectionView() {
       </AnimatePresence>
 
       <AnimatePresence mode="wait">
-        {activeAnimation?.kind === "lottery" ? (
+        {activeAnimation?.kind === "event" ? (
+          <EventNewspaperOverlay
+            key={activeAnimation.id}
+            eventIndex={activeAnimation.eventIndex}
+            penaltyRegion={activeAnimation.penaltyRegion}
+            onComplete={completeActiveAnimation}
+          />
+        ) : activeAnimation?.kind === "lottery" ? (
           <LotteryDrawOverlay
             key={activeAnimation.id}
             result={activeAnimation.result}
@@ -123,6 +133,7 @@ function useProjectionAnimationQueue(snapshot: Snapshot | null) {
     EMPTY_ANIMATION_QUEUE,
   );
   const initialized = useRef(false);
+  const previousEvents = useRef<number[] | null>(null);
   const previousDrawAt = useRef<string | null>(null);
   const previousAuction = useRef<AuctionAnimationSnapshot | null>(null);
 
@@ -132,12 +143,20 @@ function useProjectionAnimationQueue(snapshot: Snapshot | null) {
     const currentAuction = toAuctionAnimationSnapshot(snapshot.auction);
     if (!initialized.current) {
       initialized.current = true;
+      previousEvents.current = snapshot.activeEvents;
       previousDrawAt.current = snapshot.lottery.lastDraw?.at ?? null;
       previousAuction.current = currentAuction;
       return;
     }
 
     const additions: ProjectionAnimationItem[] = [];
+    additions.push(
+      ...buildEventAnimationItems(
+        detectAddedEvents(previousEvents.current, snapshot.activeEvents),
+        snapshot.event4Penalty,
+      ),
+    );
+
     const draw = snapshot.lottery.lastDraw;
     if (draw && draw.at !== previousDrawAt.current) {
       additions.push(buildLotteryAnimationItem(draw));
@@ -151,6 +170,7 @@ function useProjectionAnimationQueue(snapshot: Snapshot | null) {
       additions.push(buildAuctionAnimationItem(auctionCue));
     }
 
+    previousEvents.current = snapshot.activeEvents;
     previousDrawAt.current = draw?.at ?? null;
     previousAuction.current = currentAuction;
 

@@ -23,6 +23,12 @@ export type LotteryDrawResult = {
 
 export type ProjectionAnimationItem =
   | {
+      kind: "event";
+      id: string;
+      eventIndex: number;
+      penaltyRegion: string | null;
+    }
+  | {
       kind: "lottery";
       id: string;
       result: LotteryDrawResult;
@@ -37,6 +43,21 @@ export type ProjectionAnimationQueueState = {
   active: ProjectionAnimationItem | null;
   waiting: ProjectionAnimationItem[];
 };
+
+export const EVENT_ENTRANCE_MS = 1_700;
+export const EVENT_HOLD_MS = 30_000;
+export const EVENT_EXIT_SECONDS = 0.7;
+
+export function detectAddedEvents(
+  previous: number[] | null,
+  current: number[],
+): number[] {
+  if (previous === null) return [];
+  const previousSet = new Set(previous);
+  return current
+    .filter((eventIndex) => !previousSet.has(eventIndex))
+    .sort((a, b) => a - b);
+}
 
 function multiplierPercent(multiplier: number): number {
   return Math.round(Math.abs(multiplier - 1) * 100);
@@ -127,8 +148,9 @@ export function buildEventTickerEntries(
 }
 
 const ANIMATION_PRIORITY: Record<ProjectionAnimationItem["kind"], number> = {
-  lottery: 0,
-  auction: 1,
+  event: 0,
+  lottery: 1,
+  auction: 2,
 };
 
 export function enqueueProjectionAnimations(
@@ -202,6 +224,20 @@ export function completeProjectionAnimation(
     active: state.waiting[0] ?? null,
     waiting: state.waiting.slice(1),
   };
+}
+
+export function buildEventAnimationItems(
+  eventIndexes: number[],
+  penaltyRegion: string | null,
+): ProjectionAnimationItem[] {
+  return eventIndexes
+    .filter((eventIndex) => Boolean(EVENTS[eventIndex]))
+    .map((eventIndex) => ({
+      kind: "event",
+      id: `event-${eventIndex}`,
+      eventIndex,
+      penaltyRegion,
+    }));
 }
 
 export function buildLotteryAnimationItem(

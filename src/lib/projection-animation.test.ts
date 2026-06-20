@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  EVENT_ENTRANCE_MS,
+  EVENT_EXIT_SECONDS,
+  EVENT_HOLD_MS,
   addProjectionAnimations,
   buildAuctionAnimationItem,
+  buildEventAnimationItems,
   buildEventTickerEntries,
   buildLotteryAnimationItem,
   completeProjectionAnimation,
+  detectAddedEvents,
   enqueueProjectionAnimations,
   formatEventImpacts,
   type ProjectionAnimationItem,
@@ -13,6 +18,18 @@ import {
 } from "./projection-animation";
 
 describe("projection event ticker helpers", () => {
+  it("uses the first event snapshot as a baseline", () => {
+    expect(detectAddedEvents(null, [1, 2])).toEqual([]);
+  });
+
+  it("returns newly added events in numeric order", () => {
+    expect(detectAddedEvents([1], [1, 3, 2])).toEqual([2, 3]);
+  });
+
+  it("does not animate removed events", () => {
+    expect(detectAddedEvents([1, 2], [1])).toEqual([]);
+  });
+
   it("derives event one impacts from the game rules", () => {
     expect(formatEventImpacts(1, null)).toEqual([
       {
@@ -87,6 +104,13 @@ describe("projection event ticker helpers", () => {
   });
 });
 
+const eventItem = (eventIndex: number): ProjectionAnimationItem => ({
+  kind: "event",
+  id: `event-${eventIndex}`,
+  eventIndex,
+  penaltyRegion: null,
+});
+
 const lotteryItem = (at: string): ProjectionAnimationItem => ({
   kind: "lottery",
   id: `lottery-${at}`,
@@ -129,13 +153,13 @@ const auctionSold = (
 });
 
 describe("projection animation queue", () => {
-  it("orders waiting lottery animations before auction animations", () => {
+  it("orders waiting animations by event, lottery, then auction", () => {
     expect(
       enqueueProjectionAnimations(
         [auctionBid(1, 100)],
-        [lotteryItem("2026-06-21T00:00:00.000Z")],
+        [lotteryItem("2026-06-21T00:00:00.000Z"), eventItem(2)],
       ).map((item) => item.kind),
-    ).toEqual(["lottery", "auction"]);
+    ).toEqual(["event", "lottery", "auction"]);
   });
 
   it("does not modify the animation that is already active", () => {
@@ -203,6 +227,23 @@ describe("projection animation queue", () => {
 });
 
 describe("projection animation item builders", () => {
+  it("uses the approved newspaper timing", () => {
+    expect(EVENT_ENTRANCE_MS).toBe(1_700);
+    expect(EVENT_HOLD_MS).toBe(30_000);
+    expect(EVENT_EXIT_SECONDS).toBe(0.7);
+  });
+
+  it("builds stable event animation ids", () => {
+    expect(buildEventAnimationItems([2], "EMBER")).toEqual([
+      {
+        kind: "event",
+        id: "event-2",
+        eventIndex: 2,
+        penaltyRegion: "EMBER",
+      },
+    ]);
+  });
+
   it("builds a lottery animation id from the draw timestamp", () => {
     const result = {
       number: 8,
