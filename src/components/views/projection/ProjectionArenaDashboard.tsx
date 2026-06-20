@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import { AnimatedNum, PriceTag } from "@/components/ui";
+import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { REGIONS, REGION_UI, type RegionCode } from "@/lib/game";
 import {
   getProjectionLevelTier,
@@ -102,6 +103,7 @@ function ArenaHeader({ snap }: { snap: Snapshot }) {
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
+          <FullscreenButton />
           <span
             className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-black ${phase.cls}`}
           >
