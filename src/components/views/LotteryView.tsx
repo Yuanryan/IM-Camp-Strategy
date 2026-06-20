@@ -185,8 +185,7 @@ export function LotteryView({
                 team: t,
                 nums: snap.lottery.numbers
                   .filter((n) => n.teamId === t.id)
-                  .map((n) => n.number)
-                  .sort((a, b) => a - b),
+                  .sort((a, b) => a.number - b.number),
               }))
               .filter((row) => row.nums.length > 0)
               .map(({ team: t, nums }) => (
@@ -198,8 +197,8 @@ export function LotteryView({
                   <span className="text-xs text-slate-500">（{nums.length}）</span>
                   <span className="flex flex-wrap gap-1">
                     {nums.map((x) => (
-                      <span key={x} className="num rounded bg-white/10 px-1.5 py-0.5 text-xs font-bold text-slate-200 ring-1 ring-white/10">
-                        {x}
+                      <span key={x.id} className="num rounded bg-white/10 px-1.5 py-0.5 text-xs font-bold text-slate-200 ring-1 ring-white/10">
+                        {x.number}
                       </span>
                     ))}
                   </span>

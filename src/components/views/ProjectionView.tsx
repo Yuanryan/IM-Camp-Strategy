@@ -6,18 +6,33 @@ import { Trophy, Crown, Landmark, Gavel, Ticket, RadioTower, Gem, WifiOff } from
 import { useSnapshot } from "@/components/client";
 import { Num, AnimatedNum, PriceTag, LevelDots } from "@/components/ui";
 import { EVENTS, REGIONS, REGION_UI } from "@/lib/game";
+import {
+  AuctionHammerOverlay,
+  HammerImagePreloader,
+  useAuctionAnimation,
+} from "@/components/views/projection/AuctionHammerOverlay";
+import { AuctionStageOverlay } from "@/components/views/projection/AuctionStageOverlay";
+import { getAuctionStage } from "@/lib/auction-animation";
 import type { Snapshot, TeamView } from "@/lib/snapshot";
 
 export function ProjectionView() {
   const { snap, error } = useSnapshot(2000, "/api/public/snapshot");
   // 偵測「新的一次開獎」→ 自動播放開獎動畫覆蓋層（hook 必須在任何 early return 之前呼叫）
   const draw = useLotteryDraw(snap?.lottery.lastDraw ?? null);
+  // 偵測同一拍賣品加價 / 新成交，逐幀切換 public/hammer 的兩張圖片。
+  const auctionAnimation = useAuctionAnimation(snap?.auction ?? null);
 
   if (error) return <FullMsg text="連線錯誤，重試中…" tone="error" />;
   if (!snap) return <FullMsg text="載入中…" tone="loading" />;
 
   const ranking = [...snap.teams].sort((a, b) => b.netWorth - a.netWorth);
   const maxWorth = Math.max(1, ...ranking.map((t) => t.netWorth));
+  const auctionStage = getAuctionStage({
+    eventOpen: snap.auction.eventId != null,
+    started: snap.auction.started,
+    hasLiveLot: snap.auction.live != null,
+    hasQueuedLots: snap.auction.queuedLotCount > 0,
+  });
 
   return (
     <div className="min-h-screen px-6 py-5 lg:px-8">
@@ -40,8 +55,30 @@ export function ProjectionView() {
       {/* 下：四區不動產地圖 */}
       <PropertyMap snap={snap} />
 
-      {/* 開獎動畫覆蓋層（偵測到新開獎時自動播放；AnimatePresence 處理進出場淡入淡出） */}
-      <AnimatePresence>{draw && <DrawOverlay draw={draw} />}</AnimatePresence>
+      <HammerImagePreloader />
+
+      {/* 第一件開始後常駐，最後一件完成即退場；不改動底下既有投影 UI。 */}
+      <AnimatePresence>
+        {auctionStage !== "hidden" && (
+          <AuctionStageOverlay
+            key={`auction-stage-${snap.auction.eventId}`}
+            auction={snap.auction}
+            stage={auctionStage}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* 大樂透優先於法槌動畫；兩者都顯示在常駐拍賣舞台上方。 */}
+      <AnimatePresence mode="wait">
+        {draw ? (
+          <DrawOverlay key={`lottery-${draw.result.at}`} draw={draw} />
+        ) : auctionAnimation ? (
+          <AuctionHammerOverlay
+            key={`${auctionAnimation.cue.kind}-${auctionAnimation.cue.lotId}-${auctionAnimation.cue.amount}`}
+            animation={auctionAnimation}
+          />
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
@@ -352,7 +389,7 @@ function LotteryStrip({ snap }: { snap: Snapshot }) {
         )}
         {snap.lottery.numbers.map((n) => (
           <span
-            key={n.number}
+            key={n.id}
             title={n.teamName}
             className="num grid h-8 w-8 place-items-center rounded-lg bg-emerald-900/40 text-sm font-bold text-emerald-200 ring-1 ring-emerald-400/25"
           >
@@ -443,7 +480,7 @@ function DrawOverlay({ draw }: { draw: DrawState }) {
 
   return (
     <motion.div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md"
+      className="fixed inset-0 z-[60] flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}

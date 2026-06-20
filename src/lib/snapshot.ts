@@ -12,6 +12,11 @@ import {
   TOLL_RATE,
   type RegionCode,
 } from "./game";
+import { hasAuctionStarted } from "./auction-animation";
+import {
+  filterLotteryNumbersByPeriod,
+  toLotteryNumberViews,
+} from "./snapshot-helpers";
 
 export type PropertyView = {
   id: number;
@@ -72,10 +77,19 @@ export type AuctionLotView = {
 };
 
 export type AuctionSnapshot = {
+  eventId: number | null;
   announcement: string | null; // 來自未結束場次；team page 用它顯示發光橫幅
   eventName: string | null;
+  started: boolean; // 第一件被開拍後維持 true，直到場次 ENDED
+  queuedLotCount: number; // 尚未開始的 DRAFT 拍賣品數量
   live: AuctionLotView | null;
-  recentlySold: { title: string; winnerTeamName: string; finalPrice: number }[];
+  recentlySold: {
+    id: number;
+    title: string;
+    winnerTeamName: string;
+    finalPrice: number;
+    soldAt: string;
+  }[];
 };
 
 export type Snapshot = {
@@ -87,7 +101,7 @@ export type Snapshot = {
   lottery: {
     period: number;
     pool: number;
-    numbers: { number: number; teamId: number; teamName: string }[];
+    numbers: { id: number; number: number; teamId: number; teamName: string }[];
     // 最近一次開獎結果（投影頁據此重播開獎動畫）；null = 尚未開過獎
     lastDraw: {
       number: number;
@@ -135,7 +149,7 @@ function findMonopoly(
 const ATTACK_WINDOW_MS = 1_800_000;
 
 export async function getSnapshot(): Promise<Snapshot> {
-  const [state, teams, properties, lotteryNumbers, teamItems, auctionEvent, liveLot, soldLots, attackLogs] =
+  const [state, teams, properties, lotteryNumbers, teamItems, auctionEvent, attackLogs] =
     await Promise.all([
       prisma.gameState.findUnique({ where: { id: 1 } }),
       prisma.team.findMany({ orderBy: { id: "asc" } }),
@@ -143,12 +157,10 @@ export async function getSnapshot(): Promise<Snapshot> {
       prisma.lotteryNumber.findMany(),
       // 凍結於 PENDING 交易中的動產（lockedTradeId 非 null）不算擁有者有效持有，排除
       prisma.teamItem.findMany({ where: { active: true, lockedTradeId: null }, include: { asset: true } }),
-      prisma.auctionEvent.findFirst({ where: { status: "OPEN" }, orderBy: { id: "desc" } }),
-      prisma.auctionLot.findFirst({ where: { status: "LIVE" }, orderBy: { id: "desc" } }),
-      prisma.auctionLot.findMany({
-        where: { status: "SOLD" },
-        orderBy: { soldAt: "desc" },
-        take: 5,
+      prisma.auctionEvent.findFirst({
+        where: { status: "OPEN" },
+        orderBy: { id: "desc" },
+        include: { lots: { orderBy: [{ orderIndex: "asc" }, { id: "asc" }] } },
       }),
       // 近期攻擊通知（時間窗內、未沖銷）
       prisma.ledger.findMany({
@@ -160,6 +172,14 @@ export async function getSnapshot(): Promise<Snapshot> {
   const activeEvents = parseActiveEvents(state?.activeEvents ?? "");
   const event4Penalty = state?.event4Penalty ?? null;
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
+  const eventLots = auctionEvent?.lots ?? [];
+  const liveLot = eventLots.find((lot) => lot.status === "LIVE") ?? null;
+  const soldLots = eventLots
+    .filter((lot) => lot.status === "SOLD")
+    .sort((a, b) => (b.soldAt?.getTime() ?? 0) - (a.soldAt?.getTime() ?? 0))
+    .slice(0, 5);
+  const auctionStarted = hasAuctionStarted(eventLots.map((lot) => lot.status));
+  const queuedLotCount = eventLots.filter((lot) => lot.status === "DRAFT").length;
 
   const propViews: PropertyView[] = properties.map((p) => ({
     id: p.id,
@@ -258,8 +278,11 @@ export async function getSnapshot(): Promise<Snapshot> {
   });
 
   const auction: AuctionSnapshot = {
+    eventId: auctionEvent?.id ?? null,
     announcement: auctionEvent?.announcement ? auctionEvent.announcement : null,
     eventName: auctionEvent?.name ?? null,
+    started: auctionStarted,
+    queuedLotCount,
     live: liveLot
       ? {
           id: liveLot.id,
@@ -271,9 +294,11 @@ export async function getSnapshot(): Promise<Snapshot> {
         }
       : null,
     recentlySold: soldLots.map((l) => ({
+      id: l.id,
       title: l.title,
       winnerTeamName: l.winnerTeamId ? (teamName.get(l.winnerTeamId) ?? `#${l.winnerTeamId}`) : "—",
       finalPrice: l.finalPrice ?? 0,
+      soldAt: (l.soldAt ?? l.createdAt).toISOString(),
     })),
   };
 
@@ -290,12 +315,13 @@ export async function getSnapshot(): Promise<Snapshot> {
     lottery: {
       period: state?.lotteryPeriod ?? 1,
       pool: state?.lotteryPool ?? 0,
-      numbers: lotteryNumbers
-        .map((n) => ({
-          number: n.number,
-          teamId: n.teamId,
-          teamName: teamName.get(n.teamId) ?? `#${n.teamId}`,
-        }))
+      numbers: toLotteryNumberViews(
+        filterLotteryNumbersByPeriod(
+          lotteryNumbers,
+          state?.lotteryPeriod ?? 1,
+        ),
+        teamName,
+      )
         .sort((a, b) => a.number - b.number),
       lastDraw:
         state?.lastDrawNumber != null && state.lastDrawAt

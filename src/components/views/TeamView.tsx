@@ -204,7 +204,7 @@ export function TeamView({ teamId }: { teamId: number }) {
             ) : (
               <div className="flex flex-wrap gap-2">
                 {myNumbers.map((n) => (
-                  <span key={n.number} className="lottery-ball">
+                  <span key={n.id} className="lottery-ball">
                     {n.number}
                   </span>
                 ))}
