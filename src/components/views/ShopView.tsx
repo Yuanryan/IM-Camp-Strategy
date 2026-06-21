@@ -192,8 +192,17 @@ const cardKey = (c: ShopCard) => c.type;
 const itemKey = (it: ShopItem) => String(it.id);
 const itemWeight = (it: ShopItem) => GRADE_DRAW_WEIGHT[it.grade] ?? 1;
 
-export function ShopView() {
-  const [team, setTeam] = useState<number | "">("");
+export function ShopView({
+  team: teamProp,
+  setTeam: setTeamProp,
+}: {
+  team?: number | "";
+  setTeam?: (id: number | "") => void;
+} = {}) {
+  // 受控（由 MapView 共用 team）或自管（/shop 獨立頁）
+  const [teamInner, setTeamInner] = useState<number | "">("");
+  const team = teamProp ?? teamInner;
+  const setTeam = setTeamProp ?? setTeamInner;
   const [tab, setTab] = useState<"cards" | "assets">("cards");
   const { snap } = useSnapshot(3000);
   // 只輪詢目前 tab 的庫存（另一個 tab 暫停＝refreshInterval 0），減少不必要的 API 呼叫。
@@ -214,6 +223,15 @@ export function ShopView() {
 
   return (
     <div className="space-y-4">
+            <HudTabs
+        active={tab}
+        onChange={setTab}
+        tabs={[
+          ["cards", "功能卡", <CreditCard key="c" className="h-4 w-4" />],
+          ["assets", "動產", <Package key="a" className="h-4 w-4" />],
+        ] as const}
+      />
+      
       <StickyTeam>
         <div className="flex flex-wrap items-center gap-3">
           <TeamSelect teams={snap.teams} value={team} onChange={setTeam} />
@@ -228,14 +246,7 @@ export function ShopView() {
         </div>
       </StickyTeam>
 
-      <HudTabs
-        active={tab}
-        onChange={setTab}
-        tabs={[
-          ["cards", "功能卡", <CreditCard key="c" className="h-4 w-4" />],
-          ["assets", "動產", <Package key="a" className="h-4 w-4" />],
-        ] as const}
-      />
+
 
       {tab === "cards" ? (
       <>

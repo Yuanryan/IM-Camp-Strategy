@@ -6,10 +6,12 @@ import { RewardButtons } from "@/components/RewardPanel";
 import { LotteryView } from "@/components/views/LotteryView";
 import { WheelView } from "@/components/views/WheelView";
 import { LuckDraw } from "@/components/views/LuckDraw";
+import { ExchangeView } from "@/components/views/ExchangeView";
+import { ShopView } from "@/components/views/ShopView";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, EventBanner, HudTabs, TeamItemBadges, FloatingDesc } from "@/components/ui";
 import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, EffectType, ITEM_GRADE_COLORS, stackEffects, applyToll, type UndoRecipe } from "@/lib/game";
-import { Map, CircleDollarSign, LoaderPinwheel } from "lucide-react";
+import { Map, CircleDollarSign, LoaderPinwheel, Building2, Store } from "lucide-react";
 import type { Snapshot } from "@/lib/snapshot";
 
 export function MapView() {
@@ -18,7 +20,7 @@ export function MapView() {
   const [coins, setCoins] = useState(0);
   const [points, setPoints] = useState(0);
   const [tollRegion, setTollRegion] = useState("AURORA");
-  const [tab, setTab] = useState<"map" | "lottery" | "wheel">("map");
+  const [tab, setTab] = useState<"map" | "lottery" | "wheel" | "exchange" | "shop">("map");
   const [openItemId, setOpenItemId] = useState<number | null>(null);
   const [hoverItemId, setHoverItemId] = useState<number | null>(null);
   // 回合結算門檻：已結算過的小隊 id；切換小隊即重置 → 回到任何隊都要重新結算
@@ -74,6 +76,8 @@ export function MapView() {
         onChange={setTab}
         tabs={[
           ["map", "地圖中控站", <Map key="m" className="h-4 w-4" />],
+          ["exchange", "交易所", <Building2 key="e" className="h-4 w-4" />],
+          ["shop", "神秘商店", <Store key="s" className="h-4 w-4" />],
           ["lottery", "大樂透", <CircleDollarSign key="l" className="h-4 w-4" />],
           ["wheel", "命運輪盤", <LoaderPinwheel key="w" className="h-4 w-4" />],
         ] as const}
@@ -83,6 +87,10 @@ export function MapView() {
         <LotteryView team={team} setTeam={setTeam} />
       ) : tab === "wheel" ? (
         <WheelView teams={teams} team={team} setTeam={setTeam} cur={cur} onDone={mutate} />
+      ) : tab === "exchange" ? (
+        <ExchangeView team={team} setTeam={setTeam} />
+      ) : tab === "shop" ? (
+        <ShopView team={team} setTeam={setTeam} />
       ) : (
         <>
           <EventBanner events={snap.activeEvents} />

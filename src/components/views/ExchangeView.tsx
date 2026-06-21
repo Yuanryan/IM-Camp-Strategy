@@ -26,10 +26,19 @@ function PriceLabel({ prefix, final, base }: { prefix: string; final: number; ba
   );
 }
 
-export function ExchangeView() {
+export function ExchangeView({
+  team: teamProp,
+  setTeam: setTeamProp,
+}: {
+  team?: number | "";
+  setTeam?: (id: number | "") => void;
+} = {}) {
   const { snap, mutate } = useSnapshot(2500);
   const [tab, setTab] = useState<"props" | "cards">("props");
-  const [team, setTeam] = useState<number | "">("");
+  // 受控（由 MapView 共用 team）或自管（/exchange 獨立頁）
+  const [teamInner, setTeamInner] = useState<number | "">("");
+  const team = teamProp ?? teamInner;
+  const setTeam = setTeamProp ?? setTeamInner;
   const [discount, setDiscount] = useState(0);
   const [region, setRegion] = useState<string>("AURORA");
 

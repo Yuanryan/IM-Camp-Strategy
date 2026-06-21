@@ -54,7 +54,7 @@ async function reset() {
   // deleteMany 不會重置 Postgres 的 identity 序列，重跑 seed 後 id 會一直往上累加
   // （例：小隊 id 變成 11、21…）。把已整批清空又重建的表序列歸 1，讓 id 從 1 起算，
   // 方便用固定 id 測試（如第 1、2 隊互相交易）。MovableAsset 因 skipDuplicates 保留資料，不重置。
-  const RESET_SEQ = ["Team", "Property", "FunctionCard", "ShopDisplay", "Ledger", "LotteryNumber"];
+  const RESET_SEQ = ["Team", "Property", "FunctionCard", "Ledger", "LotteryNumber"];
   for (const table of RESET_SEQ) {
     // 序列名是 Postgres 預設的 "<Table>_id_seq"；表名 / 序列名皆為 PascalCase，需加雙引號。
     await prisma.$executeRawUnsafe(`ALTER SEQUENCE "${table}_id_seq" RESTART WITH 1`);
