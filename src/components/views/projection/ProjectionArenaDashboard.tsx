@@ -237,10 +237,17 @@ function ArenaLeaderboard({
                   <span className="projection-rank-name min-w-0 flex-1 truncate font-black">
                     {team.name}
                   </span>
-                  <AnimatedNum
-                    value={team.netWorth}
-                    className="projection-rank-value font-black leading-none"
-                  />
+                  <span className="flex shrink-0 items-baseline gap-1.5 leading-none">
+                    <AnimatedNum
+                      value={team.coins}
+                      className="projection-rank-coins font-bold tabular-nums opacity-60"
+                    />
+                    <span className="projection-rank-sep opacity-40">/</span>
+                    <AnimatedNum
+                      value={team.netWorth}
+                      className="projection-rank-value font-black leading-none"
+                    />
+                  </span>
                 </div>
               </motion.li>
             );

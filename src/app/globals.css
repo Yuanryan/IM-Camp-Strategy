@@ -411,6 +411,12 @@ input[type="number"] {
   font-size: clamp(1rem, 34cqh, 1.6rem);
 }
 
+/* 光幣（次要）：比總資產小一階，靜音色由 opacity 控制 */
+.projection-rank-coins,
+.projection-rank-sep {
+  font-size: clamp(0.7rem, 24cqh, 1.05rem);
+}
+
 .projection-rank-badge {
   width: clamp(1.5rem, 56cqh, 2.35rem);
   height: clamp(1.5rem, 56cqh, 2.35rem);

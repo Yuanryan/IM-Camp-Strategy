@@ -17,7 +17,7 @@ import {
 const prisma = new PrismaClient();
 
 // ─── 賽前設定（留空待填，請依實際情況修改）──────────────────────
-const TEAM_COUNT = 5; // 實際小隊數
+const TEAM_COUNT = 10; // 實際小隊數
 const STARTING_COINS = 1000; // 各隊初始光幣（不動產價格表以此校準：中位數約 750，起始買得起約 1 塊）
 const STARTING_CARD_POINTS = 0; // TODO: 各隊初始卡牌點數
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
@@ -25,10 +25,10 @@ const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 // 每個角色一張 token（同角色共用，不分站別）
 const STATION_COUNTS: Partial<Record<Exclude<Role, "TEAM">, number>> = {
   HOST: 1,
-  EXCHANGE: 1,
+  // EXCHANGE: 1,
   MAP: 1,
   MOBILE: 1,
-  CARDSHOP: 1,
+  // CARDSHOP: 1,
   AUCTION: 1,
   PROJECTION: 1,
   ADMIN: 1,
