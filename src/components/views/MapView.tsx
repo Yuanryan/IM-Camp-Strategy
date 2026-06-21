@@ -8,10 +8,11 @@ import { WheelView } from "@/components/views/WheelView";
 import { LuckDraw } from "@/components/views/LuckDraw";
 import { ExchangeView } from "@/components/views/ExchangeView";
 import { ShopView } from "@/components/views/ShopView";
+import { RealMapView } from "@/components/views/RealMapView";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, EventBanner, HudTabs, TeamItemBadges, FloatingDesc } from "@/components/ui";
 import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, EffectType, ITEM_GRADE_COLORS, stackEffects, applyToll, type UndoRecipe } from "@/lib/game";
-import { Map, CircleDollarSign, LoaderPinwheel, Building2, Store } from "lucide-react";
+import { Map, CircleDollarSign, LoaderPinwheel, Building2, Store, Gamepad2 } from "lucide-react";
 import type { Snapshot } from "@/lib/snapshot";
 
 export function MapView() {
@@ -20,7 +21,9 @@ export function MapView() {
   const [coins, setCoins] = useState(0);
   const [points, setPoints] = useState(0);
   const [tollRegion, setTollRegion] = useState("AURORA");
-  const [tab, setTab] = useState<"map" | "lottery" | "wheel" | "exchange" | "shop">("map");
+  // 交易所預選區域（由真實地圖落在不動產格時自動帶入）
+  const [region, setRegion] = useState("AURORA");
+  const [tab, setTab] = useState<"realmap" | "map" | "lottery" | "wheel" | "exchange" | "shop">("realmap");
   const [openItemId, setOpenItemId] = useState<number | null>(null);
   const [hoverItemId, setHoverItemId] = useState<number | null>(null);
   // 回合結算門檻：已結算過的小隊 id；切換小隊即重置 → 回到任何隊都要重新結算
@@ -75,6 +78,7 @@ export function MapView() {
         active={tab}
         onChange={setTab}
         tabs={[
+          ["realmap", "遊戲地圖", <Gamepad2 key="r" className="h-4 w-4" />],
           ["map", "地圖中控站", <Map key="m" className="h-4 w-4" />],
           ["exchange", "交易所", <Building2 key="e" className="h-4 w-4" />],
           ["shop", "神秘商店", <Store key="s" className="h-4 w-4" />],
@@ -83,12 +87,21 @@ export function MapView() {
         ] as const}
       />
 
-      {tab === "lottery" ? (
+      {tab === "realmap" ? (
+        <RealMapView
+          team={team}
+          setTeam={setTeam}
+          onLand={({ tab: nextTab, region: nextRegion }) => {
+            if (nextRegion) setRegion(nextRegion);
+            setTab(nextTab);
+          }}
+        />
+      ) : tab === "lottery" ? (
         <LotteryView team={team} setTeam={setTeam} />
       ) : tab === "wheel" ? (
         <WheelView teams={teams} team={team} setTeam={setTeam} cur={cur} onDone={mutate} />
       ) : tab === "exchange" ? (
-        <ExchangeView team={team} setTeam={setTeam} />
+        <ExchangeView team={team} setTeam={setTeam} region={region} setRegion={setRegion} />
       ) : tab === "shop" ? (
         <ShopView team={team} setTeam={setTeam} />
       ) : (

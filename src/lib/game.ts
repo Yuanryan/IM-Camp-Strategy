@@ -828,3 +828,162 @@ export const ROLE_LABEL: Record<Role, string> = {
   ADMIN: "Admin",
   TEAM: "小隊",
 };
+
+// ── 真實棋盤（public/map.png）：10×10 外環 36 格 ──────────────────
+// 關主在 /map「真實地圖」分頁移動棋子；停留格的 kind 決定自動導向哪個分頁，
+// 把關主「這格該去哪一站？」的判斷自動化。座標 x/y 為相對 map.png 的百分比（格中心），
+// 供前端絕對定位疊棋子。資料即事實來源（比照 PROPERTY_SEED / EVENTS，寫死免 migration）。
+//
+//   START        ：中央燈塔起點 / 商店（過 / 停發起點收益）
+//   SHOP         ：神秘商店
+//   WHEEL        ：命運投資輪盤・賭博事件
+//   LOTTERY_DRAW ：大樂透開獎格
+//   LOTTERY_REG  ：星籤所大樂透（登記號碼）
+//   PROPERTY     ：四區不動產格（帶 region；導向交易所並預選該區）
+//   GLOW         ：光源（好運卡）
+//   FOG          ：迷霧（厄運卡）
+export type SquareKind =
+  | "START"
+  | "SHOP"
+  | "WHEEL"
+  | "LOTTERY_DRAW"
+  | "LOTTERY_REG"
+  | "PROPERTY"
+  | "GLOW"
+  | "FOG";
+
+export type BoardSquare = {
+  index: number;       // 0..35，順時針；0 = START
+  label: string;       // map.png 上的格名
+  kind: SquareKind;
+  region?: RegionCode; // 僅 PROPERTY：對應四區
+  x: number;           // 格中心 X（%）
+  y: number;           // 格中心 Y（%）
+};
+
+// 10×10 格線：每格 10%，格中心 = (col+0.5)*10、(row+0.5)*10。
+// row 0 = 上、row 9 = 下；col 0 = 左、col 9 = 右。
+const C = (col: number) => (col + 0.5) * 10;
+const R = (row: number) => (row + 0.5) * 10;
+
+// 順時針自左下角 START 起：上行左邊 → 頂排 → 右邊 → 底排回 START。
+export const BOARD: BoardSquare[] = [
+  // ── 左下角：起點 ──
+  { index: 0, label: "中央燈塔・起點", kind: "START", x: C(0), y: R(9) },
+  // ── 左排（col 0），由下往上 row 8→1 ──
+  { index: 1, label: "工域星籤所大樂透", kind: "LOTTERY_REG", x: C(0), y: R(8) },
+  { index: 2, label: "影焰工域", kind: "PROPERTY", region: "EMBER", x: C(0), y: R(7) },
+  { index: 3, label: "碼頭進貨光源", kind: "GLOW", x: C(0), y: R(6) },
+  { index: 4, label: "半導體製造光源", kind: "GLOW", x: C(0), y: R(5) },
+  { index: 5, label: "影焰工域", kind: "PROPERTY", region: "EMBER", x: C(0), y: R(4) },
+  { index: 6, label: "原料補給光源", kind: "GLOW", x: C(0), y: R(3) },
+  { index: 7, label: "影焰工域", kind: "PROPERTY", region: "EMBER", x: C(0), y: R(2) },
+  { index: 8, label: "人才流失迷霧", kind: "FOG", x: C(0), y: R(1) },
+  // ── 左上角：神秘商店 ──
+  { index: 9, label: "神秘商店", kind: "SHOP", x: C(0), y: R(0) },
+  // ── 頂排（row 0），col 1→8 ──
+  { index: 10, label: "極光金域", kind: "PROPERTY", region: "AURORA", x: C(1), y: R(0) },
+  { index: 11, label: "獲得利息光源", kind: "GLOW", x: C(2), y: R(0) },
+  { index: 12, label: "小福施工迷霧", kind: "FOG", x: C(3), y: R(0) },
+  { index: 13, label: "極光金域", kind: "PROPERTY", region: "AURORA", x: C(4), y: R(0) },
+  { index: 14, label: "星籤登記所大樂透", kind: "LOTTERY_REG", x: C(5), y: R(0) },
+  { index: 15, label: "極光金域", kind: "PROPERTY", region: "AURORA", x: C(6), y: R(0) },
+  { index: 16, label: "極光金域", kind: "PROPERTY", region: "AURORA", x: C(7), y: R(0) },
+  { index: 17, label: "IM百貨週年慶光源", kind: "GLOW", x: C(8), y: R(0) },
+  // ── 右上角：命運輪盤 ──
+  { index: 18, label: "命運投資輪盤・賭博事件", kind: "WHEEL", x: C(9), y: R(0) },
+  // ── 右排（col 9），row 1→8 ──
+  { index: 19, label: "成為Google正職光源", kind: "GLOW", x: C(9), y: R(1) },
+  { index: 20, label: "靈序研究", kind: "PROPERTY", region: "SPECTRA", x: C(9), y: R(2) },
+  { index: 21, label: "靈序星籤所大樂透", kind: "LOTTERY_REG", x: C(9), y: R(3) },
+  { index: 22, label: "靈序研究", kind: "PROPERTY", region: "SPECTRA", x: C(9), y: R(4) },
+  { index: 23, label: "管圖重建迷霧", kind: "FOG", x: C(9), y: R(5) },
+  { index: 24, label: "科技突破光源", kind: "GLOW", x: C(9), y: R(6) },
+  { index: 25, label: "Gemini當機迷霧", kind: "FOG", x: C(9), y: R(7) },
+  { index: 26, label: "靈序研究", kind: "PROPERTY", region: "SPECTRA", x: C(9), y: R(8) },
+  // ── 右下角：大樂透開獎 ──
+  { index: 27, label: "大樂透開獎格", kind: "LOTTERY_DRAW", x: C(9), y: R(9) },
+  // ── 底排（row 9），col 8→1（順時針往回走向 START）──
+  { index: 28, label: "工業污染迷霧", kind: "FOG", x: C(8), y: R(9) },
+  { index: 29, label: "抽中太子學舍光源", kind: "GLOW", x: C(7), y: R(9) },
+  { index: 30, label: "晨霧棲城", kind: "PROPERTY", region: "HAVEN", x: C(6), y: R(9) },
+  { index: 31, label: "棲城星籤所大樂透", kind: "LOTTERY_REG", x: C(5), y: R(9) },
+  { index: 32, label: "療養院聚餐光源", kind: "GLOW", x: C(4), y: R(9) },
+  { index: 33, label: "晨霧棲城", kind: "PROPERTY", region: "HAVEN", x: C(3), y: R(9) },
+  { index: 34, label: "晨霧棲城", kind: "PROPERTY", region: "HAVEN", x: C(2), y: R(9) },
+  { index: 35, label: "醫療進步光源", kind: "GLOW", x: C(1), y: R(9) },
+];
+
+export const BOARD_SIZE = BOARD.length; // 36
+
+// 過起點收益（沿用好運卡量級；可於此調整）。
+export const PASS_START_INCOME = 200;
+
+// 取格（index 一律先正規化到 0..35）。
+export function boardSquareAt(index: number): BoardSquare {
+  return BOARD[((index % BOARD_SIZE) + BOARD_SIZE) % BOARD_SIZE];
+}
+
+// 前進 steps 格（可負）；回傳新位置與是否經過 / 抵達起點（過起點才發收益）。
+// 經過起點判定：以「跨過 index 0」為準——前進途中（含落在 0）算經過。
+export function advance(from: number, steps: number): { to: number; passedStart: boolean } {
+  const start = ((from % BOARD_SIZE) + BOARD_SIZE) % BOARD_SIZE;
+  const to = ((start + steps) % BOARD_SIZE + BOARD_SIZE) % BOARD_SIZE;
+  // 只在正向前進時發起點收益（後退不發）。經過或落在 0 即算。
+  let passedStart = false;
+  if (steps > 0) {
+    for (let i = 1; i <= steps; i++) {
+      if ((start + i) % BOARD_SIZE === 0) {
+        passedStart = true;
+        break;
+      }
+    }
+  }
+  return { to, passedStart };
+}
+
+// 停留格 → MapView 既有分頁 + （PROPERTY）預選區域。
+// GLOW / FOG 都導向 "map" 分頁（光源點 / 迷霧區抽卡），由 draw 區分好運 / 厄運。
+export type MapTab = "map" | "exchange" | "shop" | "lottery" | "wheel";
+export function squareToTab(sq: BoardSquare): { tab: MapTab; region?: RegionCode } {
+  switch (sq.kind) {
+    case "PROPERTY":
+      return { tab: "exchange", region: sq.region };
+    case "SHOP":
+      return { tab: "shop" };
+    case "WHEEL":
+      return { tab: "wheel" };
+    case "LOTTERY_REG":
+    case "LOTTERY_DRAW":
+      return { tab: "lottery" };
+    case "GLOW":
+    case "FOG":
+    case "START":
+    default:
+      return { tab: "map" };
+  }
+}
+
+// 停留提示文字（落地橫幅用）：依 kind 給一句「去哪 / 做什麼」。
+export function squareHint(sq: BoardSquare): string {
+  switch (sq.kind) {
+    case "PROPERTY":
+      return `不動產（${REGION_NAME[sq.region!]}）→ 交易所購買 / 升級 / 收過路費`;
+    case "SHOP":
+      return "神秘商店 → 購買動產";
+    case "WHEEL":
+      return "命運投資輪盤 → 轉一次輪盤";
+    case "LOTTERY_REG":
+      return "星籤所 → 大樂透登記號碼";
+    case "LOTTERY_DRAW":
+      return "大樂透開獎格 → 前往大樂透";
+    case "GLOW":
+      return "光源點 → 抽好運卡";
+    case "FOG":
+      return "迷霧區 → 抽厄運卡";
+    case "START":
+      return "中央燈塔起點 → 過起點領收益";
+    default:
+      return "";
+  }
+}

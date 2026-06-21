@@ -33,6 +33,7 @@ model Team {
   name           String
   coins          Int             @default(0) // 光幣
   cardPoints     Int             @default(0) // 卡牌點數
+  boardPos       Int             @default(0) // 棋子目前格 index（0=中央燈塔起點；見 lib/game.ts BOARD）
   properties     Property[]
   lotteryNumbers LotteryNumber[]
   ledgers        Ledger[]

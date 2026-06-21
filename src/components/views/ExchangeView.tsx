@@ -29,9 +29,13 @@ function PriceLabel({ prefix, final, base }: { prefix: string; final: number; ba
 export function ExchangeView({
   team: teamProp,
   setTeam: setTeamProp,
+  region: regionProp,
+  setRegion: setRegionProp,
 }: {
   team?: number | "";
   setTeam?: (id: number | "") => void;
+  region?: string;
+  setRegion?: (r: string) => void;
 } = {}) {
   const { snap, mutate } = useSnapshot(2500);
   const [tab, setTab] = useState<"props" | "cards">("props");
@@ -40,7 +44,10 @@ export function ExchangeView({
   const team = teamProp ?? teamInner;
   const setTeam = setTeamProp ?? setTeamInner;
   const [discount, setDiscount] = useState(0);
-  const [region, setRegion] = useState<string>("AURORA");
+  // 受控（由 MapView / 真實地圖預選區域）或自管
+  const [regionInner, setRegionInner] = useState<string>("AURORA");
+  const region = regionProp ?? regionInner;
+  const setRegion = setRegionProp ?? setRegionInner;
 
   if (!snap) return <p className="text-sm text-slate-400">載入中…</p>;
   const teams = snap.teams;

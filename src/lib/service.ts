@@ -29,6 +29,10 @@ import {
   rollRewardForm,
   coinsToPoints,
   pickAssetGrade,
+  advance,
+  boardSquareAt,
+  BOARD_SIZE,
+  PASS_START_INCOME,
   TOLL_RATE,
   type EffectType,
   type RegionCode,
@@ -144,6 +148,58 @@ export async function adjustBalance(params: {
       ledgerIds.push(await logLedger(tx, { teamId, kind: "cardPoints", delta: cardPoints, note, byToken }));
     const undo: UndoRecipe = { label: note || "調整餘額", ledgerIds };
     return { ...updated, undo };
+  });
+}
+
+// ── 真實棋盤：移動棋子 ───────────────────────────────────────
+// 兩種移動模式：
+//   steps  → 擲骰前進（可負＝後退）；正向經過起點時自動發 PASS_START_INCOME 收益。
+//   toIndex→ 直接設位置（傳送 / ±1 微調 / 卡片指定格），不發收益。
+// 回傳新位置與停留格，前端據此自動切換分頁；過起點收益的 undo 一併回傳。
+export async function moveTeamPiece(params: {
+  teamId: number;
+  steps?: number;
+  toIndex?: number;
+  byToken?: string;
+}) {
+  const { teamId, steps, toIndex, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const team = await tx.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new Error("找不到小隊");
+
+    let to: number;
+    let passedStart = false;
+    if (typeof steps === "number") {
+      const r = advance(team.boardPos, steps);
+      to = r.to;
+      passedStart = r.passedStart;
+    } else if (typeof toIndex === "number") {
+      to = ((toIndex % BOARD_SIZE) + BOARD_SIZE) % BOARD_SIZE;
+    } else {
+      throw new Error("需提供 steps 或 toIndex");
+    }
+
+    await tx.team.update({ where: { id: teamId }, data: { boardPos: to } });
+
+    // 過起點收益（僅 steps 正向經過時）；沿用 adjustBalance 的記帳 / 撤銷形式。
+    let undo: UndoRecipe | undefined;
+    if (passedStart && PASS_START_INCOME > 0) {
+      const note = "過起點收益";
+      await tx.team.update({
+        where: { id: teamId },
+        data: { coins: { increment: PASS_START_INCOME } },
+      });
+      const lid = await logLedger(tx, {
+        teamId,
+        kind: "system",
+        delta: PASS_START_INCOME,
+        note,
+        byToken,
+      });
+      undo = { label: note, ledgerIds: [lid] };
+    }
+
+    return { boardPos: to, landed: boardSquareAt(to), passedStart, undo };
   });
 }
 
