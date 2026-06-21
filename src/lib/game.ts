@@ -504,14 +504,31 @@ export const MOVABLE_ASSET_SEED: {
 
 // ── 好運卡 / 厄運卡（光源點 / 迷霧區抽卡）─────────────────────
 // 二驗：刪動產、情報牌實體發放，這裡只收「會動到光幣」的卡。
+// 直接獎勵卡（無任務）的獎勵種類：
+//  - coins   ：直接給光幣（仍走 good-card API 入帳，金額＝success）
+//  - wheel   ：指示該隊到「命運輪盤」轉一次（純指示，效果於輪盤分頁執行）
+//  - lottery ：贈送一次大樂透抽籤（純指示，於大樂透分頁登記）
+//  - card    ：拿一張功能卡 / 動產（純指示，於商店或直接發放）
+//  - move    ：移動（前進 / 後退 N 格，或直接到某格；純指示，由關主在地圖移動棋子）
+export type GoodReward =
+  | { kind: "coins"; amount: number } // amount＝直接入帳的光幣
+  | { kind: "wheel" }
+  | { kind: "lottery" }
+  | { kind: "card" }
+  | { kind: "move" };
+
 export type GoodCard = {
   name: string;
-  task: string;
   difficulty: string;
-  success: number; // 成功獎勵光幣
-  fail: number; // 失敗獎勵光幣
-  criteria: string; // 判定
+  // 任務型（需判定成功 / 失敗）：有 task / criteria / success / fail
+  task?: string;
+  criteria?: string; // 判定
+  success?: number; // 成功獎勵光幣
+  fail?: number; // 失敗獎勵光幣
   game?: string; // 任務需題庫時，對應的 gameName（地圖關主抽卡後直接抽題）
+  // 直接獎勵型（無任務）：有 reward，關主依描述直接執行
+  reward?: GoodReward;
+  rewardText?: string; // 直接獎勵卡的說明文字（顯示給關主執行）
 };
 
 export type BadOutcome = { label: string; deduct: number }; // deduct 為要扣的光幣（正數）
@@ -534,6 +551,16 @@ export const GOOD_LUCK_CARDS: GoodCard[] = [
   { name: "迷霧財寶", task: "說出 10 位工人的本名", difficulty: "困難", success: 500, fail: 100, criteria: "名字正確" },
   { name: "福星高照", task: "比手畫腳，3 分鐘內猜對 8 題", difficulty: "中等", success: 300, fail: 0, criteria: "猜對 8 題", game: "比手畫腳" },
   { name: "默契滿分", task: "默契大考驗（關鍵字全隊同動作），完成 3 題", difficulty: "簡單", success: 150, fail: 0, criteria: "完成 3 題", game: "默契大考驗" },
+
+  // ── 直接獎勵卡（無任務，關主依說明直接執行）─────────────────────
+  { name: "天降光幣", difficulty: "直接", reward: { kind: "coins", amount: 200 }, rewardText: "直接獲得 200 光幣，無需任務。" },
+  { name: "意外之財", difficulty: "直接", reward: { kind: "coins", amount: 350 }, rewardText: "直接獲得 350 光幣，無需任務。" },
+  { name: "命運眷顧", difficulty: "直接", reward: { kind: "wheel" }, rewardText: "免費轉一次命運輪盤（請到「命運輪盤」分頁執行）。" },
+  { name: "幸運彩券", difficulty: "直接", reward: { kind: "lottery" }, rewardText: "免費獲得一次大樂透抽籤（請到「大樂透」分頁登記號碼）。" },
+  { name: "神秘禮物", difficulty: "直接", reward: { kind: "card" }, rewardText: "免費抽一張功能卡 / 動產（由關主發放）。" },
+  { name: "向前躍進", difficulty: "直接", reward: { kind: "move" }, rewardText: "棋子前進 2 格（由關主於地圖移動）。" },
+  { name: "時光倒流", difficulty: "直接", reward: { kind: "move" }, rewardText: "棋子後退 2 格（由關主於地圖移動）。" },
+  { name: "傳送門", difficulty: "直接", reward: { kind: "move" }, rewardText: "直接移動到指定格（由關主指定並移動棋子）。" },
 ];
 
 // 厄運卡：扣錢牌 + 懲罰任務牌

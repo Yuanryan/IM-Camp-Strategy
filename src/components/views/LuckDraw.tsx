@@ -19,6 +19,13 @@ import {
 import type { ActiveItemView } from "@/lib/snapshot";
 
 const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+// 指示型直接獎勵 → 關主該到哪個分頁執行（coins 直接入帳，不在此表）
+const REWARD_TAB_HINT: Record<string, string> = {
+  wheel: "命運輪盤",
+  lottery: "大樂透",
+  card: "神秘商店 / 直接發放",
+  move: "地圖移動棋子",
+};
 // 從判定字串抽出目標題數（如「答對 3 題」→ 3）；無數字回 null（改人工判定）。
 const targetOf = (s?: string | null): number | null => {
   const m = s?.match(/(\d+)/);
@@ -138,43 +145,66 @@ export function LuckDraw({
           <div className="mb-2 flex items-start justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-md bg-amber-400/20 px-2 py-0.5 text-[11px] font-bold text-amber-300">
-                好運卡・光幣牌
+                {good.reward ? "好運卡・直接獎勵" : "好運卡・光幣牌"}
               </span>
               <span className="font-bold text-amber-100">{good.name}</span>
               <span className="chip px-1.5 py-0.5 text-xs">{good.difficulty}</span>
-              {event1 && (
+              {event1 && !good.reward && (
                 <span className="text-[11px] font-semibold text-amber-300">× 2（事件一）</span>
               )}
             </div>
             {/* 答對題數：移到右上、無外框 */}
             {good.game && <HeaderTally count={count} target={targetOf(good.criteria)} />}
           </div>
-          <p className="mb-1 text-sm text-slate-200">{good.task}</p>
-          <p className="mb-3 text-xs text-slate-500">判定：{good.criteria}・成功獎勵隨機（40% 光幣 / 40% 卡牌點數〔÷5〕/ 20% 動產〔稀有度加權〕）</p>
-          {good.game && (
-            <div className="mb-3 rounded-lg border border-white/10 bg-slate-950/40 p-3">
-              <QuestionBank key={good.name} game={good.game} onCorrect={() => setCount((c) => c + 1)} />
-            </div>
+
+          {good.reward ? (
+            /* ── 直接獎勵卡（無任務）：顯示說明，coins 直接入帳；其餘為指示型（關主於對應分頁執行）── */
+            <>
+              <p className="mb-3 text-sm text-slate-200">{good.rewardText}</p>
+              {good.reward.kind === "coins" ? (
+                <ActionButton
+                  label={goodLabel("領取", good.reward.amount)}
+                  className="w-full btn-emerald"
+                  disabled={team === ""}
+                  onAction={() => settle(good.reward!.kind === "coins" ? good.reward!.amount : 0, `好運卡 ${good.name}（直接獎勵）`)}
+                />
+              ) : (
+                <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-200/90">
+                  ⚑ 指示型獎勵：請依上方說明，到對應分頁（{REWARD_TAB_HINT[good.reward.kind]}）為該隊執行。
+                </div>
+              )}
+            </>
+          ) : (
+            /* ── 任務卡：原成功 / 失敗判定流程 ── */
+            <>
+              <p className="mb-1 text-sm text-slate-200">{good.task}</p>
+              <p className="mb-3 text-xs text-slate-500">判定：{good.criteria}・成功獎勵隨機（40% 光幣 / 40% 卡牌點數〔÷5〕/ 20% 動產〔稀有度加權〕）</p>
+              {good.game && (
+                <div className="mb-3 rounded-lg border border-white/10 bg-slate-950/40 p-3">
+                  <QuestionBank key={good.name} game={good.game} onCorrect={() => setCount((c) => c + 1)} />
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2">
+                <ActionButton
+                  label={goodLabel("成功", (good.success ?? 0) * mult)}
+                  className="w-full btn-emerald"
+                  disabled={team === ""}
+                  onAction={() => settle((good.success ?? 0) * mult, `好運卡 ${good.name}（成功）`)}
+                />
+                <ActionButton
+                  label={goodLabel("失敗", (good.fail ?? 0) * mult)}
+                  className="w-full chip"
+                  disabled={team === ""}
+                  onAction={() => settle((good.fail ?? 0) * mult, `好運卡 ${good.name}（失敗）`)}
+                />
+              </div>
+            </>
           )}
-          <div className="grid grid-cols-2 gap-2">
-            <ActionButton
-              label={goodLabel("成功", good.success * mult)}
-              className="w-full btn-emerald"
-              disabled={team === ""}
-              onAction={() => settle(good.success * mult, `好運卡 ${good.name}（成功）`)}
-            />
-            <ActionButton
-              label={goodLabel("失敗", good.fail * mult)}
-              className="w-full chip"
-              disabled={team === ""}
-              onAction={() => settle(good.fail * mult, `好運卡 ${good.name}（失敗）`)}
-            />
-          </div>
         </div>
       )}
 
-      {/* 好運卡任務計時器：抽到好運卡時顯示，角落膠囊可展開設定 / 啟動 */}
-      {good && <FloatingTimer timer={timer} expanded={timerOpen} setExpanded={setTimerOpen} />}
+      {/* 好運卡任務計時器：抽到任務型好運卡時顯示（直接獎勵卡無任務、不需計時） */}
+      {good && !good.reward && <FloatingTimer timer={timer} expanded={timerOpen} setExpanded={setTimerOpen} />}
 
       {bad && (
         <div className="rounded-xl border border-rose-400/30 bg-rose-500/5 p-4 ring-1 ring-rose-400/15">

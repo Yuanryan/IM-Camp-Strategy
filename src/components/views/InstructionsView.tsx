@@ -300,7 +300,7 @@ function ResourceSection() {
 
 function MapSection() {
   const tiles = [
-    { icon: Star, name: "光源點", desc: "抽好運卡，完成任務可得骰子、光幣、動產或情報", color: "text-amber-400", border: "border-amber-500/25", from: "from-amber-500/10" },
+    { icon: Star, name: "光源點", desc: "抽好運卡，完成任務可得光幣、動產等獎勵，也可能抽到直接獎勵（轉輪盤、抽籤、移動格數等）", color: "text-amber-400", border: "border-amber-500/25", from: "from-amber-500/10" },
     { icon: Map, name: "迷霧區", desc: "抽厄運卡，可能被扣光幣或執行懲罰任務", color: "text-slate-400", border: "border-slate-600/30", from: "from-slate-700/20" },
     { icon: Landmark, name: "資本據點", desc: "可購買或升級不動產；若有獨佔隊伍需繳過路費", color: "text-cyan-400", border: "border-cyan-500/25", from: "from-cyan-500/10" },
     { icon: Ticket, name: "大樂透登記", desc: "免費登記一個號碼，後續加購依 50×2ⁿ 計算", color: "text-rose-400", border: "border-rose-500/25", from: "from-rose-500/10" },
