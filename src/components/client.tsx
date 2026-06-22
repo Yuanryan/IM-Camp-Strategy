@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR, { mutate as globalMutate } from "swr";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import type { ReactNode } from "react";
 import type { Snapshot } from "@/lib/snapshot";
 import type { UndoRecipe } from "@/lib/game";
@@ -228,7 +228,7 @@ export function confirmDialog(message: string): Promise<boolean> {
   });
 }
 
-// 小隊下拉選擇
+// 小隊下拉選擇（自製，避免原生 <select> 在全螢幕模式下觸發離開全螢幕）
 export function TeamSelect({
   teams,
   value,
@@ -240,18 +240,55 @@ export function TeamSelect({
   onChange: (id: number | "") => void;
   placeholder?: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = teams.find((t) => t.id === value);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
   return (
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value ? Number(e.target.value) : "")}
-      className="fld min-w-36 font-medium"
-    >
-      <option value="">{placeholder}</option>
-      {teams.map((t) => (
-        <option key={t.id} value={t.id}>
-          {t.name}
-        </option>
-      ))}
-    </select>
+    <div ref={ref} className="relative min-w-36">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="fld flex w-full items-center justify-between gap-2 font-medium"
+      >
+        <span className="truncate">
+          {selected ? `${teams.indexOf(selected) + 1}. ${selected.name}` : placeholder}
+        </span>
+        <span className="text-slate-400">▾</span>
+      </button>
+      {open && (
+        <ul className="absolute left-0 top-full z-50 mt-1 w-full rounded-xl border border-white/10 bg-slate-900 py-1 shadow-xl">
+          <li>
+            <button
+              type="button"
+              onMouseDown={(e) => { e.preventDefault(); onChange(""); setOpen(false); }}
+              className="w-full px-3 py-2 text-left text-sm text-slate-400 hover:bg-white/8"
+            >
+              {placeholder}
+            </button>
+          </li>
+          {teams.map((t, i) => (
+            <li key={t.id}>
+              <button
+                type="button"
+                onMouseDown={(e) => { e.preventDefault(); onChange(t.id); setOpen(false); }}
+                className={`w-full px-3 py-2 text-left text-sm font-medium hover:bg-white/8 ${value === t.id ? "text-cyan-300" : "text-slate-100"}`}
+              >
+                {i + 1}. {t.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

@@ -11,6 +11,8 @@ datasource db {
   provider = "postgresql"
   // 單一連線：用 Supabase「Session pooler」(5432, IPv4)，app 與 db push 都走它
   url      = env("DATABASE_URL")
+  // 時區設定：所有 Timestamptz 欄位以 Asia/Taipei（GMT+8）讀寫
+  // Supabase 可在 Dashboard → Database → Extensions or SQL: SET timezone = 'Asia/Taipei'
 }
 
 // 本機若想改用 SQLite 開發，把上面整段換成：
@@ -25,7 +27,7 @@ model AccessToken {
   label     String // 顯示用：例如「交易所-1」「第3隊」
   teamId    Int?
   team      Team?    @relation(fields: [teamId], references: [id])
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz
 }
 
 model Team {
@@ -40,7 +42,7 @@ model Team {
   tokens         AccessToken[]
   items          TeamItem[]
   auctionsWon    AuctionLot[]
-  createdAt      DateTime        @default(now())
+  createdAt      DateTime        @default(now()) @db.Timestamptz
 }
 
 // 拍賣場次：一個事件包含多件拍賣品，並承載對小隊的公告橫幅。
@@ -51,8 +53,8 @@ model AuctionEvent {
   announcement String       @default("") // 給小隊看的公告（例如「5 分鐘後開始拍賣」）
   status       String       @default("OPEN") // OPEN | ENDED
   lots         AuctionLot[]
-  createdAt    DateTime     @default(now())
-  endedAt      DateTime?
+  createdAt    DateTime     @default(now()) @db.Timestamptz
+  endedAt      DateTime?    @db.Timestamptz
 }
 
 // 拍賣品：場次內逐件拍賣（英式喊價、一次一件）。
@@ -74,8 +76,8 @@ model AuctionLot {
   winnerTeam   Team?        @relation(fields: [winnerTeamId], references: [id])
   finalPrice   Int? // 落槌成交價
   ledgerIds    String       @default("") // CSV：成交時寫入的 ledger ids，供撤銷
-  createdAt    DateTime     @default(now())
-  soldAt       DateTime?
+  createdAt    DateTime     @default(now()) @db.Timestamptz
+  soldAt       DateTime?    @db.Timestamptz
 
   @@index([eventId, orderIndex])
 }
@@ -134,7 +136,7 @@ model TeamItem {
   note          String?      // 取得方式備註
   markTeamId    Int?                       // 鎖定目標小隊（海盜旗 PIRACY：被標記隊收過路費時抽成）
   lockedTradeId Int?                       // 非 null = 凍結於某筆 PENDING 交易中（暫不生效、不可重複交易）
-  obtainedAt    DateTime     @default(now())
+  obtainedAt    DateTime     @default(now()) @db.Timestamptz
 
   @@index([lockedTradeId])
 }
@@ -176,9 +178,9 @@ model GameState {
   lastDrawNumber    Int?
   lastDrawWinnerId  Int? // null = 無人中獎
   lastDrawPool      Int? // 中獎發出 / 無人中獎累積後的金額
-  lastDrawAt        DateTime? // 投影頁以此判斷是否有「新的一次開獎」
-  settledAt     DateTime?
-  updatedAt     DateTime @updatedAt
+  lastDrawAt        DateTime? @db.Timestamptz // 投影頁以此判斷是否有「新的一次開獎」
+  settledAt     DateTime?    @db.Timestamptz
+  updatedAt     DateTime     @updatedAt @db.Timestamptz
 }
 
 // 卡牌商店庫存
@@ -216,7 +218,7 @@ model Ledger {
   note      String?
   byToken   String? // 登記站別 label
   reversed  Boolean  @default(false)
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(now()) @db.Timestamptz
 }
 
 // 小隊間交易（單向轉帳；發起即凍結發起方資源，接受才撥給對方）
@@ -227,8 +229,8 @@ model Trade {
   coins      Int       @default(0)
   cardPoints Int       @default(0)
   status     String    @default("PENDING") // PENDING ACCEPTED REJECTED CANCELLED
-  createdAt  DateTime  @default(now())
-  resolvedAt DateTime?
+  createdAt  DateTime  @default(now()) @db.Timestamptz
+  resolvedAt DateTime? @db.Timestamptz
 
   @@index([toTeamId, status])
   @@index([fromTeamId, status])

@@ -1,3 +1,5 @@
+process.env.TZ = "Asia/Taipei"; // GMT+8；必須在任何 Date 運算之前設定
+
 import { PrismaClient } from "../src/generated/prisma";
 import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
@@ -62,6 +64,7 @@ async function reset() {
 }
 
 async function main() {
+  await prisma.$executeRaw`SET timezone = 'Asia/Taipei'`;
   await reset();
 
   // 不動產（四區域表）
@@ -99,11 +102,23 @@ async function main() {
   // 題庫由 prisma/load-questions.ts 維護，seed 不碰
 
   // 小隊
+  const TEAM_NAMES = [
+    "維積分小蔡一碟",
+    "蘇per idol就是你今晚的2孟",
+    "輝黃珊瑚海",
+    "404 not found",
+    "李好,五安",
+    "彭妤晏6下來陪我",
+    "尼粉7怪欸",
+    "乂闇影八番隊乂",
+    "醉翁紫意不在九",
+    "胃十道逆流",
+  ];
   const teams = [];
   for (let i = 1; i <= TEAM_COUNT; i++) {
     const t = await prisma.team.create({
       data: {
-        name: `第 ${i} 隊`,
+        name: TEAM_NAMES[i - 1] ?? `第 ${i} 隊`,
         coins: STARTING_COINS,
         cardPoints: STARTING_CARD_POINTS,
       },
