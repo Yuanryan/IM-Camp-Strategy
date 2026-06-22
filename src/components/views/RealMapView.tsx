@@ -146,14 +146,14 @@ export function RealMapView({
     return m;
   }, [snap?.teams, anim]);
 
-  // 逐格推進動畫
+  // 逐格推進動畫（每格 90ms，抵達後 150ms 收尾）。新移動會立即 setAnim(null) 中斷本動畫。
   useEffect(() => {
     if (!anim) return;
     if (anim.i >= anim.path.length - 1) {
-      const t = setTimeout(() => setAnim(null), 280);
+      const t = setTimeout(() => setAnim(null), 150);
       return () => clearTimeout(t);
     }
-    const t = setTimeout(() => setAnim((a) => (a ? { ...a, i: a.i + 1 } : a)), 110);
+    const t = setTimeout(() => setAnim((a) => (a ? { ...a, i: a.i + 1 } : a)), 90);
     return () => clearTimeout(t);
   }, [anim]);
 
@@ -168,7 +168,10 @@ export function RealMapView({
   // 執行移動。steps 正向時播放逐格動畫；落地寫入 routing card（不自動切頁）。
   const move = async (payload: { steps?: number; toIndex?: number }) => {
     if (team === "" || !cur) { toast("請先選擇小隊", "err"); return; }
-    if (busy) return;
+    if (busy) return; // 序列化網路請求，避免兩筆 POST 競爭同隊位置
+    // 「即按即走」：立刻把上一段動畫收尾到已落定的格（snapshot 已是該位置），
+    // 不讓殘留動畫卡住手感；接著才送新移動。
+    setAnim(null);
     setBusy(true);
     const fromPos = cur.boardPos;
     try {
@@ -360,7 +363,7 @@ export function RealMapView({
                     type="button"
                     onClick={() => setTeam(t.id)}
                     style={active ? { borderColor: `${c}99`, background: `${c}1a` } : undefined}
-                    className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition active:scale-[0.99] ${
+                    className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition-transform active:scale-[0.99] ${
                       active ? "" : "border-transparent hover:bg-white/5"
                     }`}
                   >
