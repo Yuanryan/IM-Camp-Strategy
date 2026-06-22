@@ -39,8 +39,15 @@ const PIPS: Record<number, number[]> = {
   1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8],
   5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8],
 };
+// 點在 100×100 viewBox 中的座標（與 PIPS index 對應）。
+const PIP_XY: [number, number][] = [
+  [28, 28], [50, 28], [72, 28],
+  [28, 50], [50, 50], [72, 50],
+  [28, 72], [50, 72], [72, 72],
+];
 
-// 骰面：1–6 顯示點數，其餘（卡片指定步數）顯示數字；發光顏色＝當前小隊色。
+// 骰面：用 SVG 畫，1–6 顯示點數、其餘顯示數字；發光顏色＝當前小隊色。
+// SVG 不受 flex/grid/display 影響，必定顯示。
 function DieFace({
   value,
   color,
@@ -53,39 +60,38 @@ function DieFace({
   rolling?: boolean;
 }) {
   const pip = PIPS[value];
-  const dot = Math.round(size * 0.13);
   return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        borderColor: `${color}88`,
-        boxShadow: `0 0 22px ${color}55, inset 0 0 14px ${color}22`,
-      }}
-      className={`grid shrink-0 grid-cols-3 grid-rows-3 rounded-2xl border-2 bg-slate-950/80 p-[14%] transition-transform ${
-        rolling ? "scale-105" : ""
-      }`}
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      className={`shrink-0 transition-transform ${rolling ? "scale-105" : ""}`}
+      style={{ filter: `drop-shadow(0 0 6px ${color}66)` }}
     >
+      <rect
+        x="3" y="3" width="94" height="94" rx="18"
+        fill="#020617"
+        stroke={color}
+        strokeWidth="3"
+        opacity="0.95"
+      />
       {pip ? (
-        Array.from({ length: 9 }).map((_, i) => (
-          <span key={i} className="flex items-center justify-center">
-            {pip.includes(i) && (
-              <span
-                style={{ width: dot, height: dot, background: color, boxShadow: `0 0 8px ${color}` }}
-                className="rounded-full"
-              />
-            )}
-          </span>
+        pip.map((i) => (
+          <circle key={i} cx={PIP_XY[i][0]} cy={PIP_XY[i][1]} r="8.5" fill={color} />
         ))
       ) : (
-        <span
-          style={{ color, gridColumn: "1 / span 3", gridRow: "1 / span 3" }}
-          className="num flex items-center justify-center text-3xl font-black"
+        <text
+          x="50" y="54"
+          textAnchor="middle"
+          dominantBaseline="middle"
+          fontSize="46"
+          fontWeight="900"
+          fill={color}
         >
           {value}
-        </span>
+        </text>
       )}
-    </div>
+    </svg>
   );
 }
 
@@ -146,16 +152,21 @@ export function RealMapView({
     return m;
   }, [snap?.teams, anim]);
 
-  // 逐格推進動畫（每格 90ms，抵達後 150ms 收尾）。新移動會立即 setAnim(null) 中斷本動畫。
+  // 逐格推進動畫（每格 90ms）。抵達終點後「不立刻清除」——要等 snapshot 的 boardPos
+  // 追上目標格才收尾，否則 anim 一清掉、棋子會閃回尚未更新的舊位置再跳回新位置。
+  // 設定 1.2s 後備逾時，避免 mutate 失敗時動畫卡住。新移動會 setAnim(null) 中斷本動畫。
   useEffect(() => {
     if (!anim) return;
-    if (anim.i >= anim.path.length - 1) {
-      const t = setTimeout(() => setAnim(null), 150);
+    const last = anim.path.length - 1;
+    if (anim.i >= last) {
+      const committed = snap?.teams.find((t) => t.id === anim.teamId)?.boardPos;
+      const caughtUp = committed === anim.path[last];
+      const t = setTimeout(() => setAnim(null), caughtUp ? 120 : 1200);
       return () => clearTimeout(t);
     }
     const t = setTimeout(() => setAnim((a) => (a ? { ...a, i: a.i + 1 } : a)), 90);
     return () => clearTimeout(t);
-  }, [anim]);
+  }, [anim, snap?.teams]);
 
   useEffect(() => () => { if (rollTimer.current) clearInterval(rollTimer.current); }, []);
 
@@ -363,7 +374,7 @@ export function RealMapView({
                     type="button"
                     onClick={() => setTeam(t.id)}
                     style={active ? { borderColor: `${c}99`, background: `${c}1a` } : undefined}
-                    className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition-transform active:scale-[0.99] ${
+                    className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition active:scale-[0.99] ${
                       active ? "" : "border-transparent hover:bg-white/5"
                     }`}
                   >
