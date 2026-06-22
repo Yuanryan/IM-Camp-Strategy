@@ -859,60 +859,94 @@ export type BoardSquare = {
   region?: RegionCode; // 僅 PROPERTY：對應四區
   x: number;           // 格中心 X（%）
   y: number;           // 格中心 Y（%）
+  w: number;           // 格寬（%）
+  h: number;           // 格高（%）
 };
 
-// 10×10 格線：每格 10%，格中心 = (col+0.5)*10、(row+0.5)*10。
-// row 0 = 上、row 9 = 下；col 0 = 左、col 9 = 右。
-const C = (col: number) => (col + 0.5) * 10;
-const R = (row: number) => (row + 0.5) * 10;
+// 棋盤實際比例（量自 map.png 像素，雙軸實測一致）：外框 1.5%，四角 12.5%×12.5%，
+// 邊格沿軌 9.0%、深 12.5%。對應企畫板 110 單位（框 0.7 / 角 13.9 / 邊 10.1），
+// 但實際 PNG 外框較大，故改用實測百分比，確保點擊熱區與棋子精準落在格上。
+// 角與邊不等寬，故各格自帶寬高（w/h，皆為百分比）。
+const FRAME = 1.5; // PNG 外框（%）
+const CORNER_SIDE = 12.5; // 角格邊長（%）
+const EDGE_SHORT = 9.0; // 邊格沿軌長度 / 短邊（%）
+const NEAR = FRAME + CORNER_SIDE / 2; // 近邊角 / 邊帶中心 ≈ 7.75%
+const FAR = 100 - NEAR; // 遠邊 ≈ 92.25%
+// 8 個邊格沿軌中心（自起始角往遠角遞增）
+const EDGE_CENTER = Array.from({ length: 8 }, (_, i) =>
+  FRAME + CORNER_SIDE + (i + 0.5) * EDGE_SHORT,
+);
 
-// 順時針自左下角 START 起：上行左邊 → 頂排 → 右邊 → 底排回 START。
-export const BOARD: BoardSquare[] = [
-  // ── 左下角：起點 ──
-  { index: 0, label: "中央燈塔・起點", kind: "START", x: C(0), y: R(9) },
-  // ── 左排（col 0），由下往上 row 8→1 ──
-  { index: 1, label: "工域星籤所大樂透", kind: "LOTTERY_REG", x: C(0), y: R(8) },
-  { index: 2, label: "影焰工域", kind: "PROPERTY", region: "EMBER", x: C(0), y: R(7) },
-  { index: 3, label: "碼頭進貨光源", kind: "GLOW", x: C(0), y: R(6) },
-  { index: 4, label: "半導體製造光源", kind: "GLOW", x: C(0), y: R(5) },
-  { index: 5, label: "影焰工域", kind: "PROPERTY", region: "EMBER", x: C(0), y: R(4) },
-  { index: 6, label: "原料補給光源", kind: "GLOW", x: C(0), y: R(3) },
-  { index: 7, label: "影焰工域", kind: "PROPERTY", region: "EMBER", x: C(0), y: R(2) },
-  { index: 8, label: "人才流失迷霧", kind: "FOG", x: C(0), y: R(1) },
-  // ── 左上角：神秘商店 ──
-  { index: 9, label: "神秘商店", kind: "SHOP", x: C(0), y: R(0) },
-  // ── 頂排（row 0），col 1→8 ──
-  { index: 10, label: "極光金域", kind: "PROPERTY", region: "AURORA", x: C(1), y: R(0) },
-  { index: 11, label: "獲得利息光源", kind: "GLOW", x: C(2), y: R(0) },
-  { index: 12, label: "小福施工迷霧", kind: "FOG", x: C(3), y: R(0) },
-  { index: 13, label: "極光金域", kind: "PROPERTY", region: "AURORA", x: C(4), y: R(0) },
-  { index: 14, label: "星籤登記所大樂透", kind: "LOTTERY_REG", x: C(5), y: R(0) },
-  { index: 15, label: "極光金域", kind: "PROPERTY", region: "AURORA", x: C(6), y: R(0) },
-  { index: 16, label: "極光金域", kind: "PROPERTY", region: "AURORA", x: C(7), y: R(0) },
-  { index: 17, label: "IM百貨週年慶光源", kind: "GLOW", x: C(8), y: R(0) },
-  // ── 右上角：命運輪盤 ──
-  { index: 18, label: "命運投資輪盤・賭博事件", kind: "WHEEL", x: C(9), y: R(0) },
-  // ── 右排（col 9），row 1→8 ──
-  { index: 19, label: "成為Google正職光源", kind: "GLOW", x: C(9), y: R(1) },
-  { index: 20, label: "靈序研究", kind: "PROPERTY", region: "SPECTRA", x: C(9), y: R(2) },
-  { index: 21, label: "靈序星籤所大樂透", kind: "LOTTERY_REG", x: C(9), y: R(3) },
-  { index: 22, label: "靈序研究", kind: "PROPERTY", region: "SPECTRA", x: C(9), y: R(4) },
-  { index: 23, label: "管圖重建迷霧", kind: "FOG", x: C(9), y: R(5) },
-  { index: 24, label: "科技突破光源", kind: "GLOW", x: C(9), y: R(6) },
-  { index: 25, label: "Gemini當機迷霧", kind: "FOG", x: C(9), y: R(7) },
-  { index: 26, label: "靈序研究", kind: "PROPERTY", region: "SPECTRA", x: C(9), y: R(8) },
-  // ── 右下角：大樂透開獎 ──
-  { index: 27, label: "大樂透開獎格", kind: "LOTTERY_DRAW", x: C(9), y: R(9) },
-  // ── 底排（row 9），col 8→1（順時針往回走向 START）──
-  { index: 28, label: "工業污染迷霧", kind: "FOG", x: C(8), y: R(9) },
-  { index: 29, label: "抽中太子學舍光源", kind: "GLOW", x: C(7), y: R(9) },
-  { index: 30, label: "晨霧棲城", kind: "PROPERTY", region: "HAVEN", x: C(6), y: R(9) },
-  { index: 31, label: "棲城星籤所大樂透", kind: "LOTTERY_REG", x: C(5), y: R(9) },
-  { index: 32, label: "療養院聚餐光源", kind: "GLOW", x: C(4), y: R(9) },
-  { index: 33, label: "晨霧棲城", kind: "PROPERTY", region: "HAVEN", x: C(3), y: R(9) },
-  { index: 34, label: "晨霧棲城", kind: "PROPERTY", region: "HAVEN", x: C(2), y: R(9) },
-  { index: 35, label: "醫療進步光源", kind: "GLOW", x: C(1), y: R(9) },
+// 依 index 算出格中心與寬高（%）。角格正方；邊格短邊沿軌、長邊＝邊帶深度。
+function squareGeometry(index: number): { x: number; y: number; w: number; h: number } {
+  // 四角（正方）
+  if (index === 0) return { x: NEAR, y: FAR, w: CORNER_SIDE, h: CORNER_SIDE }; // 左下：起點
+  if (index === 9) return { x: NEAR, y: NEAR, w: CORNER_SIDE, h: CORNER_SIDE }; // 左上：神秘商店
+  if (index === 18) return { x: FAR, y: NEAR, w: CORNER_SIDE, h: CORNER_SIDE }; // 右上：命運輪盤
+  if (index === 27) return { x: FAR, y: FAR, w: CORNER_SIDE, h: CORNER_SIDE }; // 右下：大樂透開獎
+  // 左排（1..8）：x 固定近邊，y 由下而上（深度為 x 向 → w 較寬）
+  if (index >= 1 && index <= 8)
+    return { x: NEAR, y: EDGE_CENTER[8 - index], w: CORNER_SIDE, h: EDGE_SHORT };
+  // 頂排（10..17）：y 固定近邊，x 由左而右（深度為 y 向 → h 較高）
+  if (index >= 10 && index <= 17)
+    return { x: EDGE_CENTER[index - 10], y: NEAR, w: EDGE_SHORT, h: CORNER_SIDE };
+  // 右排（19..26）：x 固定遠邊，y 由上而下
+  if (index >= 19 && index <= 26)
+    return { x: FAR, y: EDGE_CENTER[index - 19], w: CORNER_SIDE, h: EDGE_SHORT };
+  // 底排（28..35）：y 固定遠邊，x 由右而左
+  return { x: EDGE_CENTER[35 - index], y: FAR, w: EDGE_SHORT, h: CORNER_SIDE };
+}
+
+// 各格 metadata（順時針自左下角 START；region 僅 PROPERTY 用）。幾何由 squareGeometry 套上。
+const BOARD_META: { label: string; kind: SquareKind; region?: RegionCode }[] = [
+  { label: "中央燈塔・起點", kind: "START" }, // 0  左下角
+  // ── 左排（由下往上）──
+  { label: "工域星籤所大樂透", kind: "LOTTERY_REG" }, // 1
+  { label: "影焰工域", kind: "PROPERTY", region: "EMBER" }, // 2
+  { label: "碼頭進貨光源", kind: "GLOW" }, // 3
+  { label: "半導體製造光源", kind: "GLOW" }, // 4
+  { label: "影焰工域", kind: "PROPERTY", region: "EMBER" }, // 5
+  { label: "原料補給光源", kind: "GLOW" }, // 6
+  { label: "影焰工域", kind: "PROPERTY", region: "EMBER" }, // 7
+  { label: "人才流失迷霧", kind: "FOG" }, // 8
+  { label: "神秘商店", kind: "SHOP" }, // 9  左上角
+  // ── 頂排（由左往右）──
+  { label: "極光金域", kind: "PROPERTY", region: "AURORA" }, // 10
+  { label: "獲得利息光源", kind: "GLOW" }, // 11
+  { label: "小福施工迷霧", kind: "FOG" }, // 12
+  { label: "極光金域", kind: "PROPERTY", region: "AURORA" }, // 13
+  { label: "星籤登記所大樂透", kind: "LOTTERY_REG" }, // 14
+  { label: "極光金域", kind: "PROPERTY", region: "AURORA" }, // 15
+  { label: "極光金域", kind: "PROPERTY", region: "AURORA" }, // 16
+  { label: "IM百貨週年慶光源", kind: "GLOW" }, // 17
+  { label: "命運投資輪盤・賭博事件", kind: "WHEEL" }, // 18 右上角
+  // ── 右排（由上往下）──
+  { label: "成為Google正職光源", kind: "GLOW" }, // 19
+  { label: "靈序研究", kind: "PROPERTY", region: "SPECTRA" }, // 20
+  { label: "靈序星籤所大樂透", kind: "LOTTERY_REG" }, // 21
+  { label: "靈序研究", kind: "PROPERTY", region: "SPECTRA" }, // 22
+  { label: "管圖重建迷霧", kind: "FOG" }, // 23
+  { label: "科技突破光源", kind: "GLOW" }, // 24
+  { label: "Gemini當機迷霧", kind: "FOG" }, // 25
+  { label: "靈序研究", kind: "PROPERTY", region: "SPECTRA" }, // 26
+  { label: "大樂透開獎格", kind: "LOTTERY_DRAW" }, // 27 右下角
+  // ── 底排（由右往左，順時針回 START）──
+  { label: "工業污染迷霧", kind: "FOG" }, // 28
+  { label: "抽中太子學舍光源", kind: "GLOW" }, // 29
+  { label: "晨霧棲城", kind: "PROPERTY", region: "HAVEN" }, // 30
+  { label: "棲城星籤所大樂透", kind: "LOTTERY_REG" }, // 31
+  { label: "療養院聚餐光源", kind: "GLOW" }, // 32
+  { label: "晨霧棲城", kind: "PROPERTY", region: "HAVEN" }, // 33
+  { label: "晨霧棲城", kind: "PROPERTY", region: "HAVEN" }, // 34
+  { label: "醫療進步光源", kind: "GLOW" }, // 35
 ];
+
+// 順時針自左下角 START 起：左排 → 頂排 → 右排 → 底排回 START。
+export const BOARD: BoardSquare[] = BOARD_META.map((m, index) => ({
+  index,
+  ...m,
+  ...squareGeometry(index),
+}));
 
 export const BOARD_SIZE = BOARD.length; // 36
 

@@ -46,8 +46,8 @@ next-env.d.ts
 /prisma/*.db-journal
 *.db
 
-# generated QR sheet (contains login tokens)
-/qr-codes.html
-
 # generated prisma client
 /src/generated/
+
+
+.dev.log
