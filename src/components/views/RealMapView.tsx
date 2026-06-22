@@ -10,6 +10,9 @@ import {
   squareToTab,
   squareHint,
   REGION_UI,
+  EffectType,
+  applyToll,
+  stackEffects,
   type BoardSquare,
   type MapTab,
   type RegionCode,
@@ -33,6 +36,27 @@ function pieceColor(idx: number): string {
   return PIECE_COLORS[idx % PIECE_COLORS.length];
 }
 const ACCENT = "#22d3ee"; // 未選小隊時的中性主色
+
+// 擲骰前進＝該隊的一回合，會自動結算這些「每輪收益 / 提醒」效果（呼叫 round-income）。
+const ROUND_GATE_TYPES: string[] = [
+  EffectType.COINS_PER_ROUND,
+  EffectType.COMPOUND_INTEREST,
+  EffectType.PROPERTY_DIVIDEND,
+  EffectType.UNDERDOG,
+  EffectType.REMINDER,
+];
+
+// 道具 condition（JSON）是否套用於某區（與 service.loadActiveEffects 一致）：
+// null=無條件套用；{"region":X} 僅當區域相符才套用。
+function condMatchesRegion(condition: string | null, region: string): boolean {
+  if (!condition) return true;
+  try {
+    const c = JSON.parse(condition) as { region?: string };
+    return !c.region || c.region === region;
+  } catch {
+    return false;
+  }
+}
 
 // 骰面點數位置（3×3 格，index 0..8）。
 const PIPS: Record<number, number[]> = {
@@ -175,30 +199,114 @@ export function RealMapView({
   const curIdx = teams.findIndex((t) => t.id === team);
   const cur = curIdx >= 0 ? teams[curIdx] : undefined;
   const teamColor = cur ? pieceColor(curIdx) : ACCENT;
+  // 該隊的「提醒」道具：擲骰前進前先讓關主看到（前進時會自動消耗一次）。
+  const reminders = (cur?.items ?? []).filter((i) => i.effectType === EffectType.REMINDER);
+
+  // 某區「所選小隊實付」的過路費：base × (1 + 獨佔隊 TOLL_INCOME + 該隊 TOLL_PAID)，
+  // 並依道具 condition 篩選區域。未選小隊時只計獨佔隊的 TOLL_INCOME（顯示基準值）。
+  // 與 service.payToll 同口徑，故地圖徽章＝實際扣款金額。
+  const tollFor = (regionCode: string, baseToll: number, monopolyTeamId: number): number => {
+    const monoItems = teams.find((t) => t.id === monopolyTeamId)?.items ?? [];
+    const incomeDelta = stackEffects(
+      monoItems
+        .filter((i) => i.effectType === EffectType.TOLL_INCOME && condMatchesRegion(i.condition, regionCode))
+        .map((i) => i.effectValue),
+    );
+    const paidDelta =
+      team !== ""
+        ? stackEffects(
+            (cur?.items ?? [])
+              .filter((i) => i.effectType === EffectType.TOLL_PAID && condMatchesRegion(i.condition, regionCode))
+              .map((i) => i.effectValue),
+          )
+        : 0;
+    return applyToll(baseToll, incomeDelta, paidDelta);
+  };
 
   // 執行移動。steps 正向時播放逐格動畫；落地寫入 routing card（不自動切頁）。
   const move = async (payload: { steps?: number; toIndex?: number }) => {
     if (team === "" || !cur) { toast("請先選擇小隊", "err"); return; }
     if (busy) return; // 序列化網路請求，避免兩筆 POST 競爭同隊位置
-    // 「即按即走」：立刻把上一段動畫收尾到已落定的格（snapshot 已是該位置），
-    // 不讓殘留動畫卡住手感；接著才送新移動。
-    setAnim(null);
     setBusy(true);
     const fromPos = cur.boardPos;
+    const isDiceMove = !!payload.steps && payload.steps > 0;
+
+    // 樂觀動畫：擲骰前進「立刻」開始走（路徑＝目前格 + 步數，與伺服器 advance 同算法），
+    // 不等任何 API；棋子在等待結算 / 過路費期間維持在動畫途中 / 目的地，不會閃回原位。
+    // 微調 / 傳送：直接吃 snapshot 位置（清掉殘留動畫）。
+    if (isDiceMove) {
+      const path = Array.from({ length: payload.steps! + 1 }, (_, k) => (fromPos + k) % BOARD_SIZE);
+      setAnim({ teamId: team, path, i: 0 });
+    } else {
+      setAnim(null);
+    }
+
     try {
       const r = await postJson("/api/map/move", { teamId: team, ...payload });
       const target = r.landed as BoardSquare;
-      // 逐格動畫（僅正向擲骰）
-      if (payload.steps && payload.steps > 0) {
-        const path = Array.from({ length: payload.steps + 1 }, (_, k) => (fromPos + k) % BOARD_SIZE);
-        setAnim({ teamId: team, path, i: 0 });
+
+      // 擲骰前進＝該隊一回合 → 自動結算每輪收益（僅當該隊持有相關道具，否則 API 會報錯）。
+      let roundIncome = 0;
+      if (isDiceMove && (cur.items ?? []).some((i) => ROUND_GATE_TYPES.includes(i.effectType))) {
+        try {
+          const s = await postJson("/api/host/round-income", { teamId: team });
+          roundIncome = (s.results ?? []).reduce(
+            (acc: number, x: { income: number }) => acc + (x.income ?? 0),
+            0,
+          );
+        } catch {
+          /* 無收益 / 提醒道具等情況忽略 */
+        }
       }
+
+      // 踩到資產格且該區由他隊獨佔 → 自動收過路費（用落地前快照判定獨佔，移動不改變持有）。
+      let tollPaid = 0;
+      let tollUndo: UndoRecipe | undefined;
+      let tollErr: string | null = null;
+      if (isDiceMove && target.kind === "PROPERTY" && target.region) {
+        const ri = snap.regions.find((x) => x.code === target.region);
+        // 僅當該區由他隊獨佔、且「實付」過路費 > 0（免疫道具可能扣到 0）才扣款。
+        if (
+          ri &&
+          ri.monopolyTeamId != null &&
+          ri.monopolyTeamId !== team &&
+          (ri.toll ?? 0) > 0 &&
+          tollFor(target.region, ri.toll, ri.monopolyTeamId) > 0
+        ) {
+          const prop = snap.properties.find((p) => p.region === target.region);
+          if (prop) {
+            try {
+              const tr = await postJson("/api/exchange/toll", { propertyId: prop.id, payerTeamId: team });
+              tollPaid = tr.toll ?? 0;
+              tollUndo = tr.undo as UndoRecipe;
+            } catch (e) {
+              tollErr = e instanceof Error ? e.message : "過路費扣款失敗";
+            }
+          }
+        }
+      }
+
       await mutate();
       setLanded(target);
-      if (r.passedStart) {
-        toast(`${cur.name} 過起點 +收益`, "ok", r.undo as UndoRecipe | undefined);
+
+      // 整合提示與撤銷（過起點 + 過路費 合併 ledger，一鍵還原）。
+      if (tollErr) {
+        toast(`${cur.name}・過路費未扣（${tollErr}），請至交易所手動收取`, "err");
+      } else {
+        const undoIds = [
+          ...(r.passedStart && r.undo ? (r.undo as UndoRecipe).ledgerIds : []),
+          ...(tollUndo ? tollUndo.ledgerIds : []),
+        ];
+        const undo = undoIds.length ? { label: "撤銷移動結算", ledgerIds: undoIds } : undefined;
+        const bits: string[] = [];
+        if (roundIncome > 0) bits.push(`回合收益 +${roundIncome}`);
+        if (tollPaid > 0) bits.push(`付過路費 -${tollPaid}`);
+        if (r.passedStart) bits.push("過起點 +收益");
+        if (bits.length) toast(`${cur.name}・${bits.join("・")}`, "ok", undo);
       }
     } catch (e) {
+      // 移動 API 失敗 → 取消樂觀動畫，棋子回到實際（未移動）位置。
+      setAnim(null);
       toast(e instanceof Error ? e.message : "移動失敗", "err");
     } finally {
       setBusy(false);
@@ -225,14 +333,15 @@ export function RealMapView({
   const dieValue = Math.max(1, steps || 1);
 
   return (
-    // 跳出 Shell 的 max-w-5xl 置中欄，讓中控台用滿視窗寬度（上限 1700）。
-    <div className="relative left-1/2 w-screen -translate-x-1/2 px-4 sm:px-6">
-    <div className="mx-auto flex h-[calc(100vh-140px)] min-h-[640px] max-w-[1700px] gap-4 max-lg:h-auto max-lg:flex-col">
+    // 桌機（lg+）跳出 Shell 的 max-w-5xl 置中欄用滿視窗寬度（上限 1700）；
+    // 行動裝置不跳出（避免 100vw 因捲軸寬溢出產生橫向捲動），維持正常欄寬堆疊。
+    <div className="lg:relative lg:left-1/2 lg:w-screen lg:-translate-x-1/2 lg:px-6">
+    <div className="mx-auto flex h-[calc(100dvh-178px)] max-w-[1700px] gap-4 overflow-hidden max-lg:h-auto max-lg:flex-col max-lg:overflow-visible">
       {/* ── 棋盤 ─────────────────────────────────────────────── */}
       {/* 用 container-query 的 cqmin 把地圖縮成「同時塞進寬與高」的正方形，避免裁切，
           且方形容器尺寸＝顯示圖框，% 疊放的棋子才會對齊。 */}
       <div
-        className="relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-white/10 bg-[#0B1221] shadow-2xl max-lg:aspect-square max-lg:flex-none"
+        className="relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-white/10 bg-[#0B1221] shadow-2xl max-lg:aspect-square max-lg:max-h-[60vh] max-lg:w-full max-lg:flex-none"
         style={{ containerType: "size" }}
       >
         <div className="absolute inset-0 m-auto" style={{ width: "100cqmin", height: "100cqmin" }}>
@@ -242,12 +351,20 @@ export function RealMapView({
             const occupants = teamsBySquare.get(sq.index) ?? [];
             const isCur = cur?.boardPos === sq.index && !anim;
             const isLanded = landed?.index === sq.index;
+            // 過路費標示：資產格且該區由「他隊」獨佔（相對所選小隊；未選隊＝任何獨佔皆標示）。
+            // 金額採「所選小隊實付」口徑（含 TOLL_INCOME / TOLL_PAID 道具），與自動扣款一致。
+            const ri = sq.kind === "PROPERTY" && sq.region ? snap.regions.find((x) => x.code === sq.region) : undefined;
+            const monopolyByOther = ri?.monopolyTeamId != null && ri.monopolyTeamId !== team && (ri.toll ?? 0) > 0;
+            const tollAmt = monopolyByOther ? tollFor(sq.region!, ri!.toll, ri!.monopolyTeamId!) : 0;
+            const tollable = monopolyByOther && tollAmt > 0;
+            const monoIdx = tollable ? teams.findIndex((t) => t.id === ri!.monopolyTeamId) : -1;
+            const monoColor = monoIdx >= 0 ? pieceColor(monoIdx) : "#f43f5e";
             return (
               <button
                 key={sq.index}
                 type="button"
                 onClick={() => onSquareClick(sq)}
-                title={`${sq.index}. ${sq.label}`}
+                title={`${sq.index}. ${sq.label}${tollable ? `（過路費 ${tollAmt} → ${ri!.monopolyTeamName}）` : ""}`}
                 style={{ left: `${sq.x}%`, top: `${sq.y}%`, width: `${sq.w}%`, height: `${sq.h}%` }}
                 className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-md transition ${
                   teleport
@@ -259,6 +376,21 @@ export function RealMapView({
                         : "cursor-default"
                 }`}
               >
+                {/* 過路費標示：獨佔隊配色的內框 + 金額徽章 */}
+                {tollable && (
+                  <span
+                    className="pointer-events-none absolute inset-0 rounded-md"
+                    style={{ boxShadow: `inset 0 0 0 2px ${monoColor}cc, 0 0 8px ${monoColor}55` }}
+                  />
+                )}
+                {tollable && (
+                  <span
+                    className="pointer-events-none absolute left-1/2 top-px z-10 -translate-x-1/2 whitespace-nowrap rounded-full px-1 py-px text-[8px] font-black leading-none shadow"
+                    style={{ background: monoColor, color: "#0b1221" }}
+                  >
+                    過路{tollAmt}
+                  </span>
+                )}
                 {occupants.length > 0 && (
                   <span className="pointer-events-none absolute inset-0 flex flex-wrap items-center justify-center gap-0.5">
                     {occupants.map((o, i) => {
@@ -288,10 +420,10 @@ export function RealMapView({
         </div>
       </div>
 
-      {/* ── 控制台（側欄）─────────────────────────────────────── */}
-      <aside className="flex w-[360px] shrink-0 flex-col gap-3 overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/60 p-4 backdrop-blur-xl max-lg:w-full">
+      {/* ── 控制台（側欄）：整頁不捲動，只有隊伍清單在空間不足時內部捲動 ── */}
+      <aside className="flex w-[330px] shrink-0 flex-col gap-2.5 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-3 backdrop-blur-xl xl:w-[380px] max-lg:w-full max-lg:overflow-visible">
         {/* 1. 當前小隊 + 擲骰 */}
-        <section className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+        <section className="shrink-0 rounded-xl border border-white/10 bg-white/[0.03] p-3">
           <div className="mb-3 flex items-center justify-between">
             <span className="text-xs font-semibold tracking-wider text-slate-400">操作小隊</span>
             {cur && (
@@ -303,13 +435,26 @@ export function RealMapView({
           </div>
           <TeamSelect teams={teams} value={team} onChange={setTeam} />
 
+          {/* 本隊提醒道具（前進時自動消耗一次；先讓關主看到再擲骰）*/}
+          {reminders.length > 0 && (
+            <div className="mt-2 space-y-1 rounded-lg border border-amber-400/40 bg-amber-400/10 px-2.5 py-2">
+              <div className="text-xs font-bold tracking-wide text-amber-300">⚑ 本隊提醒</div>
+              {reminders.map((r) => (
+                <div key={r.id} className="text-[11px] leading-snug text-amber-100/90">
+                  <span className="font-semibold">{r.name}</span>
+                  {r.usesRemaining !== null && (
+                    <span className="text-amber-200/70">（剩 {r.usesRemaining} 次）</span>
+                  )}
+                  <span className="text-amber-200/70"> — {r.description}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* 骰子儀表 */}
           <div className="mt-4 flex items-center gap-4">
-            <DieFace value={dieValue} color={teamColor} size={84} rolling={rolling} />
+            <DieFace value={dieValue} color={teamColor} size={78} rolling={rolling} />
             <div className="min-w-0 flex-1">
-              <div className="text-[11px] font-semibold tracking-wider text-slate-500">
-                點選擲出的點數
-              </div>
               <div className="mt-1.5 grid grid-cols-6 gap-1">
                 {[1, 2, 3, 4, 5, 6].map((n) => (
                   <button
@@ -341,7 +486,7 @@ export function RealMapView({
                   disabled={team === "" || rolling || busy}
                   className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/5 text-xs font-semibold text-slate-300 transition hover:bg-white/10 active:scale-95 disabled:opacity-30"
                 >
-                  <Dice5 className="h-3.5 w-3.5" /> 系統擲骰
+                  <Dice5 className="h-3.5 w-3.5" /> 擲骰子
                 </button>
               </div>
             </div>
@@ -361,10 +506,10 @@ export function RealMapView({
         {/* 2. 落地路由卡 */}
         {landed && <RoutingCard sq={landed} onGo={() => onLand(squareToTab(landed))} onClose={() => setLanded(null)} />}
 
-        {/* 3. 隊伍雷達 */}
-        <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+        {/* 3. 隊伍雷達（佔據剩餘空間；雙欄精簡，必要時僅此處內部捲動）*/}
+        <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-white/10 bg-white/[0.03] p-3">
           <div className="mb-2 px-1 text-xs font-semibold tracking-wider text-slate-400">隊伍位置</div>
-          <ul className="space-y-1">
+          <ul className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-1 overflow-y-auto max-lg:max-h-72">
             {teams.map((t, idx) => {
               const active = t.id === team;
               const c = pieceColor(idx);
@@ -374,7 +519,7 @@ export function RealMapView({
                     type="button"
                     onClick={() => setTeam(t.id)}
                     style={active ? { borderColor: `${c}99`, background: `${c}1a` } : undefined}
-                    className={`flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition active:scale-[0.99] ${
+                    className={`flex w-full items-center gap-2 rounded-lg border px-2 py-1 text-left transition-transform active:scale-[0.99] ${
                       active ? "" : "border-transparent hover:bg-white/5"
                     }`}
                   >
@@ -384,8 +529,10 @@ export function RealMapView({
                     >
                       {t.id}
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-slate-100">{t.name}</span>
-                    <span className="shrink-0 text-xs text-slate-400">{boardSquareAt(t.boardPos).label}</span>
+                    <span className="min-w-0 flex-1 leading-tight">
+                      <span className="block truncate text-xs font-semibold text-slate-100">{t.name}</span>
+                      <span className="block truncate text-[10px] text-slate-400">{boardSquareAt(t.boardPos).label}</span>
+                    </span>
                   </button>
                 </li>
               );
@@ -394,7 +541,7 @@ export function RealMapView({
         </section>
 
         {/* 4. 微調 / 傳送 */}
-        <section className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+        <section className="shrink-0 rounded-xl border border-white/10 bg-white/[0.03] p-3">
           <div className="mb-2 px-1 text-xs font-semibold tracking-wider text-slate-400">微調 / 傳送</div>
           <div className="flex gap-2">
             <button
@@ -454,7 +601,7 @@ function RoutingCard({
   const { tab } = squareToTab(sq);
   const showGo = sq.kind !== "START";
   return (
-    <section className={`relative rounded-xl border bg-white/[0.04] p-4 ${tone.ring} shadow-[0_0_20px_rgba(255,255,255,0.06)]`}>
+    <section className={`relative shrink-0 rounded-xl border bg-white/[0.04] p-3 ${tone.ring} shadow-[0_0_20px_rgba(255,255,255,0.06)]`}>
       <button
         type="button"
         onClick={onClose}

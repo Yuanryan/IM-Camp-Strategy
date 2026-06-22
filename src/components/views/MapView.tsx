@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSnapshot, postJson, ActionButton, TeamSelect, toast } from "@/components/client";
+import { useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { RewardButtons } from "@/components/RewardPanel";
 import { LotteryView } from "@/components/views/LotteryView";
 import { WheelView } from "@/components/views/WheelView";
@@ -13,7 +13,6 @@ import { Card, StickyTeam } from "@/components/Shell";
 import { Num, EventBanner, HudTabs, TeamItemBadges, FloatingDesc } from "@/components/ui";
 import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, EffectType, ITEM_GRADE_COLORS, stackEffects, applyToll, type UndoRecipe } from "@/lib/game";
 import { Map, CircleDollarSign, LoaderPinwheel, Building2, Store, Gamepad2 } from "lucide-react";
-import type { Snapshot } from "@/lib/snapshot";
 
 export function MapView() {
   const { snap, mutate } = useSnapshot(2500);
@@ -26,11 +25,6 @@ export function MapView() {
   const [tab, setTab] = useState<"realmap" | "map" | "lottery" | "wheel" | "exchange" | "shop">("realmap");
   const [openItemId, setOpenItemId] = useState<number | null>(null);
   const [hoverItemId, setHoverItemId] = useState<number | null>(null);
-  // 回合結算門檻：已結算過的小隊 id；切換小隊即重置 → 回到任何隊都要重新結算
-  const [settledTeam, setSettledTeam] = useState<number | "">("");
-  useEffect(() => {
-    setSettledTeam("");
-  }, [team]);
   // 點擊版本數秒後自動消失
   useEffect(() => {
     if (openItemId === null) return;
@@ -64,12 +58,8 @@ export function MapView() {
     return !!ri?.monopolyTeamName && !(team !== "" && ri.monopolyTeamId === team);
   });
 
-  // 回合結算門檻：該隊持有每輪收益 / 提醒道具時，須先按「結算」才解鎖其他操作卡。
-  const hasRoundItems =
-    !!cur && (cur.items ?? []).some((i) => ROUND_GATE_TYPES.includes(i.effectType));
-  const needsSettle = hasRoundItems && settledTeam !== team;
-  // 操作卡鎖定：尚未選小隊，或該隊尚未結算本回合
-  const cardsLocked = team === "" || needsSettle;
+  // 操作卡鎖定：尚未選小隊即可（回合結算已移至「遊戲地圖」擲骰前進時自動執行）。
+  const cardsLocked = team === "";
 
   return (
     <div className="space-y-4">
@@ -136,15 +126,7 @@ export function MapView() {
             />
           </StickyTeam>
 
-          {/* ── 回合結算（每輪收益 + 提醒）─────────────────────── */}
-          <RoundSettlePanel
-            team={cur}
-            settled={settledTeam === team}
-            onSettled={() => setSettledTeam(team)}
-            onDone={mutate}
-          />
-
-          {/* 未選小隊或回合結算門檻未完成時，鎖定以下操作卡 */}
+          {/* 未選小隊時鎖定以下操作卡 */}
           {team === "" && (
             <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 py-3 text-center text-sm font-semibold text-amber-300">
               ⚠ 請先於上方選擇小隊
@@ -335,123 +317,5 @@ export function MapView() {
         </>
       )}
     </div>
-  );
-}
-
-// 每輪收益類效果（與 service.distributeRoundIncome 的 ROUND_TYPES 一致）
-const ROUND_INCOME_TYPES: string[] = [
-  EffectType.COINS_PER_ROUND,
-  EffectType.COMPOUND_INTEREST,
-  EffectType.PROPERTY_DIVIDEND,
-  EffectType.UNDERDOG,
-];
-// 觸發回合結算門檻的效果（每輪收益 + 提醒）
-const ROUND_GATE_TYPES: string[] = [...ROUND_INCOME_TYPES, EffectType.REMINDER];
-
-// ── 回合結算（單一小隊）：列出該隊每輪收益 / 提醒道具，並一鍵結算消耗提醒次數 ──
-// 該隊無任何相關道具時整張卡不顯示。
-function RoundSettlePanel({
-  team,
-  settled,
-  onSettled,
-  onDone,
-}: {
-  team: Snapshot["teams"][number] | undefined;
-  settled: boolean;
-  onSettled: () => void;
-  onDone: () => void | Promise<unknown>;
-}) {
-  const [busy, setBusy] = useState(false);
-
-  const items = team?.items ?? [];
-  const reminders = items.filter((i) => i.effectType === EffectType.REMINDER);
-  const incomeItems = items.filter((i) => ROUND_INCOME_TYPES.includes(i.effectType));
-  if (!team) return null;
-
-  // 該隊無每輪收益 / 提醒道具 → 無需結算，直接放行
-  if (reminders.length === 0 && incomeItems.length === 0) {
-    return (
-      <Card title={`回合結算`}>
-        <div className="flex items-center gap-2 text-sm text-emerald-300">
-          <span>本回合無需結算。</span>
-        </div>
-      </Card>
-    );
-  }
-
-  const settle = async () => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      const r = await postJson("/api/host/round-income", { teamId: team.id });
-      await onDone();
-      const gained = (r.results ?? []).reduce((s: number, x: { income: number }) => s + x.income, 0);
-      toast(gained > 0 ? `${team.name} 回合收益 +${gained} 光幣` : `${team.name} 本回合無收益`, "ok");
-      onSettled();
-    } catch (e) {
-      toast(e instanceof Error ? e.message : "結算失敗", "err");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <Card title={`回合結算`} className={settled ? "opacity-60" : "ring-1 ring-amber-400/40"}>
-      {!settled && (
-        <div className="mb-2 text-xs font-semibold text-amber-300">
-          ⚠ 請先結算本回合，再進行其他操作
-        </div>
-      )}
-      {incomeItems.length > 0 && (
-        <div className="mb-3">
-          <div className="mb-1.5 text-xs font-semibold text-emerald-300">每輪收益</div>
-          <ul className="space-y-1.5">
-            {incomeItems.map((i) => (
-              <li key={i.id} className="text-xs">
-                <span className="text-slate-200">{i.name}</span>
-                {i.usesRemaining !== null && (
-                  <span className="ml-1 text-emerald-300/80">（剩 {i.usesRemaining} 次）</span>
-                )}
-                <div className="mt-0.5 text-slate-400">{i.description}</div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {reminders.length > 0 && (
-        <div className="mb-3">
-          <div className="mb-1.5 text-xs font-semibold text-amber-300">⚑ 提醒事項</div>
-          <ul className="space-y-1.5">
-            {reminders.map((r) => (
-              <li key={r.id} className="text-xs">
-                <span className="text-slate-200">{r.name}</span>
-                {r.usesRemaining !== null && (
-                  <span className="ml-1 text-amber-300/80">（剩 {r.usesRemaining} 次）</span>
-                )}
-                <div className="mt-0.5 text-slate-400">{r.description}</div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <button
-        onClick={settle}
-        disabled={busy || settled}
-        className="btn-amber w-full rounded-xl py-3 text-sm font-black tracking-wide transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {busy ? "結算中…" : settled ? "✓ 本回合已結算" : `結算 ${team.name} 本回合`}
-      </button>
-      {!settled && (
-        <button
-          onClick={onSettled}
-          disabled={busy}
-          className="mt-2 w-full rounded-lg py-1 text-xs font-medium text-slate-400 transition hover:text-slate-200 disabled:opacity-40"
-        >
-          略過結算
-        </button>
-      )}
-    </Card>
   );
 }
