@@ -96,7 +96,6 @@ function DieFace({
       height={size}
       viewBox="0 0 100 100"
       className={`shrink-0 transition-transform ${rolling ? "scale-105" : ""}`}
-      style={{ filter: `drop-shadow(0 0 6px ${color}66)` }}
     >
       <rect
         x="3" y="3" width="94" height="94" rx="18"
@@ -175,7 +174,6 @@ export function RealMapView({
   // ── 地圖縮放 / 平移（Google Maps 風：滾輪 / 捏合縮放、拖曳平移）──
   const [zoomLevel, setZoomLevel] = useState(1); // 僅供按鈕顯示 / 是否可拖曳判斷；實際 transform 走 ref
   const [showOriginal, setShowOriginal] = useState(false); // 顯示原圖：隱藏棋子 / 過路費徽章
-  const [controlsShown, setControlsShown] = useState(false); // 控制叢集是否顯示（互動後幾秒自動隱藏）
   const [twoFingerHint, setTwoFingerHint] = useState(false); // 單指觸控提示
   const twoFingerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const areaRef = useRef<HTMLDivElement>(null); // 棋盤外框（量中心點用）
@@ -426,7 +424,6 @@ export function RealMapView({
   const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
   const mid2 = (pts: { x: number; y: number }[]) => ({ x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 });
   const onPointerDown = (e: RPointerEvent) => {
-    revealControls();
     pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     const pts = [...pointersRef.current.values()];
     if (pts.length === 2) {
@@ -440,13 +437,18 @@ export function RealMapView({
         try { (e.currentTarget as HTMLElement).setPointerCapture(id); } catch { /* ignore */ }
       }
     } else if (pts.length === 1 && zoomRef.current > 1 && e.pointerType !== "touch") {
-      // 單指平移只給滑鼠 / 觸控筆；觸控單指保留給瀏覽器捲動頁面（避免與頁面捲動衝突）。
+      // 單指平移：滑鼠 / 觸控筆。
       panDragRef.current = { sx: e.clientX, sy: e.clientY, bx: panRef.current.x, by: panRef.current.y, moved: false };
       panMovedRef.current = false;
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     } else if (pts.length === 1 && e.pointerType === "touch") {
-      // 觸控單指：重置 panMoved，讓 onClick 可正常觸發（傳送模式點格）。
+      // 觸控單指：重置 panMoved，讓 tap 可正常觸發（傳送模式點格）。
       panMovedRef.current = false;
+      // 傳送模式 + 已縮放：允許單指拖曳平移（touch-action 已設 none，不會與頁面捲動衝突）。
+      if (teleport && zoomRef.current > 1) {
+        panDragRef.current = { sx: e.clientX, sy: e.clientY, bx: panRef.current.x, by: panRef.current.y, moved: false };
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      }
     }
   };
   const onPointerMove = (e: RPointerEvent) => {
@@ -488,55 +490,45 @@ export function RealMapView({
     try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
     if (pointersRef.current.size < 2) pinchRef.current = null;
     if (pointersRef.current.size === 0) panDragRef.current = null;
+    // 傳送模式的觸控 tap：因為指標可能被容器 capture，按鈕的 onClick 不一定觸發 →
+    // 直接用放開點下方的元素找出目標格並傳送（沒有平移才算 tap）。
+    if (e.pointerType === "touch" && teleport && !panMovedRef.current) {
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      const idxAttr = el?.closest<HTMLElement>("[data-sq-index]")?.dataset.sqIndex;
+      if (idxAttr != null) { move({ toIndex: Number(idxAttr) }); setTeleport(false); }
+    }
     if (e.pointerType === "touch") {
       // 手指放開：取消待顯示的提示（若尚未出現）
       if (twoFingerTimer.current) { clearTimeout(twoFingerTimer.current); twoFingerTimer.current = null; }
       setTwoFingerHint(false);
-      armHideControls(); // 觸控放開後 1 秒收起
+      // armHideControls(); // 觸控放開後 1 秒收起
     }
   };
   const onWheel = (e: RWheelEvent) => {
-    revealControls();
     zoomAt(zoomRef.current * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY);
   };
   const pannable = zoomLevel > 1;
-
-  // 控制叢集顯示 / 隱藏：互動時顯示，3 秒無操作自動隱藏。
-  const revealControls = () => {
-    if (ctrlHideTimer.current) clearTimeout(ctrlHideTimer.current);
-    setControlsShown(true);
-    ctrlHideTimer.current = setTimeout(() => { setControlsShown(false); }, 3000);
-  };
-  const armHideControls = () => {
-    if (ctrlHideTimer.current) clearTimeout(ctrlHideTimer.current);
-    ctrlHideTimer.current = setTimeout(() => { setControlsShown(false);}, 1000);
-  };
 
   // 骰面顯示「實際前進步數」：選了移動道具就顯示換算後的數字（與前進按鈕一致）。
   const dieValue = Math.max(1, effectiveSteps || 1);
 
   return (
-    // 桌機（lg+）跳出 Shell 的 max-w-5xl 置中欄用滿視窗寬度（上限 1700）；
-    // 行動裝置不跳出（避免 100vw 因捲軸寬溢出產生橫向捲動），維持正常欄寬堆疊。
     <div className="lg:relative lg:left-1/2 lg:w-screen lg:-translate-x-1/2 lg:px-6">
-    <div className="mx-auto flex h-[calc(100dvh-178px)] max-w-[1700px] gap-4 overflow-hidden max-lg:h-auto max-lg:flex-col max-lg:overflow-visible">
+    <div className="mx-auto flex h-[calc(100lvh-178px)] max-w-[1700px] gap-4 overflow-hidden overscroll-contain max-lg:h-auto max-lg:flex-col max-lg:overflow-visible">
       {/* ── 棋盤 ─────────────────────────────────────────────── */}
-      {/* 用 container-query 的 cqmin 把地圖縮成「同時塞進寬與高」的正方形，避免裁切，
-          且方形容器尺寸＝顯示圖框，% 疊放的棋子才會對齊。 */}
       <div
         ref={areaRef}
         className={`relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-white/10 bg-[#0B1221] shadow-2xl max-lg:aspect-square max-lg:max-h-[60vh] max-lg:w-full max-lg:flex-none ${
           pannable ? "cursor-grab active:cursor-grabbing" : ""
         }`}
-        // touch-action: pan-y → 單指可捲動頁面、瀏覽器不捏合縮放；兩指由原生 touchmove 接管
-        style={{ containerType: "size", touchAction: "pan-y" }}
+        // 傳送模式：touch-action none → 單指 tap / 拖曳都歸我們處理（不被頁面捲動搶走）。
+        // 平時：pan-y → 單指可捲動頁面、瀏覽器不捏合縮放；兩指由原生 touchmove 接管。
+        style={{ containerType: "size", touchAction: teleport ? "none" : "pan-y" }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onWheel={onWheel}
-        onMouseEnter={revealControls}
-        onMouseLeave={armHideControls}
       >
         <div
           ref={viewRef}
@@ -561,6 +553,7 @@ export function RealMapView({
               <button
                 key={sq.index}
                 type="button"
+                data-sq-index={sq.index}
                 onClick={() => onSquareClick(sq)}
                 title={`${sq.index}. ${sq.label}${tollable ? `（過路費 ${tollAmt} → ${ri!.monopolyTeamName}）` : ""}`}
                 style={{ left: `${sq.x}%`, top: `${sq.y}%`, width: `${sq.w}%`, height: `${sq.h}%` }}
@@ -588,32 +581,56 @@ export function RealMapView({
                 {!showOriginal && tollable && (
                   <span
                     className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 whitespace-nowrap font-black leading-none shadow"
-                    style={{ background: monoColor, color: "#0b1221", fontSize: "2.1cqmin", padding: "0.3cqmin 0.7cqmin", borderRadius: "1cqmin" }}
+                    style={{ background: monoColor, color: "#0b1221", fontSize: "1.7cqmin", padding: "0.3cqmin 0.7cqmin", borderRadius: "1cqmin" }}
                   >
                     過路{tollAmt}
                   </span>
                 )}
                 {!showOriginal && occupants.length > 0 && (
-                  <span className="pointer-events-none absolute inset-0 flex flex-wrap items-center justify-center">
+                  <span className="pointer-events-none absolute inset-0">
                     {occupants.map((o, i) => {
                       const isActive = o.id === team;
+                      const n = occupants.length;
+                      // 同格有選取的小隊時，其他棋子淡化以凸顯所選隊。
+                      const hasActiveHere = occupants.some((x) => x.id === team);
+                      const dimmed = hasActiveHere && !isActive;
+                      // 單一棋子置中；多棋子沿圓環散開（依索引等分角度），永不重疊。
+                      // 半徑隨棋子數略增（2→2.6cqmin，多隊→上限約 3.4cqmin）。
+                      const radius = n <= 1 ? 0 : Math.min(3.4, 1.8 + n * 0.25);
+                      const angle = (i / n) * 2 * Math.PI - Math.PI / 2; // 從正上方起算
+                      const dxCq = radius * Math.cos(angle); // 環狀位移（cqmin＝% of board）
+                      const dyCq = radius * Math.sin(angle);
+                      // ── Safari 安全定位：完全不用 cqmin 於 transform / margin（Safari 會忽略或錯算，
+                      // 造成整個環偏移）。改用「格內 % 座標」：盤為正方 100cqmin，故 1cqmin = 1% of board，
+                      // 換算成該格寬高的百分比 → left/top 純 %，translate(-50%,-50%) 只用 % 置中 dot 本身。
+                      const leftPct = 50 + (dxCq / sq.w) * 100;
+                      const topPct = 45 + (dyCq / sq.h) * 100;
                       return (
                         <span
                           key={o.id}
-                          title={o.name}
                           style={{
-                            width: isActive ? "5.2cqmin" : "4.2cqmin",
-                            height: isActive ? "5.2cqmin" : "4.2cqmin",
-                            fontSize: "2.2cqmin",
-                            background: pieceColor(o.colorIdx),
-                            boxShadow: `0 0 ${isActive ? "1.6cqmin" : "0.9cqmin"} ${pieceColor(o.colorIdx)}`,
-                            marginLeft: i > 0 ? "-1cqmin" : 0,
+                            position: "absolute",
+                            left: `${leftPct}%`,
+                            top: `${topPct}%`,
+                            transform: "translate(-50%, -50%)",
+                            zIndex: isActive ? 2 : 1,
+                            opacity: dimmed ? 0.4 : undefined,
                           }}
-                          className={`inline-flex items-center justify-center rounded-full border font-black text-slate-900 ${
-                            isActive ? "cur-piece border-white" : "border-white/80 transition-all"
-                          }`}
                         >
-                          {o.id}
+                          <span
+                            style={{
+                              width: isActive ? "4.5cqmin" : "3cqmin",
+                              height: isActive ? "4.5cqmin" : "3cqmin",
+                              fontSize: "1.8cqmin",
+                              background: pieceColor(o.colorIdx),
+                              boxShadow: `0 0 ${isActive ? "1.6cqmin" : "0.9cqmin"} ${pieceColor(o.colorIdx)}`,
+                            }}
+                            className={`inline-flex items-center justify-center rounded-full border font-black text-slate-900 ${
+                              isActive ? "cur-piece border-white" : "border-white/80 transition-all"
+                            }`}
+                          >
+                            {o.id}
+                          </span>
                         </span>
                       );
                     })}
@@ -625,11 +642,10 @@ export function RealMapView({
         </div>
 
         {/* ── 原圖切換鈕（互動後 3 秒自動隱藏）── */}
-        {controlsShown && (
+        {(
           <div
             className="absolute bottom-3 right-3 z-30"
             onPointerDown={(e) => e.stopPropagation()}
-            onMouseEnter={revealControls}
           >
             <ZoomBtn
               label={showOriginal ? "顯示棋子 / 過路費" : "顯示原始地圖"}
@@ -657,7 +673,7 @@ export function RealMapView({
       </div>
 
       {/* ── 控制台（側欄）：整頁不捲動，只有隊伍清單在空間不足時內部捲動 ── */}
-      <aside className="flex w-[330px] shrink-0 flex-col gap-2.5 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-3 backdrop-blur-xl xl:w-[380px] max-lg:h-auto max-lg:w-full max-lg:overflow-visible">
+      <aside className="flex w-[330px] shrink-0 flex-col gap-2.5 overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/60 p-3 backdrop-blur-xl xl:w-[380px] max-lg:h-auto max-lg:w-full max-lg:overflow-visible">
         {/* 1. 當前小隊 + 擲骰 */}
         <section className="shrink-0 rounded-xl border border-white/10 bg-white/[0.03] p-3">
           <div className="mb-3 flex items-center justify-between">
@@ -786,9 +802,12 @@ export function RealMapView({
         {landed && <RoutingCard sq={landed} onGo={() => onLand(squareToTab(landed))} onClose={() => setLanded(null)} />}
 
         {/* 3. 隊伍雷達（佔據剩餘空間；雙欄精簡，必要時僅此處內部捲動）*/}
-        <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-white/10 bg-white/[0.03] p-3 max-lg:flex-none max-lg:min-h-fit">
+        <section className="flex flex-1 flex-col rounded-xl border border-white/10 bg-white/[0.03] p-3 max-lg:flex-none">
           <div className="mb-2 px-1 text-xs font-semibold tracking-wider text-slate-400">隊伍位置</div>
-          <ul className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-1 overflow-y-auto max-lg:min-h-fit max-lg:overflow-visible">
+          <ul
+            style={{ minHeight: "calc(5 * 1.75rem + 4 * 0.25rem)" }}
+            className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-1 overflow-y-auto max-lg:!min-h-fit max-lg:overflow-visible"
+          >
             {teams.map((t, idx) => {
               const active = t.id === team;
               const c = pieceColor(idx);

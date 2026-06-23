@@ -19,6 +19,8 @@ html {
   color-scheme: dark;
   /* Fallback base behind the WebGL fog canvas (shown if WebGL is unavailable) */
   background-color: #020617; /* slate-950 */
+  /* iPad/Safari：擋掉橡皮筋過捲（拉到底會露出空白並讓 dvh 工具列展開/收合 → 內容抖動）。 */
+  overscroll-behavior-y: none;
 }
 
 body {
@@ -27,7 +29,10 @@ body {
   color: var(--foreground);
   /* Transparent so the fixed -z-10 fog canvas (mounted in layout) shows through */
   background: transparent;
-  min-height: 100vh;
+  /* svh（最小視窗高度）而非 vh：iPad/Safari 的 vh＝工具列隱藏時的高度，比可視區高，
+     導致頁面永遠可往下捲一截；svh 不會多出這一截，「不需捲動的頁面就真的捲不動」。 */
+  min-height: 100svh;
+  overscroll-behavior-y: none;
 }
 
 /* 數字：等寬、對齊、科技感 */
@@ -203,7 +208,7 @@ select:focus {
 .cur-square {
   box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.85);
 }
-/* 呼吸光暈：用獨立疊層的 opacity 動畫（opacity 在 iOS 也能動）*/
+/* 呼吸光暈：獨立疊層的 opacity 動畫（opacity 在 iOS 也能動）。*/
 @keyframes curSquareGlow {
   0%, 100% { opacity: 0.35; }
   50% { opacity: 1; }
@@ -211,7 +216,6 @@ select:focus {
 .cur-square-glow {
   box-shadow: 0 0 0 3px rgba(34, 211, 238, 1), 0 0 16px 2px rgba(34, 211, 238, 0.85);
   animation: curSquareGlow 2s ease-in-out infinite;
-  -webkit-animation: curSquareGlow 2s ease-in-out infinite;
 }
 
 /* 當前小隊棋子：同節奏的 opacity 呼吸（讓底下地圖透出）*/
@@ -221,7 +225,6 @@ select:focus {
 }
 .cur-piece {
   animation: curPiece 2s ease-in-out infinite;
-  -webkit-animation: curPiece 2s ease-in-out infinite;
 }
 
 /* 事件橫幅呼吸燈 */
