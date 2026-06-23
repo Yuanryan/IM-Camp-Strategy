@@ -1059,9 +1059,9 @@ export function squareToTab(sq: BoardSquare): { tab: MapTab; region?: RegionCode
 export function squareHint(sq: BoardSquare): string {
   switch (sq.kind) {
     case "PROPERTY":
-      return `不動產（${REGION_NAME[sq.region!]}）→ 交易所購買 / 升級 / 收過路費`;
+      return `不動產 → 交易所購買 / 升級`;
     case "SHOP":
-      return "神秘商店 → 購買動產";
+      return "神秘商店 → 購買卡牌/動產";
     case "WHEEL":
       return "命運投資輪盤 → 轉一次輪盤";
     case "LOTTERY_REG":

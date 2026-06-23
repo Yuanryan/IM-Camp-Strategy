@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent as RPointerEvent, type WheelEvent as RWheelEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties, type PointerEvent as RPointerEvent, type WheelEvent as RWheelEvent } from "react";
 import Image from "next/image";
 import { useSnapshot, postJson, TeamSelect, toast } from "@/components/client";
 import {
@@ -221,8 +221,8 @@ export function RealMapView({
     if (twoFingerTimer.current) clearTimeout(twoFingerTimer.current);
   }, []);
 
-  // 換隊時清掉已選的移動道具（避免套用到別隊不存在的道具）。
-  useEffect(() => { setSelectedMoveId(null); }, [team]);
+  // 換隊時清掉已選的移動道具（避免套用到別隊不存在的道具），並關閉落地路由卡（屬上一隊）。
+  useEffect(() => { setSelectedMoveId(null); setLanded(null); }, [team]);
 
   // 兩指（捏合 / 拖移棋盤）時阻止瀏覽器捲動 / 縮放；單指放行給頁面捲動。
   // 必須用原生 non-passive 監聽，React 合成事件無法可靠 preventDefault。
@@ -613,7 +613,8 @@ export function RealMapView({
                             left: `${leftPct}%`,
                             top: `${topPct}%`,
                             transform: "translate(-50%, -50%)",
-                            zIndex: isActive ? 2 : 1,
+                            // 選取隊的棋子壓在過路費徽章（z-10）之上；其餘照舊 1/2 互疊。
+                            zIndex: isActive ? 20 : 1,
                             opacity: dimmed ? 0.4 : undefined,
                           }}
                         >
@@ -639,6 +640,15 @@ export function RealMapView({
               </button>
             );
           })}
+
+          {/* 落地路由卡：浮在地圖上、貼在停留格的正下方 */}
+          {landed && (
+            <MapRoutingCard
+              sq={landed}
+              onGo={() => onLand(squareToTab(landed))}
+              onClose={() => setLanded(null)}
+            />
+          )}
         </div>
 
         {/* ── 原圖切換鈕（互動後 3 秒自動隱藏）── */}
@@ -798,9 +808,6 @@ export function RealMapView({
           </button>
         </section>
 
-        {/* 2. 落地路由卡 */}
-        {landed && <RoutingCard sq={landed} onGo={() => onLand(squareToTab(landed))} onClose={() => setLanded(null)} />}
-
         {/* 3. 隊伍雷達（佔據剩餘空間；雙欄精簡，必要時僅此處內部捲動）*/}
         <section className="flex flex-1 flex-col rounded-xl border border-white/10 bg-white/[0.03] p-3 max-lg:flex-none">
           <div className="mb-2 px-1 text-xs font-semibold tracking-wider text-slate-400">隊伍位置</div>
@@ -918,7 +925,9 @@ function ZoomBtn({
 }
 
 // 落地路由卡：顯示停留格 + 一句行動指引 + 大顆「前往〔分頁〕」。
-function RoutingCard({
+// 浮在地圖上的落地路由卡：座標系與棋格相同（盤為 100cqmin 正方，1cqmin = 1% of board）。
+// 預設貼在停留格正下方並水平置中；靠近盤底時改貼在格子上方，靠左右邊時夾住避免溢出。
+function MapRoutingCard({
   sq,
   onGo,
   onClose,
@@ -930,31 +939,178 @@ function RoutingCard({
   const tone = landingTone(sq);
   const { tab } = squareToTab(sq);
   const showGo = sq.kind !== "START";
+
+  // 卡片實際高度（cqmin）。高度由內容決定，固定估值會讓底部夾不準（內容多時溢出底圈格）。
+  // 量出卡身像素高 ÷ 棋盤像素邊長 × 100 → 換成 cqmin，回饋給下方夾住計算。
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardHCq, setCardHCq] = useState(22); // 估值；量到後覆蓋
+  useEffect(() => {
+    const el = cardRef.current;
+    const board = el?.offsetParent as HTMLElement | null; // 100cqmin 正方棋盤
+    if (!el || !board) return;
+    const measure = () => {
+      const side = Math.min(board.clientWidth, board.clientHeight) || 1;
+      setCardHCq((el.offsetHeight / side) * 100);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    ro.observe(board);
+    return () => ro.disconnect();
+  }, [sq]);
+
+  // 座標系與棋格相同（盤為 100cqmin 正方）。卡片可蓋住中央插畫，但絕不能蓋到
+  // 外圈格子（棋子所在）。外圈格帶約佔每邊 RING；卡片整體落在中央安全區
+  // [RING, 100-RING]，但會「跟著棋子」沿安全區邊緣滑動，再夾住避免壓到任何格子。
+  const RING = 17; // 外圈格帶寬（cqmin）
+  const SAFE_MIN = RING;
+  const SAFE_MAX = 100 - RING;
+  const CARD_W = 40; // 卡片寬（cqmin）；以左上角為定位點
+  const CARD_H = cardHCq; // 卡片實高（cqmin，量得）；用於夾住與三角定位
+  const GAP = 0.8;
+
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+  let leftCq: number;
+  let topCq: number;
+
+  // 棋子在左 / 右欄 → 卡片往盤內水平展開，垂直跟著棋子；其餘 → 往盤內垂直展開，水平跟著棋子。
+  const fromLeft = sq.x < RING;
+  const fromRight = sq.x > 100 - RING;
+
+  if (fromLeft || fromRight) {
+    // 水平貼著該欄內緣往盤內；垂直中心跟隨棋子（夾在安全區內）。
+    leftCq = fromLeft ? sq.x + sq.w / 2 + GAP : sq.x - sq.w / 2 - GAP - CARD_W;
+    const cy = clamp(sq.y, SAFE_MIN + CARD_H / 2, SAFE_MAX - CARD_H / 2);
+    topCq = cy - CARD_H / 2;
+  } else {
+    // 垂直貼著該排內緣往盤內；水平中心跟隨棋子（夾在安全區內）。
+    const fromTop = sq.y < 50;
+    topCq = fromTop ? sq.y + sq.h / 2 + GAP : sq.y - sq.h / 2 - GAP - CARD_H;
+    const cx = clamp(sq.x, SAFE_MIN + CARD_W / 2, SAFE_MAX - CARD_W / 2);
+    leftCq = cx - CARD_W / 2;
+  }
+
+  // 最終再夾一次左上角，確保整張卡都在安全區內，絕不壓到外圈格子。
+  leftCq = clamp(leftCq, SAFE_MIN, SAFE_MAX - CARD_W);
+  topCq = clamp(topCq, SAFE_MIN, SAFE_MAX - CARD_H);
+
+  const style: CSSProperties = {
+    left: `${leftCq}cqmin`,
+    top: `${topCq}cqmin`,
+    width: `${CARD_W}cqmin`,
+  };
+
+  // ── 指向棋子的小三角 ──
+  // 依棋子相對卡片框的位置決定三角落在哪一邊：超出卡左/右 → 左/右；超出卡上/下 → 上/下。
+  // 角格會同時明顯超出兩軸 → 用對角（topLeft / topRight / bottomLeft / bottomRight），
+  // 三角貼在卡片該角、指向對角方向（修正角格箭頭）。
+  const overLeft = leftCq - sq.x; // >0：棋子在卡左外
+  const overRight = sq.x - (leftCq + CARD_W); // >0：棋子在卡右外
+  const overTop = topCq - sq.y; // >0：棋子在卡上外
+  const overBottom = sq.y - (topCq + CARD_H); // >0：棋子在卡下外
+  const hOut = Math.max(overLeft, overRight, 0);
+  const vOut = Math.max(overTop, overBottom, 0);
+  const DIAG = 2.5; // 兩軸皆超出此量（cqmin）即視為對角（角格）
+  const isDiagonal = hOut > DIAG && vOut > DIAG;
+  const horiz = overLeft >= overRight ? "left" : "right"; // 主要水平方向
+  const vert = overTop >= overBottom ? "top" : "bottom"; // 主要垂直方向
+  type ArrowSide = "left" | "right" | "top" | "bottom" | "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
+  const arrowSide: ArrowSide = isDiagonal
+    ? (`${vert === "top" ? "top" : "bottom"}${horiz === "left" ? "Left" : "Right"}` as ArrowSide)
+    : hOut >= vOut
+      ? horiz
+      : vert;
+
+  // 三角沿該邊的位置：對齊棋子中心，轉成佔卡片該軸的百分比，留邊距避免跑到圓角外。
+  const SIZE = 1.6; // 三角邊長（cqmin）
+  const off = `-${SIZE / 2}cqmin`; // 三角中心壓在卡邊上
+  const along =
+    arrowSide === "left" || arrowSide === "right"
+      ? clamp(((sq.y - topCq) / CARD_H) * 100, 14, 86)
+      : clamp(((sq.x - leftCq) / CARD_W) * 100, 14, 86);
+  const isCorner = arrowSide.length > 6; // topLeft / topRight / bottomLeft / bottomRight
+
+  // ── 正交邊：旋轉 45° 的方塊，角直直朝棋子戳出；只描朝棋子的兩邊，與卡框連續。 ──
+  const sideStyles: Record<string, CSSProperties> = {
+    left: { left: off, top: `${along}%`, marginTop: off },
+    right: { right: off, top: `${along}%`, marginTop: off },
+    top: { top: off, left: `${along}%`, marginLeft: off },
+    bottom: { bottom: off, left: `${along}%`, marginLeft: off },
+  };
+  const squareBorderClass: Record<string, string> = {
+    left: "border-b border-l",
+    right: "border-t border-r",
+    top: "border-t border-l",
+    bottom: "border-b border-r",
+  };
+  const squareStyle: CSSProperties = {
+    position: "absolute",
+    width: `${SIZE}cqmin`,
+    height: `${SIZE}cqmin`,
+    background: "rgb(2 6 23 / 0.85)", // 與卡片底色一致
+    transform: "rotate(45deg)",
+    ...sideStyles[arrowSide],
+  };
+
+  // ── 對角（角格）：和正交邊同款「旋轉 45° 的方塊」，但往斜對角推出卡角。 ──
+  // 旋轉後方塊的四個尖點朝上下左右；把方塊往斜對角平移，使「朝棋子那一點」露出卡角外
+  // 成為尖端，對側點壓進卡身相連，再描出朝棋子的兩條外緣 → 與卡框連續的斜向箭頭。
+  const D = SIZE * 0.2; // 沿各軸往卡外推的量（cqmin）；露出一個尖角、另一點仍咬住卡身
+  const triPos: Record<string, CSSProperties> = {
+    bottomRight: { bottom: `-${D}cqmin`, right: `-${D}cqmin` },
+    bottomLeft: { bottom: `-${D}cqmin`, left: `-${D}cqmin` },
+    topRight: { top: `-${D}cqmin`, right: `-${D}cqmin` },
+    topLeft: { top: `-${D}cqmin`, left: `-${D}cqmin` },
+  };
+  // 旋轉 45° 後，朝棋子的兩條外緣 = 露在外面那一點兩側的邊。
+  const triBorderClass: Record<string, string> = {
+    bottomRight: "border-b border-r",
+    bottomLeft: "border-b border-l",
+    topRight: "border-t border-r",
+    topLeft: "border-t border-l",
+  };
+  const triStyle: CSSProperties = {
+    position: "absolute",
+    width: `${SIZE}cqmin`,
+    height: `${SIZE}cqmin`,
+    background: "rgb(2 6 23 / 0.85)", // 與卡片底色一致
+    ...triPos[arrowSide],
+  };
+
   return (
-    <section className={`relative shrink-0 rounded-xl border bg-white/[0.04] p-3 ${tone.ring} shadow-[0_0_20px_rgba(255,255,255,0.06)]`}>
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute right-2 top-2 text-slate-500 transition hover:text-slate-200"
-        aria-label="關閉"
+    <div ref={cardRef} className="pointer-events-none absolute z-30" style={style}>
+      <section
+        className={`pointer-events-auto relative rounded-xl border bg-slate-950/85 p-3 backdrop-blur-md ${tone.ring} shadow-[0_8px_30px_rgba(0,0,0,0.55)]`}
       >
-        <X className="h-4 w-4" />
-      </button>
-      <div className="mb-1 text-[11px] font-semibold tracking-wider text-slate-400">棋子停在</div>
-      <div className="flex items-center gap-2">
-        <span className="text-lg font-black text-slate-100">{sq.label}</span>
-        <span className={`rounded-md px-2 py-0.5 text-[11px] font-bold ${tone.chip}`}>第 {sq.index} 格</span>
-      </div>
-      <p className="mt-1.5 text-sm text-slate-300">{squareHint(sq)}</p>
-      {showGo && (
+        {isCorner ? (
+          <span aria-hidden className={`${tone.ring} ${triBorderClass[arrowSide]}`} style={triStyle} />
+        ) : (
+          <span aria-hidden className={`${tone.ring} ${squareBorderClass[arrowSide]}`} style={squareStyle} />
+        )}
         <button
           type="button"
-          onClick={onGo}
-          className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 text-sm font-black text-slate-950 transition hover:bg-cyan-400 active:scale-[0.98]"
+          onClick={onClose}
+          className="absolute right-2 top-2 text-slate-500 transition hover:text-slate-200"
+          aria-label="關閉"
         >
-          前往{TAB_LABEL[tab]} <ArrowRight className="h-4 w-4" />
+          <X className="h-4 w-4" />
         </button>
-      )}
-    </section>
+        <div className="mb-1 text-[11px] font-semibold tracking-wider text-slate-400">棋子停在</div>
+        <div className="flex items-center gap-2">
+          <span className="text-lg font-black text-slate-100">{sq.label}</span>
+        </div>
+        <p className="mt-1.5 text-sm text-slate-300">{squareHint(sq)}</p>
+        {showGo && (
+          <button
+            type="button"
+            onClick={onGo}
+            className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 text-sm font-black text-slate-950 transition hover:bg-cyan-400 active:scale-[0.98]"
+          >
+            前往{TAB_LABEL[tab]} <ArrowRight className="h-4 w-4" />
+          </button>
+        )}
+      </section>
+    </div>
   );
 }
