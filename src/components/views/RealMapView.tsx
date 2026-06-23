@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent as RPointerEvent, type WheelEvent as RWheelEvent } from "react";
 import Image from "next/image";
 import { useSnapshot, postJson, TeamSelect, toast } from "@/components/client";
 import {
@@ -25,6 +25,8 @@ import {
   Dice5,
   ArrowRight,
   X,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 // ── 棋子配色（依小隊清單順序循環）──────────────────────────────
@@ -164,6 +166,22 @@ export function RealMapView({
   const [anim, setAnim] = useState<{ teamId: number; path: number[]; i: number } | null>(null);
   const rollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // ── 地圖縮放 / 平移（Google Maps 風：滾輪 / 捏合縮放、拖曳平移）──
+  const [zoomLevel, setZoomLevel] = useState(1); // 僅供按鈕顯示 / 是否可拖曳判斷；實際 transform 走 ref
+  const [showOriginal, setShowOriginal] = useState(false); // 顯示原圖：隱藏棋子 / 過路費徽章
+  const [controlsShown, setControlsShown] = useState(false); // 控制叢集是否顯示（互動後幾秒自動隱藏）
+  const [twoFingerHint, setTwoFingerHint] = useState(false); // 單指觸控提示
+  const twoFingerTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const areaRef = useRef<HTMLDivElement>(null); // 棋盤外框（量中心點用）
+  const viewRef = useRef<HTMLDivElement>(null); // 受 transform 的內層
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
+  const panDragRef = useRef<{ sx: number; sy: number; bx: number; by: number; moved: boolean } | null>(null);
+  const panMovedRef = useRef(false);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>()); // 目前按下的指標
+  const pinchRef = useRef<{ startDist: number; startZoom: number; lastMid: { x: number; y: number } } | null>(null);
+  const ctrlHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const teamsBySquare = useMemo(() => {
     const m = new Map<number, { id: number; name: string; colorIdx: number }[]>();
     (snap?.teams ?? []).forEach((t, idx) => {
@@ -176,23 +194,40 @@ export function RealMapView({
     return m;
   }, [snap?.teams, anim]);
 
-  // 逐格推進動畫（每格 90ms）。抵達終點後「不立刻清除」——要等 snapshot 的 boardPos
-  // 追上目標格才收尾，否則 anim 一清掉、棋子會閃回尚未更新的舊位置再跳回新位置。
-  // 設定 1.2s 後備逾時，避免 mutate 失敗時動畫卡住。新移動會 setAnim(null) 中斷本動畫。
+  // 逐格推進動畫（每格 90ms）。抵達終點後「停在目的格」等 snapshot 的 boardPos 追上才收尾，
+  // 否則 anim 一清掉、棋子會閃回尚未更新的舊位置再跳回新位置（多支 API：移動 / 結算 / 過路費
+  // 串接時尤其明顯）。boardPos 由 mutate 或 2.5s 輪詢更新後，本 effect（dep snap?.teams）重跑收尾。
+  // 安全逾時設長（6s，遠大於正常 API 時間），僅防極端情況卡住，不會造成提早閃回。
   useEffect(() => {
     if (!anim) return;
     const last = anim.path.length - 1;
     if (anim.i >= last) {
       const committed = snap?.teams.find((t) => t.id === anim.teamId)?.boardPos;
       const caughtUp = committed === anim.path[last];
-      const t = setTimeout(() => setAnim(null), caughtUp ? 120 : 1200);
+      const t = setTimeout(() => setAnim(null), caughtUp ? 120 : 6000);
       return () => clearTimeout(t);
     }
     const t = setTimeout(() => setAnim((a) => (a ? { ...a, i: a.i + 1 } : a)), 90);
     return () => clearTimeout(t);
   }, [anim, snap?.teams]);
 
-  useEffect(() => () => { if (rollTimer.current) clearInterval(rollTimer.current); }, []);
+  useEffect(() => () => {
+    if (rollTimer.current) clearInterval(rollTimer.current);
+    if (ctrlHideTimer.current) clearTimeout(ctrlHideTimer.current);
+    if (twoFingerTimer.current) clearTimeout(twoFingerTimer.current);
+  }, []);
+
+  // 兩指（捏合 / 拖移棋盤）時阻止瀏覽器捲動 / 縮放；單指放行給頁面捲動。
+  // 必須用原生 non-passive 監聽，React 合成事件無法可靠 preventDefault。
+  useEffect(() => {
+    const el = areaRef.current;
+    if (!el) return;
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length >= 2) e.preventDefault();
+    };
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    return () => el.removeEventListener("touchmove", onTouchMove);
+  }, []);
 
   if (!snap) return <p className="p-6 text-sm text-slate-400">載入中…</p>;
   const teams = snap.teams;
@@ -326,8 +361,131 @@ export function RealMapView({
     }, 55);
   };
 
+  // 拖曳後緊接的 click 視為「平移」而非點格，避免誤觸傳送。
   const onSquareClick = (sq: BoardSquare) => {
+    if (panMovedRef.current) return;
     if (teleport) { move({ toIndex: sq.index }); setTeleport(false); }
+  };
+
+  // 套用目前縮放 / 平移（直接改 DOM，平移期間不觸發 React 重繪，保持流暢）。
+  const applyTransform = () => {
+    const el = viewRef.current;
+    if (el) el.style.transform = `translate(${panRef.current.x}px, ${panRef.current.y}px) scale(${zoomRef.current})`;
+  };
+  // 平移範圍夾住：縮放後不可把棋盤拖出視窗外。
+  const clampPan = () => {
+    const el = viewRef.current;
+    if (!el) return;
+    const max = (s: number) => Math.max(0, (s * (zoomRef.current - 1)) / 2);
+    panRef.current.x = Math.max(-max(el.offsetWidth), Math.min(max(el.offsetWidth), panRef.current.x));
+    panRef.current.y = Math.max(-max(el.offsetHeight), Math.min(max(el.offsetHeight), panRef.current.y));
+  };
+  const ZOOM_MIN = 1, ZOOM_MAX = 5;
+  // 朝某「螢幕點」縮放（捏合 / 滾輪用）：調整 pan 讓該點下方的棋盤位置維持不動。
+  const zoomAt = (z: number, sx: number, sy: number) => {
+    const area = areaRef.current;
+    const z1 = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+    if (area) {
+      const rect = area.getBoundingClientRect();
+      const cx = sx - (rect.left + rect.width / 2);
+      const cy = sy - (rect.top + rect.height / 2);
+      const k = z1 / zoomRef.current;
+      panRef.current = {
+        x: cx * (1 - k) + panRef.current.x * k,
+        y: cy * (1 - k) + panRef.current.y * k,
+      };
+    }
+    zoomRef.current = z1;
+    setZoomLevel(z1);
+    clampPan();
+    applyTransform();
+  };
+
+  // ── 指標 / 觸控：1 指平移、2 指捏合縮放 ──
+  const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+  const mid2 = (pts: { x: number; y: number }[]) => ({ x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 });
+  const onPointerDown = (e: RPointerEvent) => {
+    revealControls();
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pts = [...pointersRef.current.values()];
+    if (pts.length === 2) {
+      // 兩指 → 取消單指提示，捏合縮放 + 兩指拖移（取消單指平移，鎖定兩指）
+      if (twoFingerTimer.current) clearTimeout(twoFingerTimer.current);
+      setTwoFingerHint(false);
+      pinchRef.current = { startDist: dist(pts[0], pts[1]), startZoom: zoomRef.current, lastMid: mid2(pts) };
+      panDragRef.current = null;
+      panMovedRef.current = true;
+      for (const id of pointersRef.current.keys()) {
+        try { (e.currentTarget as HTMLElement).setPointerCapture(id); } catch { /* ignore */ }
+      }
+    } else if (pts.length === 1 && zoomRef.current > 1 && e.pointerType !== "touch") {
+      // 單指平移只給滑鼠 / 觸控筆；觸控單指保留給瀏覽器捲動頁面（避免與頁面捲動衝突）。
+      panDragRef.current = { sx: e.clientX, sy: e.clientY, bx: panRef.current.x, by: panRef.current.y, moved: false };
+      panMovedRef.current = false;
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    }
+  };
+  const onPointerMove = (e: RPointerEvent) => {
+    if (!pointersRef.current.has(e.pointerId)) return;
+    pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const pts = [...pointersRef.current.values()];
+    if (pts.length >= 2 && pinchRef.current) {
+      const m = mid2(pts);
+      const ratio = dist(pts[0], pts[1]) / pinchRef.current.startDist;
+      zoomAt(pinchRef.current.startZoom * ratio, m.x, m.y); // 朝中點縮放
+      // 兩指一起移動 → 跟著平移
+      panRef.current = {
+        x: panRef.current.x + (m.x - pinchRef.current.lastMid.x),
+        y: panRef.current.y + (m.y - pinchRef.current.lastMid.y),
+      };
+      pinchRef.current.lastMid = m;
+      clampPan();
+      applyTransform();
+      panMovedRef.current = true;
+    } else if (pts.length === 1 && e.pointerType === "touch" && zoomRef.current > 1) {
+      // 單指觸控拖動且已縮放：拖超過 0.5 秒才顯示「請用兩指」提示
+      if (!twoFingerHint && !twoFingerTimer.current) {
+        twoFingerTimer.current = setTimeout(() => {
+          setTwoFingerHint(true);
+          twoFingerTimer.current = setTimeout(() => { setTwoFingerHint(false); twoFingerTimer.current = null; }, 1500);
+        }, 200);
+      }
+    } else if (panDragRef.current) {
+      const d = panDragRef.current;
+      const dx = e.clientX - d.sx, dy = e.clientY - d.sy;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) { d.moved = true; panMovedRef.current = true; }
+      panRef.current = { x: d.bx + dx, y: d.by + dy };
+      clampPan();
+      applyTransform();
+    }
+  };
+  const onPointerUp = (e: RPointerEvent) => {
+    pointersRef.current.delete(e.pointerId);
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    if (pointersRef.current.size < 2) pinchRef.current = null;
+    if (pointersRef.current.size === 0) panDragRef.current = null;
+    if (e.pointerType === "touch") {
+      // 手指放開：取消待顯示的提示（若尚未出現）
+      if (twoFingerTimer.current) { clearTimeout(twoFingerTimer.current); twoFingerTimer.current = null; }
+      setTwoFingerHint(false);
+      armHideControls(); // 觸控放開後 1 秒收起
+    }
+  };
+  const onWheel = (e: RWheelEvent) => {
+    revealControls();
+    zoomAt(zoomRef.current * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY);
+  };
+  const pannable = zoomLevel > 1;
+
+  // 控制叢集顯示 / 隱藏：互動時顯示，3 秒無操作自動隱藏。
+  const revealControls = () => {
+    if (ctrlHideTimer.current) clearTimeout(ctrlHideTimer.current);
+    setControlsShown(true);
+    ctrlHideTimer.current = setTimeout(() => { setControlsShown(false); }, 3000);
+  };
+  const armHideControls = () => {
+    if (ctrlHideTimer.current) clearTimeout(ctrlHideTimer.current);
+    ctrlHideTimer.current = setTimeout(() => { setControlsShown(false);}, 1000);
   };
 
   const dieValue = Math.max(1, steps || 1);
@@ -341,11 +499,26 @@ export function RealMapView({
       {/* 用 container-query 的 cqmin 把地圖縮成「同時塞進寬與高」的正方形，避免裁切，
           且方形容器尺寸＝顯示圖框，% 疊放的棋子才會對齊。 */}
       <div
-        className="relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-white/10 bg-[#0B1221] shadow-2xl max-lg:aspect-square max-lg:max-h-[60vh] max-lg:w-full max-lg:flex-none"
-        style={{ containerType: "size" }}
+        ref={areaRef}
+        className={`relative min-w-0 flex-1 overflow-hidden rounded-2xl border border-white/10 bg-[#0B1221] shadow-2xl max-lg:aspect-square max-lg:max-h-[60vh] max-lg:w-full max-lg:flex-none ${
+          pannable ? "cursor-grab active:cursor-grabbing" : ""
+        }`}
+        // touch-action: pan-y → 單指可捲動頁面、瀏覽器不捏合縮放；兩指由原生 touchmove 接管
+        style={{ containerType: "size", touchAction: "pan-y" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onWheel={onWheel}
+        onMouseEnter={revealControls}
+        onMouseLeave={armHideControls}
       >
-        <div className="absolute inset-0 m-auto" style={{ width: "100cqmin", height: "100cqmin" }}>
-          <Image src="/map.png" alt="遊戲地圖" fill sizes="(min-width:1024px) 80vh, 100vw" className="object-contain" priority />
+        <div
+          ref={viewRef}
+          className="absolute inset-0 m-auto origin-center"
+          style={{ width: "100cqmin", height: "100cqmin" }}
+        >
+          <Image src="/map.png" alt="遊戲地圖" fill sizes="(min-width:1024px) 80vh, 100vw" className="object-contain select-none" draggable={false} priority />
 
           {BOARD.map((sq) => {
             const occupants = teamsBySquare.get(sq.index) ?? [];
@@ -376,23 +549,23 @@ export function RealMapView({
                         : "cursor-default"
                 }`}
               >
-                {/* 過路費標示：獨佔隊配色的內框 + 金額徽章 */}
-                {tollable && (
+                {/* 過路費標示：獨佔隊配色的內框 + 金額徽章（尺寸隨棋盤縮放 cqmin）。顯示原圖時隱藏。*/}
+                {!showOriginal && tollable && (
                   <span
                     className="pointer-events-none absolute inset-0 rounded-md"
-                    style={{ boxShadow: `inset 0 0 0 2px ${monoColor}cc, 0 0 8px ${monoColor}55` }}
+                    style={{ boxShadow: `inset 0 0 0 0.4cqmin ${monoColor}cc, 0 0 1.2cqmin ${monoColor}55` }}
                   />
                 )}
-                {tollable && (
+                {!showOriginal && tollable && (
                   <span
-                    className="pointer-events-none absolute left-1/2 top-px z-10 -translate-x-1/2 whitespace-nowrap rounded-full px-1 py-px text-[8px] font-black leading-none shadow"
-                    style={{ background: monoColor, color: "#0b1221" }}
+                    className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 whitespace-nowrap font-black leading-none shadow"
+                    style={{ background: monoColor, color: "#0b1221", fontSize: "2.1cqmin", padding: "0.3cqmin 0.7cqmin", borderRadius: "1cqmin" }}
                   >
                     過路{tollAmt}
                   </span>
                 )}
-                {occupants.length > 0 && (
-                  <span className="pointer-events-none absolute inset-0 flex flex-wrap items-center justify-center gap-0.5">
+                {!showOriginal && occupants.length > 0 && (
+                  <span className="pointer-events-none absolute inset-0 flex flex-wrap items-center justify-center">
                     {occupants.map((o, i) => {
                       const isActive = o.id === team;
                       return (
@@ -400,12 +573,15 @@ export function RealMapView({
                           key={o.id}
                           title={o.name}
                           style={{
+                            width: isActive ? "5.2cqmin" : "4.2cqmin",
+                            height: isActive ? "5.2cqmin" : "4.2cqmin",
+                            fontSize: "2.2cqmin",
                             background: pieceColor(o.colorIdx),
-                            boxShadow: `0 0 ${isActive ? 12 : 6}px ${pieceColor(o.colorIdx)}`,
-                            marginLeft: i > 0 ? "-4px" : 0,
+                            boxShadow: `0 0 ${isActive ? "1.6cqmin" : "0.9cqmin"} ${pieceColor(o.colorIdx)}`,
+                            marginLeft: i > 0 ? "-1cqmin" : 0,
                           }}
-                          className={`inline-flex items-center justify-center rounded-full border text-[9px] font-black text-slate-900 transition-all ${
-                            isActive ? "h-5 w-5 border-white ring-2 ring-white/70" : "h-4 w-4 border-white/80"
+                          className={`inline-flex items-center justify-center rounded-full border font-black text-slate-900 transition-all ${
+                            isActive ? "border-white ring-2 ring-white/70" : "border-white/80"
                           }`}
                         >
                           {o.id}
@@ -418,6 +594,37 @@ export function RealMapView({
             );
           })}
         </div>
+
+        {/* ── 原圖切換鈕（互動後 3 秒自動隱藏）── */}
+        {controlsShown && (
+          <div
+            className="absolute bottom-3 right-3 z-30"
+            onPointerDown={(e) => e.stopPropagation()}
+            onMouseEnter={revealControls}
+          >
+            <ZoomBtn
+              label={showOriginal ? "顯示棋子 / 過路費" : "顯示原始地圖"}
+              active={showOriginal}
+              onClick={() => setShowOriginal((v) => !v)}
+            >
+              {showOriginal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </ZoomBtn>
+          </div>
+        )}
+        {/* 兩指提示覆蓋層 */}
+        {twoFingerHint && (
+          <div className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center">
+            <div className="rounded-2xl bg-black/50 px-5 py-3 text-sm font-semibold text-white backdrop-blur-sm">
+              請用兩指縮放或平移地圖
+            </div>
+          </div>
+        )}
+        {/* 縮放倍率指示 */}
+        {zoomLevel > 1 && (
+          <div className="pointer-events-none absolute bottom-3 left-3 z-30 rounded-md border border-white/10 bg-slate-950/80 px-2 py-1 text-[11px] font-bold text-slate-300">
+            {zoomLevel.toFixed(1)}×
+          </div>
+        )}
       </div>
 
       {/* ── 控制台（側欄）：整頁不捲動，只有隊伍清單在空間不足時內部捲動 ── */}
@@ -584,6 +791,38 @@ export function RealMapView({
       </aside>
     </div>
     </div>
+  );
+}
+
+// 地圖縮放控制按鈕（毛玻璃方鈕，附 tooltip 標籤）。
+function ZoomBtn({
+  children,
+  label,
+  onClick,
+  disabled,
+  active,
+}: {
+  children: ReactNode;
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={`flex h-9 w-9 items-center justify-center rounded-lg border backdrop-blur-md transition active:scale-90 disabled:cursor-not-allowed disabled:opacity-30 ${
+        active
+          ? "border-amber-400/60 bg-amber-400/20 text-amber-300 shadow-[0_0_12px_rgba(251,191,36,0.3)]"
+          : "border-white/15 bg-slate-950/70 text-slate-200 hover:bg-slate-800/80"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
