@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
+import useSWR from "swr";
+import { useSnapshot, postJson, ActionButton, TeamSelect, fetcher } from "@/components/client";
 import { RewardButtons } from "@/components/RewardPanel";
 import { LotteryView } from "@/components/views/LotteryView";
 import { WheelView } from "@/components/views/WheelView";
@@ -16,6 +17,8 @@ import { Map, CircleDollarSign, LoaderPinwheel, Building2, Store, Gamepad2 } fro
 
 export function MapView() {
   const { snap, mutate } = useSnapshot(2500);
+  useSWR("/api/shop", fetcher);
+  useSWR("/api/shop/item", fetcher);
   const [team, setTeam] = useState<number | "">("");
   const [coins, setCoins] = useState(0);
   const [points, setPoints] = useState(0);
@@ -122,7 +125,7 @@ export function MapView() {
             </div>
             <TeamItemBadges
               items={cur?.items ?? []}
-              relevantTypes={[EffectType.GOOD_CARD_BONUS, EffectType.BAD_CARD_REDUCE, EffectType.WHEEL_ON_GOOD_CARD, EffectType.TOLL_PAID, EffectType.PIRACY, EffectType.REMINDER]}
+              relevantTypes={[EffectType.GOOD_CARD_BONUS, EffectType.BAD_CARD_REDUCE, EffectType.WHEEL_ON_GOOD_CARD, EffectType.TOLL_PAID, EffectType.PIRACY, EffectType.MOVEMENT, EffectType.REMINDER]}
             />
           </StickyTeam>
 

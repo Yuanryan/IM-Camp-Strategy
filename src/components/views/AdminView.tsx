@@ -517,7 +517,7 @@ function ItemEditor({ snap }: { snap: Snapshot }) {
               <span className="text-xs text-slate-400 w-24 truncate">{item.teamName}</span>
               <span className="text-xs text-slate-400">{EFFECT_TYPE_LABELS[item.effectType as keyof typeof EFFECT_TYPE_LABELS] ?? item.effectType}</span>
               <span className={`text-xs font-mono ${item.effectValue >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                {item.effectType === "COINS_PER_ROUND" ? `+${item.effectValue}光幣/輪` : `${item.effectValue >= 0 ? "+" : ""}${(item.effectValue * 100).toFixed(0)}%`}
+                {item.effectType === "COINS_PER_ROUND" ? `+${item.effectValue}光幣/輪` : item.effectType === "MOVEMENT" ? `移動 ${item.effectValue}` : `${item.effectValue >= 0 ? "+" : ""}${(item.effectValue * 100).toFixed(0)}%`}
               </span>
               <span className="text-amber-300 text-xs font-mono">幣值:{item.hiddenValue}</span>
               {item.note && <span className="text-xs text-slate-500 italic">{item.note}</span>}

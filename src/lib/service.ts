@@ -155,17 +155,31 @@ export async function adjustBalance(params: {
 // 兩種移動模式：
 //   steps  → 擲骰前進（可負＝後退）；正向經過起點時自動發 PASS_START_INCOME 收益。
 //   toIndex→ 直接設位置（傳送 / ±1 微調 / 卡片指定格），不發收益。
+// useItemId → 本次移動由某「主動移動道具」(MOVEMENT) 觸發：步數已由前端依該道具
+//   effect 算好（applyMovement），這裡在同一交易內驗證該道具有效並消耗一次使用。
 // 回傳新位置與停留格，前端據此自動切換分頁；過起點收益的 undo 一併回傳。
 export async function moveTeamPiece(params: {
   teamId: number;
   steps?: number;
   toIndex?: number;
+  useItemId?: number;
   byToken?: string;
 }) {
-  const { teamId, steps, toIndex, byToken } = params;
+  const { teamId, steps, toIndex, useItemId, byToken } = params;
   return prisma.$transaction(async (tx) => {
     const team = await tx.team.findUnique({ where: { id: teamId } });
     if (!team) throw new Error("找不到小隊");
+
+    // 主動移動道具：驗證為本隊「有效」MOVEMENT 道具，並於本次移動消耗一次。
+    if (useItemId != null) {
+      const item = await tx.teamItem.findFirst({
+        where: { id: useItemId, teamId, ...ACTIVE_ITEM },
+        include: { asset: true },
+      });
+      if (!item) throw new Error("找不到可用的移動道具（可能已耗盡或凍結於交易中）");
+      if (item.asset.effectType !== "MOVEMENT") throw new Error("此道具非主動移動道具");
+      await decrementUses(tx, [item.id]);
+    }
 
     let to: number;
     let passedStart = false;

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from "react"
 import { createPortal } from "react-dom";
 import { useMotionValue, animate } from "framer-motion";
 import { RadioTower, Gavel, ChevronDown, Swords } from "lucide-react";
-import { EVENTS, EffectType, ITEM_GRADE_COLORS, GRADE_ORDER } from "@/lib/game";
+import { EVENTS, EffectType, ITEM_GRADE_COLORS, GRADE_ORDER, movementMode, movementActionLabel } from "@/lib/game";
 import type { ActiveItemView, AuctionSnapshot } from "@/lib/snapshot";
 
 // 等寬霓虹數字
@@ -239,7 +239,11 @@ export function TeamItemBadges({
           >
             <span className="font-bold opacity-70">{item.grade}</span>
             <span>{item.name}</span>
-            {item.effectType !== EffectType.REMINDER && item.effectType !== EffectType.WHEEL_NO_ZERO && (
+            {item.effectType === EffectType.MOVEMENT ? (
+              <span className="font-mono text-sky-300">
+                {movementActionLabel(movementMode(item.condition), item.effectValue)}
+              </span>
+            ) : item.effectType !== EffectType.REMINDER && item.effectType !== EffectType.WHEEL_NO_ZERO && (
               <span className={`font-mono ${item.effectValue >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                 {item.effectType === EffectType.COINS_PER_ROUND
                   ? `+${item.effectValue}/輪`

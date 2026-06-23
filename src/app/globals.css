@@ -199,6 +199,31 @@ select:focus {
   border-color: rgba(34, 211, 238, 0.7);
 }
 
+/* 當前小隊格：靜態青色外框（iOS Safari 不可靠地動畫 box-shadow，故框固定）*/
+.cur-square {
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.85);
+}
+/* 呼吸光暈：用獨立疊層的 opacity 動畫（opacity 在 iOS 也能動）*/
+@keyframes curSquareGlow {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+.cur-square-glow {
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 1), 0 0 16px 2px rgba(34, 211, 238, 0.85);
+  animation: curSquareGlow 2s ease-in-out infinite;
+  -webkit-animation: curSquareGlow 2s ease-in-out infinite;
+}
+
+/* 當前小隊棋子：同節奏的 opacity 呼吸（讓底下地圖透出）*/
+@keyframes curPiece {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+.cur-piece {
+  animation: curPiece 2s ease-in-out infinite;
+  -webkit-animation: curPiece 2s ease-in-out infinite;
+}
+
 /* 事件橫幅呼吸燈 */
 @keyframes breathe {
   0%,

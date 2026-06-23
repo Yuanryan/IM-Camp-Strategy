@@ -287,6 +287,7 @@ export const EffectType = {
   DOUBLE_OR_NOTHING: "DOUBLE_OR_NOTHING", // 流動關主發獎時 50/50：雙倍或歸零
   ALLIANCE_BONUS:    "ALLIANCE_BONUS",    // 交易接受時雙方各獲固定光幣（50 → 各 +50）
   PIRACY:            "PIRACY",            // 俠盜印記・懸賞標記：被標記隊收過路費時抽成（僅當俠盜較窮才生效）
+  MOVEMENT:          "MOVEMENT",          // 主動移動道具：關主在遊戲地圖按鈕觸發，改變本次擲骰步數（見 MovementMode）
   REMINDER:          "REMINDER",          // 無計算，僅提醒關主
 } as const;
 export type EffectType = typeof EffectType[keyof typeof EffectType];
@@ -314,8 +315,62 @@ export const EFFECT_TYPE_LABELS: Record<EffectType, string> = {
   DOUBLE_OR_NOTHING: "雙倍或歸零",
   ALLIANCE_BONUS:    "交易紅利",
   PIRACY:            "海盜旗",
+  MOVEMENT:          "主動移動",
   REMINDER:          "提醒（無計算）",
 };
+
+// ── 主動移動道具（MOVEMENT）─────────────────────────────────
+// MOVEMENT 道具不被動結算，而是由關主在「遊戲地圖」擲骰前後按鈕主動觸發。
+// 觸發模式存在 MovableAsset.condition（JSON：{"move":<mode>}），強度存 effectValue。
+//   BOOST  → 本次步數 +effectValue（例如 +2）
+//   SET    → 本次步數直接設為 effectValue（例如指定走 6）
+//   DOUBLE → 本次步數 ×2（effectValue 不用）
+export const MovementMode = {
+  BOOST:  "BOOST",
+  SET:    "SET",
+  DOUBLE: "DOUBLE",
+} as const;
+export type MovementMode = typeof MovementMode[keyof typeof MovementMode];
+
+export const MOVEMENT_MODE_LABELS: Record<MovementMode, string> = {
+  BOOST:  "加步",
+  SET:    "指定步數",
+  DOUBLE: "步數加倍",
+};
+
+// 解析 MOVEMENT 道具的觸發模式（從 condition JSON）。預設 BOOST。
+export function movementMode(condition: string | null): MovementMode {
+  if (!condition) return MovementMode.BOOST;
+  try {
+    const c = JSON.parse(condition) as { move?: MovementMode };
+    return c.move && c.move in MOVEMENT_MODE_LABELS ? c.move : MovementMode.BOOST;
+  } catch {
+    return MovementMode.BOOST;
+  }
+}
+
+// 套用某 MOVEMENT 道具於目前步數，回傳觸發後的「最終前進步數」（單一事實來源；service 與 UI 共用）。
+// 結果夾在 1..BOARD_SIZE-1（至少前進 1 格，至多繞一圈內）。
+export function applyMovement(mode: MovementMode, effectValue: number, currentSteps: number): number {
+  let next: number;
+  switch (mode) {
+    case MovementMode.SET:    next = Math.round(effectValue); break;
+    case MovementMode.DOUBLE: next = currentSteps * 2; break;
+    case MovementMode.BOOST:
+    default:                  next = currentSteps + Math.round(effectValue); break;
+  }
+  return Math.max(1, Math.min(BOARD_SIZE - 1, next));
+}
+
+// MOVEMENT 道具的精簡符號（徽章用）：BOOST→「+2」、SET→「=6」、DOUBLE→「×2」。
+export function movementActionLabel(mode: MovementMode, effectValue: number): string {
+  switch (mode) {
+    case MovementMode.SET:    return `=${Math.round(effectValue)}`;
+    case MovementMode.DOUBLE: return "×2";
+    case MovementMode.BOOST:
+    default:                  return `+${Math.round(effectValue)}`;
+  }
+}
 
 export const ITEM_GRADE_COLORS: Record<string, string> = {
   S: "text-amber-300 border-amber-400/60 bg-amber-500/10",
@@ -469,7 +524,9 @@ export const MOVABLE_ASSET_SEED: {
   { name: "孫生媽媽的名牌包",     grade: "S", effectType: "PIRACY",            effectValue:  0.10, condition: null, defaultUses: null, description: "懸賞標記一支敵隊，其收過路費時你抽 10%（僅當你較窮才生效・永久）— 名牌包不是買的，是「討」來的" },
   // ── A 級：中堅效果 ──
   { name: "0050",                 grade: "A", effectType: "COMPOUND_INTEREST", effectValue:  0.01, condition: null, defaultUses: null, description: "每回合賺取現有光幣 1%（永久）— 穩穩的分紅" },
-  { name: "F1賽車",               grade: "A", effectType: "REMINDER",          effectValue:  0,    condition: null, defaultUses: null, description: "【提醒關主】每回合可選擇移動骰子數 +0/+1/+2 步（永久）" },
+  { name: "F1賽車",               grade: "A", effectType: "MOVEMENT",          effectValue:  2,    condition: "{\"move\":\"BOOST\"}",  defaultUses: null, description: "【主動】關主於遊戲地圖觸發：本次擲骰步數 +2（永久）— 油門踩到底" },
+  { name: "捷運悠遊卡",           grade: "A", effectType: "MOVEMENT",          effectValue:  6,    condition: "{\"move\":\"SET\"}",    defaultUses: 3,    description: "【主動】關主於遊戲地圖觸發：本次直接指定走 6 步（3 次）— 班班準點直達" },
+  { name: "校門口計程車",         grade: "B", effectType: "MOVEMENT",          effectValue:  0,    condition: "{\"move\":\"DOUBLE\"}", defaultUses: 1,    description: "【主動】關主於遊戲地圖觸發：本次擲骰步數加倍（1 次）— 趕時間就跳表衝" },
   { name: "資管之夜門票",         grade: "A", effectType: "ALLIANCE_BONUS",    effectValue:  100,  condition: null, defaultUses: 3,    description: "交易接受時雙方各獲 100 光幣（3 次）— 之夜的人脈" },
   { name: "公路車",               grade: "A", effectType: "TOLL_PAID",         effectValue: -0.25, condition: null, defaultUses: 3,    description: "支付過路費減少 25%（3 次）— 自己騎不搭車" },
   { name: "iPhone 18 Pro",        grade: "A", effectType: "TOLL_INCOME",       effectValue:  0.15, condition: null, defaultUses: 2,    description: "收取過路費時額外 +15%（2 次）— 最潮收款機" },

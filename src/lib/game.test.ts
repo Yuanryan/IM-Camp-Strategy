@@ -32,6 +32,12 @@ import {
   applyPropertyDividend,
   applyPiracy,
   applyAllianceBonus,
+  applyMovement,
+  movementMode,
+  movementActionLabel,
+  MovementMode,
+  MOVEMENT_MODE_LABELS,
+  BOARD_SIZE,
   computeMobileReward,
   MOBILE_REWARD_RATES,
   MOBILE_GAMES,
@@ -352,6 +358,7 @@ describe("effect 覆蓋率", () => {
       EffectType.DOUBLE_OR_NOTHING,
       EffectType.ALLIANCE_BONUS,
       EffectType.PIRACY,
+      EffectType.MOVEMENT,
       EffectType.REMINDER,
     ]);
     for (const t of Object.values(EffectType)) {
@@ -565,6 +572,8 @@ describe("MOVABLE_ASSET_SEED", () => {
       EffectType.DOUBLE_OR_NOTHING,
     ]);
     for (const a of MOVABLE_ASSET_SEED) {
+      // MOVEMENT 的 effectValue 語意依模式而定（DOUBLE 模式為 0），另由 MOVEMENT 區塊驗證
+      if (a.effectType === EffectType.MOVEMENT) continue;
       if (zeroValueTypes.has(a.effectType)) {
         expect(a.effectValue).toBe(0);
       } else {
@@ -579,6 +588,58 @@ describe("MOVABLE_ASSET_SEED", () => {
         expect(Number.isInteger(a.defaultUses)).toBe(true);
         expect(a.defaultUses).toBeGreaterThan(0);
       }
+    }
+  });
+});
+
+// ── 主動移動道具（MOVEMENT）──────────────────────────────────
+describe("effect: MOVEMENT（applyMovement / movementMode）", () => {
+  it("movementMode：null 預設 BOOST，合法 JSON 解析，非法字串退回 BOOST", () => {
+    expect(movementMode(null)).toBe(MovementMode.BOOST);
+    expect(movementMode('{"move":"SET"}')).toBe(MovementMode.SET);
+    expect(movementMode('{"move":"DOUBLE"}')).toBe(MovementMode.DOUBLE);
+    expect(movementMode('{"move":"NOPE"}')).toBe(MovementMode.BOOST);
+    expect(movementMode("not json")).toBe(MovementMode.BOOST);
+  });
+
+  it("BOOST：目前步數 + effectValue", () => {
+    expect(applyMovement(MovementMode.BOOST, 2, 3)).toBe(5);
+    expect(applyMovement(MovementMode.BOOST, 1, 6)).toBe(7);
+  });
+
+  it("SET：直接指定步數（不看目前步數）", () => {
+    expect(applyMovement(MovementMode.SET, 6, 1)).toBe(6);
+    expect(applyMovement(MovementMode.SET, 6, 4)).toBe(6);
+  });
+
+  it("DOUBLE：目前步數加倍", () => {
+    expect(applyMovement(MovementMode.DOUBLE, 0, 3)).toBe(6);
+    expect(applyMovement(MovementMode.DOUBLE, 0, 5)).toBe(10);
+  });
+
+  it("結果夾在 1..BOARD_SIZE-1（至少前進 1、至多繞一圈內）", () => {
+    expect(applyMovement(MovementMode.BOOST, -10, 1)).toBe(1); // 不可 ≤ 0
+    expect(applyMovement(MovementMode.SET, 999, 1)).toBe(BOARD_SIZE - 1);
+    expect(applyMovement(MovementMode.DOUBLE, 0, 0)).toBe(1);
+  });
+
+  it("每個 MovementMode 都有標籤", () => {
+    for (const m of Object.values(MovementMode)) {
+      expect(MOVEMENT_MODE_LABELS[m]).toBeTruthy();
+    }
+  });
+
+  it("movementActionLabel 依模式產生精簡符號", () => {
+    expect(movementActionLabel(MovementMode.BOOST, 2)).toBe("+2");
+    expect(movementActionLabel(MovementMode.SET, 6)).toBe("=6");
+    expect(movementActionLabel(MovementMode.DOUBLE, 0)).toBe("×2");
+  });
+
+  it("seed 含 MOVEMENT 道具，且其 condition.move 為合法模式", () => {
+    const moves = MOVABLE_ASSET_SEED.filter((a) => a.effectType === EffectType.MOVEMENT);
+    expect(moves.length).toBeGreaterThan(0);
+    for (const a of moves) {
+      expect(Object.values(MovementMode)).toContain(movementMode(a.condition));
     }
   });
 });

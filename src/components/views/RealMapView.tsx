@@ -11,8 +11,12 @@ import {
   squareHint,
   REGION_UI,
   EffectType,
+  ITEM_GRADE_COLORS,
   applyToll,
   stackEffects,
+  movementMode,
+  applyMovement,
+  movementActionLabel,
   type BoardSquare,
   type MapTab,
   type RegionCode,
@@ -158,6 +162,8 @@ export function RealMapView({
 }) {
   const { snap, mutate } = useSnapshot(2500);
   const [steps, setSteps] = useState(1);
+  // 已選取的主動移動道具（一次一件）；選取後其效果直接套用到擲骰步數與前進按鈕。
+  const [selectedMoveId, setSelectedMoveId] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [rolling, setRolling] = useState(false);
   const [teleport, setTeleport] = useState(false);
@@ -217,6 +223,9 @@ export function RealMapView({
     if (twoFingerTimer.current) clearTimeout(twoFingerTimer.current);
   }, []);
 
+  // 換隊時清掉已選的移動道具（避免套用到別隊不存在的道具）。
+  useEffect(() => { setSelectedMoveId(null); }, [team]);
+
   // 兩指（捏合 / 拖移棋盤）時阻止瀏覽器捲動 / 縮放；單指放行給頁面捲動。
   // 必須用原生 non-passive 監聽，React 合成事件無法可靠 preventDefault。
   useEffect(() => {
@@ -236,6 +245,14 @@ export function RealMapView({
   const teamColor = cur ? pieceColor(curIdx) : ACCENT;
   // 該隊的「提醒」道具：擲骰前進前先讓關主看到（前進時會自動消耗一次）。
   const reminders = (cur?.items ?? []).filter((i) => i.effectType === EffectType.REMINDER);
+  // 該隊的「主動移動」道具：可在擲骰後以徽章選取，效果直接套到步數與前進按鈕，前進時消耗一次。
+  const movements = (cur?.items ?? []).filter((i) => i.effectType === EffectType.MOVEMENT);
+  // 目前選取的移動道具（一次一件）；若已不在清單（換隊 / 耗盡）則視為未選。
+  const selectedMove = movements.find((m) => m.id === selectedMoveId) ?? null;
+  // 套用選取道具後的「實際前進步數」：未選＝原始擲骰步數；已選＝依該道具效果換算。
+  const effectiveSteps = selectedMove
+    ? applyMovement(movementMode(selectedMove.condition), selectedMove.effectValue, Math.max(0, steps))
+    : steps;
 
   // 某區「所選小隊實付」的過路費：base × (1 + 獨佔隊 TOLL_INCOME + 該隊 TOLL_PAID)，
   // 並依道具 condition 篩選區域。未選小隊時只計獨佔隊的 TOLL_INCOME（顯示基準值）。
@@ -259,7 +276,8 @@ export function RealMapView({
   };
 
   // 執行移動。steps 正向時播放逐格動畫；落地寫入 routing card（不自動切頁）。
-  const move = async (payload: { steps?: number; toIndex?: number }) => {
+  // useItemId：本次由主動移動道具觸發，伺服器會消耗該道具一次。
+  const move = async (payload: { steps?: number; toIndex?: number; useItemId?: number }) => {
     if (team === "" || !cur) { toast("請先選擇小隊", "err"); return; }
     if (busy) return; // 序列化網路請求，避免兩筆 POST 競爭同隊位置
     setBusy(true);
@@ -323,6 +341,8 @@ export function RealMapView({
 
       await mutate();
       setLanded(target);
+      // 移動成功後清掉已選的移動道具（已消耗一次；下一回合重新選取）。
+      if (payload.useItemId != null) setSelectedMoveId(null);
 
       // 整合提示與撤銷（過起點 + 過路費 合併 ledger，一鍵還原）。
       if (tollErr) {
@@ -350,6 +370,7 @@ export function RealMapView({
 
   const systemRoll = () => {
     if (rolling || busy || team === "") return;
+    setSelectedMoveId(null); // 重新擲骰即取消已選的移動道具，從原始骰數重新計算
     setRolling(true);
     let ticks = 0;
     rollTimer.current = setInterval(() => {
@@ -423,6 +444,9 @@ export function RealMapView({
       panDragRef.current = { sx: e.clientX, sy: e.clientY, bx: panRef.current.x, by: panRef.current.y, moved: false };
       panMovedRef.current = false;
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } else if (pts.length === 1 && e.pointerType === "touch") {
+      // 觸控單指：重置 panMoved，讓 onClick 可正常觸發（傳送模式點格）。
+      panMovedRef.current = false;
     }
   };
   const onPointerMove = (e: RPointerEvent) => {
@@ -488,7 +512,8 @@ export function RealMapView({
     ctrlHideTimer.current = setTimeout(() => { setControlsShown(false);}, 1000);
   };
 
-  const dieValue = Math.max(1, steps || 1);
+  // 骰面顯示「實際前進步數」：選了移動道具就顯示換算後的數字（與前進按鈕一致）。
+  const dieValue = Math.max(1, effectiveSteps || 1);
 
   return (
     // 桌機（lg+）跳出 Shell 的 max-w-5xl 置中欄用滿視窗寬度（上限 1700）；
@@ -539,16 +564,20 @@ export function RealMapView({
                 onClick={() => onSquareClick(sq)}
                 title={`${sq.index}. ${sq.label}${tollable ? `（過路費 ${tollAmt} → ${ri!.monopolyTeamName}）` : ""}`}
                 style={{ left: `${sq.x}%`, top: `${sq.y}%`, width: `${sq.w}%`, height: `${sq.h}%` }}
-                className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-md transition ${
+                className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-md ${
                   teleport
-                    ? "cursor-pointer bg-amber-300/15 ring-2 ring-amber-300/70 hover:bg-amber-300/30"
+                    ? "cursor-pointer bg-amber-300/15 ring-2 ring-amber-300/70 hover:bg-amber-300/30 transition"
                     : isLanded
-                      ? "ring-2 ring-white/80 shadow-[0_0_18px_rgba(255,255,255,0.45)]"
+                      ? "ring-2 ring-white/80 shadow-[0_0_18px_rgba(255,255,255,0.45)] transition"
                       : isCur
-                        ? "ring-2 ring-cyan-400/70 shadow-[0_0_14px_rgba(34,211,238,0.5)]"
-                        : "cursor-default"
+                        ? "cur-square"
+                        : "cursor-default transition"
                 }`}
               >
+                {/* 當前小隊格：呼吸光暈疊層（opacity 動畫，iOS 相容）*/}
+                {isCur && (
+                  <span className="cur-square-glow pointer-events-none absolute inset-0 rounded-md" />
+                )}
                 {/* 過路費標示：獨佔隊配色的內框 + 金額徽章（尺寸隨棋盤縮放 cqmin）。顯示原圖時隱藏。*/}
                 {!showOriginal && tollable && (
                   <span
@@ -580,8 +609,8 @@ export function RealMapView({
                             boxShadow: `0 0 ${isActive ? "1.6cqmin" : "0.9cqmin"} ${pieceColor(o.colorIdx)}`,
                             marginLeft: i > 0 ? "-1cqmin" : 0,
                           }}
-                          className={`inline-flex items-center justify-center rounded-full border font-black text-slate-900 transition-all ${
-                            isActive ? "border-white ring-2 ring-white/70" : "border-white/80"
+                          className={`inline-flex items-center justify-center rounded-full border font-black text-slate-900 ${
+                            isActive ? "cur-piece border-white" : "border-white/80 transition-all"
                           }`}
                         >
                           {o.id}
@@ -628,7 +657,7 @@ export function RealMapView({
       </div>
 
       {/* ── 控制台（側欄）：整頁不捲動，只有隊伍清單在空間不足時內部捲動 ── */}
-      <aside className="flex w-[330px] shrink-0 flex-col gap-2.5 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-3 backdrop-blur-xl xl:w-[380px] max-lg:w-full max-lg:overflow-visible">
+      <aside className="flex w-[330px] shrink-0 flex-col gap-2.5 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-3 backdrop-blur-xl xl:w-[380px] max-lg:h-auto max-lg:w-full max-lg:overflow-visible">
         {/* 1. 當前小隊 + 擲骰 */}
         <section className="shrink-0 rounded-xl border border-white/10 bg-white/[0.03] p-3">
           <div className="mb-3 flex items-center justify-between">
@@ -699,14 +728,57 @@ export function RealMapView({
             </div>
           </div>
 
+          {/* 主動移動道具：以徽章呈現（同 sticky 頂列風格），可選取一件；選取後其效果
+              直接套用到上方骰面與下方前進按鈕，前進時消耗一次。再點一次取消選取。*/}
+          {movements.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-slate-400">移動道具</span>
+              {movements.map((m) => {
+                const mode = movementMode(m.condition);
+                const sel = selectedMoveId === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    disabled={team === "" || busy}
+                    onClick={() => setSelectedMoveId((cur) => (cur === m.id ? null : m.id))}
+                    title={m.description}
+                    className={`inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-xs font-medium transition active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 ${
+                      sel
+                        ? "border-sky-400/70 bg-sky-500/20 text-sky-100 ring-1 ring-sky-400/70"
+                        : `${ITEM_GRADE_COLORS[m.grade] ?? "chip"}`
+                    }`}
+                  >
+                    <span className="font-bold opacity-70">{m.grade}</span>
+                    <span className="max-w-[7rem] truncate">{m.name}</span>
+                    <span className="font-mono text-sky-300">{movementActionLabel(mode, m.effectValue)}</span>
+                    {m.usesRemaining !== null && <span className="text-slate-400">×{m.usesRemaining}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <button
             type="button"
-            onClick={() => move({ steps })}
-            disabled={team === "" || steps === 0 || busy}
-            style={team !== "" && steps !== 0 ? { background: teamColor } : undefined}
+            onClick={() => move({ steps: effectiveSteps, useItemId: selectedMove?.id })}
+            disabled={team === "" || effectiveSteps === 0 || busy}
+            style={team !== "" && effectiveSteps !== 0 ? { background: teamColor } : undefined}
             className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl text-base font-black text-slate-950 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
           >
-            {busy ? "移動中…" : <>前進 {steps || 0} 格 <ArrowRight className="h-5 w-5" /></>}
+            {busy ? (
+              "移動中…"
+            ) : (
+              <>
+                前進 {effectiveSteps || 0} 格
+                {selectedMove && (
+                  <span className="rounded bg-black/25 px-1.5 py-0.5 text-xs font-bold">
+                    {selectedMove.name} {movementActionLabel(movementMode(selectedMove.condition), selectedMove.effectValue)}
+                  </span>
+                )}
+                <ArrowRight className="h-5 w-5" />
+              </>
+            )}
           </button>
         </section>
 
@@ -714,9 +786,9 @@ export function RealMapView({
         {landed && <RoutingCard sq={landed} onGo={() => onLand(squareToTab(landed))} onClose={() => setLanded(null)} />}
 
         {/* 3. 隊伍雷達（佔據剩餘空間；雙欄精簡，必要時僅此處內部捲動）*/}
-        <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-white/10 bg-white/[0.03] p-3">
+        <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-white/10 bg-white/[0.03] p-3 max-lg:flex-none max-lg:min-h-fit">
           <div className="mb-2 px-1 text-xs font-semibold tracking-wider text-slate-400">隊伍位置</div>
-          <ul className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-1 overflow-y-auto max-lg:max-h-72">
+          <ul className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-1 overflow-y-auto max-lg:min-h-fit max-lg:overflow-visible">
             {teams.map((t, idx) => {
               const active = t.id === team;
               const c = pieceColor(idx);
