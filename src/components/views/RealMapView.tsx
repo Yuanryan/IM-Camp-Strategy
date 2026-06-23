@@ -186,6 +186,36 @@ export function RealMapView({
   const pinchRef = useRef<{ startDist: number; startZoom: number; lastMid: { x: number; y: number } } | null>(null);
   const ctrlHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 桌機 / 橫向 iPad 的並排版面高度：量「本列頂端到可視區底部」的實際像素，
+  // 不用 100dvh-178px 這種寫死的魔術數字（標題列 / 分頁列高度一變就會切掉棋盤底部，
+  // 且捲動已鎖死無法捲回）。visualViewport 在 iPad 工具列顯示 / 隱藏時也會更新，
+  // 故工具列固定可見後高度仍精準。lg 以下走縱向堆疊（max-lg:h-auto），不套用此高度。
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [rowH, setRowH] = useState<number | null>(null);
+  useEffect(() => {
+    const measure = () => {
+      const el = rowRef.current;
+      if (!el) return;
+      // 僅在並排版面（lg：寬度 ≥ 1024）才鎖定高度；縱向堆疊維持 auto 由內容撐開。
+      if (window.innerWidth < 1024) { setRowH(null); return; }
+      const top = el.getBoundingClientRect().top;
+      const vh = window.visualViewport?.height ?? window.innerHeight;
+      setRowH(Math.max(320, vh - top - 8)); // 留 8px 底部喘息
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("scroll", measure);
+    // snapshot 載入後 DOM 才出現本列 → 下一個 frame 再量一次，確保取得正確 top。
+    const raf = requestAnimationFrame(measure);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("scroll", measure);
+    };
+  }, [snap]);
+
   const teamsBySquare = useMemo(() => {
     const m = new Map<number, { id: number; name: string; colorIdx: number }[]>();
     (snap?.teams ?? []).forEach((t, idx) => {
@@ -514,7 +544,14 @@ export function RealMapView({
 
   return (
     <div className="lg:relative lg:left-1/2 lg:w-screen lg:-translate-x-1/2 lg:px-6">
-    <div className="mx-auto flex h-[calc(100lvh-178px)] max-w-[1700px] gap-4 overflow-hidden overscroll-contain max-lg:h-auto max-lg:flex-col max-lg:overflow-visible">
+    {/* 高度由 rowRef 量得（本列頂端 → 可視區底部），而非寫死的 lvh/dvh 扣魔術數字：
+        頁面捲動已鎖死，高度只要差一點棋盤底部就被切掉且捲不回來。量到實際像素最穩。
+        rowH 為 null（lg 以下縱向堆疊）時回退到 h-auto 由內容撐開。*/}
+    <div
+      ref={rowRef}
+      style={rowH != null ? { height: rowH } : undefined}
+      className="mx-auto flex max-w-[1700px] gap-4 overflow-hidden overscroll-contain max-lg:h-auto max-lg:flex-col max-lg:overflow-visible"
+    >
       {/* ── 棋盤 ─────────────────────────────────────────────── */}
       <div
         ref={areaRef}
@@ -683,10 +720,10 @@ export function RealMapView({
       </div>
 
       {/* ── 控制台（側欄）：整頁不捲動，只有隊伍清單在空間不足時內部捲動 ── */}
-      <aside className="flex w-[330px] shrink-0 flex-col gap-2.5 overflow-y-auto rounded-2xl border border-white/10 bg-slate-950/60 p-3 backdrop-blur-xl xl:w-[380px] max-lg:h-auto max-lg:w-full max-lg:overflow-visible">
+      <aside className="flex w-[300px] shrink-0 flex-col gap-2 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-2.5 backdrop-blur-xl xl:w-[360px] max-lg:h-auto max-lg:w-full max-lg:overflow-visible">
         {/* 1. 當前小隊 + 擲骰 */}
-        <section className="shrink-0 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-          <div className="mb-3 flex items-center justify-between">
+        <section className="shrink-0 rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
+          <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-semibold tracking-wider text-slate-400">操作小隊</span>
             {cur && (
               <span className="flex items-center gap-1.5 text-xs text-slate-400">
@@ -699,7 +736,10 @@ export function RealMapView({
 
           {/* 本隊提醒道具（前進時自動消耗一次；先讓關主看到再擲骰）*/}
           {reminders.length > 0 && (
-            <div className="mt-2 space-y-1 rounded-lg border border-amber-400/40 bg-amber-400/10 px-2.5 py-2">
+            <div
+              data-scrollable
+              className="mt-2 max-h-[5.5rem] space-y-1 overflow-y-auto overscroll-contain rounded-lg border border-amber-400/40 bg-amber-400/10 px-2.5 py-2"
+            >
               <div className="text-xs font-bold tracking-wide text-amber-300">⚑ 本隊提醒</div>
               {reminders.map((r) => (
                 <div key={r.id} className="text-[11px] leading-snug text-amber-100/90">
@@ -714,8 +754,8 @@ export function RealMapView({
           )}
 
           {/* 骰子儀表 */}
-          <div className="mt-4 flex items-center gap-4">
-            <DieFace value={dieValue} color={teamColor} size={78} rolling={rolling} />
+          <div className="mt-2.5 flex items-center gap-3">
+            <DieFace value={dieValue} color={teamColor} size={66} rolling={rolling} />
             <div className="min-w-0 flex-1">
               <div className="mt-1.5 grid grid-cols-6 gap-1">
                 {[1, 2, 3, 4, 5, 6].map((n) => (
@@ -757,7 +797,10 @@ export function RealMapView({
           {/* 主動移動道具：以徽章呈現（同 sticky 頂列風格），可選取一件；選取後其效果
               直接套用到上方骰面與下方前進按鈕，前進時消耗一次。再點一次取消選取。*/}
           {movements.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <div
+              data-scrollable
+              className="mt-2.5 flex max-h-[4.5rem] flex-wrap items-center gap-1.5 overflow-y-auto overscroll-contain"
+            >
               <span className="text-[11px] font-semibold text-slate-400">移動道具</span>
               {movements.map((m) => {
                 const mode = movementMode(m.condition);
@@ -790,7 +833,7 @@ export function RealMapView({
             onClick={() => move({ steps: effectiveSteps, useItemId: selectedMove?.id })}
             disabled={team === "" || effectiveSteps === 0 || busy}
             style={team !== "" && effectiveSteps !== 0 ? { background: teamColor } : undefined}
-            className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl text-base font-black text-slate-950 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
+            className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-xl text-base font-black text-slate-950 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
           >
             {busy ? (
               "移動中…"
@@ -809,11 +852,11 @@ export function RealMapView({
         </section>
 
         {/* 3. 隊伍雷達（佔據剩餘空間；雙欄精簡，必要時僅此處內部捲動）*/}
-        <section className="flex flex-1 flex-col rounded-xl border border-white/10 bg-white/[0.03] p-3 max-lg:flex-none">
-          <div className="mb-2 px-1 text-xs font-semibold tracking-wider text-slate-400">隊伍位置</div>
+        <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-white/10 bg-white/[0.03] p-2.5 max-lg:flex-none">
+          <div className="mb-1.5 px-1 text-xs font-semibold tracking-wider text-slate-400">隊伍位置</div>
           <ul
-            style={{ minHeight: "calc(5 * 1.75rem + 4 * 0.25rem)" }}
-            className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-1 overflow-y-auto max-lg:!min-h-fit max-lg:overflow-visible"
+            data-scrollable
+            className="grid min-h-0 flex-1 auto-rows-min grid-cols-2 gap-1 overflow-y-auto overscroll-contain max-lg:!min-h-fit max-lg:overflow-visible"
           >
             {teams.map((t, idx) => {
               const active = t.id === team;
@@ -846,8 +889,8 @@ export function RealMapView({
         </section>
 
         {/* 4. 微調 / 傳送 */}
-        <section className="shrink-0 rounded-xl border border-white/10 bg-white/[0.03] p-3">
-          <div className="mb-2 px-1 text-xs font-semibold tracking-wider text-slate-400">微調 / 傳送</div>
+        <section className="shrink-0 rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
+          <div className="mb-1.5 px-1 text-xs font-semibold tracking-wider text-slate-400">移動選項 (不觸發結算 / 過路費) </div>
           <div className="flex gap-2">
             <button
               type="button"

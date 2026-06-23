@@ -958,44 +958,44 @@ function squareGeometry(index: number): { x: number; y: number; w: number; h: nu
 const BOARD_META: { label: string; kind: SquareKind; region?: RegionCode }[] = [
   { label: "中央燈塔・起點", kind: "START" }, // 0  左下角
   // ── 左排（由下往上）──
-  { label: "工域星籤所大樂透", kind: "LOTTERY_REG" }, // 1
+  { label: "工域星籤所・大樂透", kind: "LOTTERY_REG" }, // 1
   { label: "影焰工域", kind: "PROPERTY", region: "EMBER" }, // 2
-  { label: "碼頭進貨光源", kind: "GLOW" }, // 3
-  { label: "半導體製造光源", kind: "GLOW" }, // 4
+  { label: "碼頭進貨・光源", kind: "GLOW" }, // 3
+  { label: "半導體製造・光源", kind: "GLOW" }, // 4
   { label: "影焰工域", kind: "PROPERTY", region: "EMBER" }, // 5
-  { label: "原料補給光源", kind: "GLOW" }, // 6
+  { label: "原料補給・光源", kind: "GLOW" }, // 6
   { label: "影焰工域", kind: "PROPERTY", region: "EMBER" }, // 7
-  { label: "人才流失迷霧", kind: "FOG" }, // 8
+  { label: "人才流失・迷霧", kind: "FOG" }, // 8
   { label: "神秘商店", kind: "SHOP" }, // 9  左上角
   // ── 頂排（由左往右）──
   { label: "極光金域", kind: "PROPERTY", region: "AURORA" }, // 10
-  { label: "獲得利息光源", kind: "GLOW" }, // 11
-  { label: "小福施工迷霧", kind: "FOG" }, // 12
+  { label: "獲得利息・光源", kind: "GLOW" }, // 11
+  { label: "小福施工・迷霧", kind: "FOG" }, // 12
   { label: "極光金域", kind: "PROPERTY", region: "AURORA" }, // 13
-  { label: "星籤登記所大樂透", kind: "LOTTERY_REG" }, // 14
+  { label: "星籤登記所・大樂透", kind: "LOTTERY_REG" }, // 14
   { label: "極光金域", kind: "PROPERTY", region: "AURORA" }, // 15
   { label: "極光金域", kind: "PROPERTY", region: "AURORA" }, // 16
   { label: "IM百貨週年慶光源", kind: "GLOW" }, // 17
-  { label: "命運投資輪盤・賭博事件", kind: "WHEEL" }, // 18 右上角
+  { label: "命運投資輪盤", kind: "WHEEL" }, // 18 右上角
   // ── 右排（由上往下）──
-  { label: "成為Google正職光源", kind: "GLOW" }, // 19
+  { label: "成為Google正職・光源", kind: "GLOW" }, // 19
   { label: "靈序研究", kind: "PROPERTY", region: "SPECTRA" }, // 20
-  { label: "靈序星籤所大樂透", kind: "LOTTERY_REG" }, // 21
+  { label: "靈序星籤所・大樂透", kind: "LOTTERY_REG" }, // 21
   { label: "靈序研究", kind: "PROPERTY", region: "SPECTRA" }, // 22
-  { label: "管圖重建迷霧", kind: "FOG" }, // 23
-  { label: "科技突破光源", kind: "GLOW" }, // 24
-  { label: "Gemini當機迷霧", kind: "FOG" }, // 25
+  { label: "管圖重建・迷霧", kind: "FOG" }, // 23
+  { label: "科技突破・光源", kind: "GLOW" }, // 24
+  { label: "Gemini當機・迷霧", kind: "FOG" }, // 25
   { label: "靈序研究", kind: "PROPERTY", region: "SPECTRA" }, // 26
   { label: "大樂透開獎格", kind: "LOTTERY_DRAW" }, // 27 右下角
   // ── 底排（由右往左，順時針回 START）──
-  { label: "工業污染迷霧", kind: "FOG" }, // 28
-  { label: "抽中太子學舍光源", kind: "GLOW" }, // 29
+  { label: "工業污染・迷霧", kind: "FOG" }, // 28
+  { label: "抽中太子學舍・光源", kind: "GLOW" }, // 29
   { label: "晨霧棲城", kind: "PROPERTY", region: "HAVEN" }, // 30
-  { label: "棲城星籤所大樂透", kind: "LOTTERY_REG" }, // 31
-  { label: "療養院聚餐光源", kind: "GLOW" }, // 32
+  { label: "棲城星籤所・大樂透", kind: "LOTTERY_REG" }, // 31
+  { label: "療養院聚餐・光源", kind: "GLOW" }, // 32
   { label: "晨霧棲城", kind: "PROPERTY", region: "HAVEN" }, // 33
   { label: "晨霧棲城", kind: "PROPERTY", region: "HAVEN" }, // 34
-  { label: "醫療進步光源", kind: "GLOW" }, // 35
+  { label: "醫療進步・光源", kind: "GLOW" }, // 35
 ];
 
 // 順時針自左下角 START 起：左排 → 頂排 → 右排 → 底排回 START。
@@ -1059,21 +1059,21 @@ export function squareToTab(sq: BoardSquare): { tab: MapTab; region?: RegionCode
 export function squareHint(sq: BoardSquare): string {
   switch (sq.kind) {
     case "PROPERTY":
-      return `不動產 → 交易所購買 / 升級`;
+      return `購買 / 升級不動產`;
     case "SHOP":
-      return "神秘商店 → 購買卡牌/動產";
+      return "購買卡牌 / 動產";
     case "WHEEL":
-      return "命運投資輪盤 → 轉一次輪盤";
+      return "最多轉三次輪盤";
     case "LOTTERY_REG":
-      return "星籤所 → 大樂透登記號碼";
+      return "大樂透登記號碼";
     case "LOTTERY_DRAW":
-      return "大樂透開獎格 → 前往大樂透";
+      return "大樂透開獎格";
     case "GLOW":
-      return "光源點 → 抽好運卡";
+      return "抽好運卡";
     case "FOG":
-      return "迷霧區 → 抽厄運卡";
+      return "抽厄運卡";
     case "START":
-      return "中央燈塔起點 → 過起點領收益";
+      return "過起點領收益";
     default:
       return "";
   }

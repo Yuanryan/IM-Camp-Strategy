@@ -10,6 +10,7 @@ import { LuckDraw } from "@/components/views/LuckDraw";
 import { ExchangeView } from "@/components/views/ExchangeView";
 import { ShopView } from "@/components/views/ShopView";
 import { RealMapView } from "@/components/views/RealMapView";
+import { ScrollLock } from "@/components/ui/scroll-lock";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, EventBanner, HudTabs, TeamItemBadges, FloatingDesc } from "@/components/ui";
 import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, EffectType, ITEM_GRADE_COLORS, stackEffects, applyToll, type UndoRecipe } from "@/lib/game";
@@ -81,6 +82,10 @@ export function MapView() {
       />
 
       {tab === "realmap" ? (
+        <>
+        {/* 遊戲地圖分頁固定一個視窗高、本就不需捲動 → 鎖死整份文件捲動，
+            避免 iPad/Safari 橡皮筋過捲把工具列叫回（看似退出全螢幕）。*/}
+        <ScrollLock />
         <RealMapView
           team={team}
           setTeam={setTeam}
@@ -89,6 +94,7 @@ export function MapView() {
             setTab(nextTab);
           }}
         />
+        </>
       ) : tab === "lottery" ? (
         <LotteryView team={team} setTeam={setTeam} />
       ) : tab === "wheel" ? (
