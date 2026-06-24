@@ -65,6 +65,19 @@ export async function getSession(): Promise<Session | null> {
   };
 }
 
+// 各關主站（HOST / EXCHANGE / MAP / MOBILE / CARDSHOP / AUCTION）彼此「不再互相驗證」：
+// 任一關主登入後即可進出任何關主站。仍保留：必須登入、ADMIN 全通、TEAM 與關主互不越界。
+// 判斷邏輯：required 全為關主站角色 → 任何關主站角色皆放行；含 TEAM 才照原本嚴格比對。
+const STAFF_ROLES: readonly Role[] = ["HOST", "EXCHANGE", "MAP", "MOBILE", "CARDSHOP", "AUCTION"];
+const isStaff = (role: Role) => STAFF_ROLES.includes(role);
+function roleAllowed(sessionRole: Role, roles: Role[]): boolean {
+  if (sessionRole === "ADMIN") return true; // 總覽 / 調平衡，一律放行
+  if (roles.length === 0) return true; // 未限定角色
+  if (roles.includes(sessionRole)) return true; // 原本就符合
+  // 站對站放行：要求的全是關主站角色、且本身也是關主站角色（排除 TEAM）。
+  return isStaff(sessionRole) && roles.every(isStaff);
+}
+
 // 在頁面 / route handler 中強制要求特定角色。
 // 未登入 → 導向登入提示；角色不符 → 導回自己的首頁。
 export async function requireRole(...roles: Role[]): Promise<Session> {
@@ -78,7 +91,7 @@ export async function requireRole(...roles: Role[]): Promise<Session> {
   }
   const session = await getSession();
   if (!session) redirect("/");
-  if (roles.length && !roles.includes(session.role)) {
+  if (!roleAllowed(session.role, roles)) {
     redirect(ROLE_HOME[session.role]);
   }
   return session;
@@ -107,8 +120,8 @@ export async function requireRoleApi(req: NextRequest | null, ...roles: Role[]):
   }
   const session = await getSession();
   if (!session) throw new AuthError(401, "未登入");
-  // ADMIN 永遠可通過（總覽 / 調平衡）
-  if (session.role !== "ADMIN" && roles.length && !roles.includes(session.role)) {
+  // ADMIN 全通；各關主站彼此放行（見 roleAllowed），TEAM 仍嚴格比對。
+  if (!roleAllowed(session.role, roles)) {
     throw new AuthError(403, "權限不足");
   }
   return session;
