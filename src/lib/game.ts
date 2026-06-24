@@ -638,6 +638,24 @@ export const BAD_LUCK_CARDS: BadCard[] = [
   { name: "部首大考驗", kind: "懲罰任務牌", content: "90 秒內寫出指定數量含該部首的字", difficulty: "困難", outcomes: [{ label: "完成", deduct: 0 }, { label: "失敗", deduct: 100 }] },
 ];
 
+// ── 卡片分類：即時結算卡（可在右側面板就地處理）vs 任務卡（需關主判定的小遊戲，移到「任務」分頁）──
+// 即時好運卡＝直接獎勵型（有 reward）：coins 一鍵入帳；wheel/lottery/card 給分頁指示；move 接地圖移動。
+export function isInstantGood(c: GoodCard): boolean {
+  return !!c.reward;
+}
+// 即時厄運卡＝無需小遊戲判定的扣錢牌：沒有題庫（game）也沒有判定條件（criteria），
+// 結果一翻兩瞪眼（單一 outcome 或純扣款），可在面板一鍵套用。其餘（含題庫 / 判定）視為任務卡。
+export function isInstantBad(c: BadCard): boolean {
+  return !c.game && !c.criteria;
+}
+// 是否為任務卡（需移到「任務」分頁的小遊戲 / 判定流程）。
+export function isTaskGood(c: GoodCard): boolean {
+  return !isInstantGood(c);
+}
+export function isTaskBad(c: BadCard): boolean {
+  return !isInstantBad(c);
+}
+
 // 加權隨機抽樣（rng∈[0,1)）：依各項 weight 比例回傳其 value；空陣列回 null。
 // 權重不必總和為 1（會除以總和正規化）。
 export function weightedPick<T>(items: { value: T; weight: number }[], rng: () => number = Math.random): T | null {
@@ -1035,7 +1053,7 @@ export function advance(from: number, steps: number): { to: number; passedStart:
 
 // 停留格 → MapView 既有分頁 + （PROPERTY）預選區域。
 // GLOW / FOG 都導向 "map" 分頁（光源點 / 迷霧區抽卡），由 draw 區分好運 / 厄運。
-export type MapTab = "map" | "exchange" | "shop" | "lottery" | "wheel";
+export type MapTab = "map" | "exchange" | "shop" | "lottery" | "wheel" | "task";
 export function squareToTab(sq: BoardSquare): { tab: MapTab; region?: RegionCode } {
   switch (sq.kind) {
     case "PROPERTY":

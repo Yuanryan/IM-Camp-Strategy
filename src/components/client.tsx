@@ -3,7 +3,7 @@
 import useSWR, { mutate as globalMutate } from "swr";
 import { useState, useRef, useEffect } from "react";
 import type { ReactNode } from "react";
-import type { Snapshot } from "@/lib/snapshot";
+import type { Snapshot, ActiveItemView } from "@/lib/snapshot";
 import type { UndoRecipe } from "@/lib/game";
 
 // 停用驗證時，小隊身分無法從 cookie 取得（dev session 一律 fallback 到第一隊），
@@ -157,6 +157,11 @@ export function toast(message: string, kind: "ok" | "err" = "ok", undo?: UndoRec
     hideAfter(2600);
   }
 }
+
+// 一筆金流明細：label＝事件名（過路費→第5隊 等），amount＝帶號金額（正收入 / 負支出）。
+// items＝促成這筆金額的動產（收益來源 / 過路費減免等），於階段 2 面板顯示徽章。
+// 供地圖階段 2 結算面板（PhaseResult）逐列顯示金額用。
+export type MoneyRow = { label: string; amount: number; items?: ActiveItemView[] };
 
 // 樣式化確認對話框（取代 window.confirm）。回傳 Promise<boolean>：確定=true、取消=false。
 // 與 toast 一樣用命令式 DOM 建立，故任何地方都可呼叫、不需 React 掛載點。

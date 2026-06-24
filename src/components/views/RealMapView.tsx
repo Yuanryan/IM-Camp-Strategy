@@ -1,8 +1,16 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties, type PointerEvent as RPointerEvent, type WheelEvent as RWheelEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type PointerEvent as RPointerEvent, type WheelEvent as RWheelEvent } from "react";
 import Image from "next/image";
-import { useSnapshot, postJson, TeamSelect, toast } from "@/components/client";
+import { useSnapshot, postJson, TeamSelect, toast, type MoneyRow } from "@/components/client";
+import { PhaseDots, Num } from "@/components/ui";
+import type { TeamView, ActiveItemView } from "@/lib/snapshot";
+import {
+  drawCard,
+  useCardSettle,
+  InstantCardPanel,
+  type DrawnCard,
+} from "@/components/views/LuckDraw";
 import {
   BOARD,
   BOARD_SIZE,
@@ -17,6 +25,7 @@ import {
   movementMode,
   applyMovement,
   movementActionLabel,
+  PASS_START_INCOME,
   type BoardSquare,
   type MapTab,
   type RegionCode,
@@ -28,7 +37,6 @@ import {
   ChevronRight,
   Dice5,
   ArrowRight,
-  X,
   Eye,
   EyeOff,
 } from "lucide-react";
@@ -148,6 +156,7 @@ const TAB_LABEL: Record<MapTab, string> = {
   shop: "神秘商店",
   lottery: "大樂透",
   wheel: "命運輪盤",
+  task: "任務",
 };
 
 export function RealMapView({
@@ -157,7 +166,7 @@ export function RealMapView({
 }: {
   team: number | "";
   setTeam: (id: number | "") => void;
-  onLand: (target: { tab: MapTab; region?: RegionCode }) => void;
+  onLand: (target: { tab: MapTab; region?: RegionCode; taskCard?: DrawnCard }) => void;
 }) {
   const { snap, mutate } = useSnapshot(2500);
   const [steps, setSteps] = useState(1);
@@ -167,6 +176,20 @@ export function RealMapView({
   const [rolling, setRolling] = useState(false);
   const [teleport, setTeleport] = useState(false);
   const [landed, setLanded] = useState<BoardSquare | null>(null);
+  // 右側面板流程階段：1 移動 / 2 結算結果 / 3 抽卡（GLOW・FOG 才可達）。
+  const [phase, setPhase] = useState<1 | 2 | 3>(1);
+  // 階段 3 就地抽到的即時卡（任務卡會改導向「任務」分頁，不存這裡）。
+  const [drawn, setDrawn] = useState<DrawnCard | null>(null);
+  // 階段 2 結算結果（與 toast 同資料）：逐筆金流明細，於面板顯示。
+  // result：本回合結算明細。noSettle=true 代表本次移動由卡片觸發、刻意不結算（顯示「本回合不結算」）；
+  // rows 為空且非 noSettle → 正常移動但無金錢變動（顯示「本回合無結算項目」）。
+  const [result, setResult] = useState<{ rows: MoneyRow[]; undo?: UndoRecipe; noSettle?: boolean } | null>(null);
+  // 階段滑動：記錄 pointerdown 起點，放開時判定是否為水平滑動（切換階段）。
+  const phaseSwipeRef = useRef<{ x: number; y: number } | null>(null);
+  // 面板寬度鎖：量階段 1（最大）的渲染寬度，套到滑動容器 width，
+  // 讓階段 2/3 維持同樣寬度、不縮水。
+  const phase1Ref = useRef<HTMLDivElement>(null);
+  const [phaseBoxW, setPhaseBoxW] = useState<number | null>(null);
   // 棋子逐格動畫：覆蓋某隊在地圖上的顯示位置
   const [anim, setAnim] = useState<{ teamId: number; path: number[]; i: number } | null>(null);
   const rollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -251,8 +274,27 @@ export function RealMapView({
     if (twoFingerTimer.current) clearTimeout(twoFingerTimer.current);
   }, []);
 
-  // 換隊時清掉已選的移動道具（避免套用到別隊不存在的道具），並關閉落地路由卡（屬上一隊）。
-  useEffect(() => { setSelectedMoveId(null); setLanded(null); }, [team]);
+  // 換隊時清掉已選的移動道具（避免套用到別隊不存在的道具），關閉落地路由卡（屬上一隊），
+  // 並把流程退回階段 1（重新驅動棋子）。
+  useEffect(() => { setSelectedMoveId(null); setLanded(null); setDrawn(null); setResult(null); setPhase(1); }, [team]);
+
+  // 量階段 1 的渲染寬度 → 套到滑動容器 width，讓階段 2/3 維持同寬不縮水。
+  useEffect(() => {
+    if (phase !== 1) return;
+    const measure = () => {
+      const el = phase1Ref.current;
+      if (el && el.offsetWidth > 0) setPhaseBoxW(el.offsetWidth);
+    };
+    measure();
+    const raf = requestAnimationFrame(measure); // 字體 / 道具徽章載入後再量一次
+    window.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("resize", measure);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("resize", measure);
+    };
+  }, [phase, snap]);
 
   // 兩指（捏合 / 拖移棋盤）時阻止瀏覽器捲動 / 縮放；單指放行給頁面捲動。
   // 必須用原生 non-passive 監聽，React 合成事件無法可靠 preventDefault。
@@ -265,6 +307,11 @@ export function RealMapView({
     el.addEventListener("touchmove", onTouchMove, { passive: false });
     return () => el.removeEventListener("touchmove", onTouchMove);
   }, []);
+
+  // 抽卡結算 hook（與 LuckDraw 同口徑：含動產加成 / 減免、undo、刷新）。
+  // 必須在任何提前 return 之前呼叫（Rules of Hooks）；輸入由 snapshot 安全推導（可能尚未載入）。
+  const settleTeam = snap?.teams.find((t) => t.id === team);
+  const settler = useCardSettle({ team, curName: settleTeam?.name, items: settleTeam?.items ?? [], onDone: mutate });
 
   if (!snap) return <p className="p-6 text-sm text-slate-400">載入中…</p>;
   const teams = snap.teams;
@@ -281,6 +328,51 @@ export function RealMapView({
   const effectiveSteps = selectedMove
     ? applyMovement(movementMode(selectedMove.condition), selectedMove.effectValue, Math.max(0, steps))
     : steps;
+
+  // ── 流程階段（右側面板）：可達上限 + 抽卡相關 ──
+  const event1 = (snap.activeEvents ?? []).includes(1);
+  const isCardSquare = landed?.kind === "GLOW" || landed?.kind === "FOG";
+  // 階段 2 需有落地結果；階段 3 再加上落地為 GLOW / FOG（抽卡格）。
+  const reachablePhase: 1 | 2 | 3 = landed ? (isCardSquare ? 3 : 2) : 1;
+  const goPhase = (p: number) => {
+    if (p < 1 || p > reachablePhase) return;
+    setPhase(p as 1 | 2 | 3);
+  };
+
+  // 階段滑動：水平位移 > 50px 且明顯大於垂直位移 → 切換階段（不攔截內部垂直捲動）。
+  const onPhasePointerDown = (e: RPointerEvent) => {
+    phaseSwipeRef.current = { x: e.clientX, y: e.clientY };
+  };
+  const onPhasePointerUp = (e: RPointerEvent) => {
+    const s = phaseSwipeRef.current;
+    phaseSwipeRef.current = null;
+    if (!s) return;
+    const dx = e.clientX - s.x;
+    const dy = e.clientY - s.y;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      goPhase(phase + (dx < 0 ? 1 : -1)); // 左滑＝下一階段、右滑＝上一階段
+    }
+  };
+
+  // 階段 3 抽卡：即時卡就地呈現（drawn）；任務卡導向「任務」分頁並帶卡過去。
+  const handleDraw = (side: "good" | "bad") => {
+    if (team === "") { toast("請先選擇小隊", "err"); return; }
+    const card = drawCard(side);
+    if (card.instant) setDrawn(card);
+    else { setDrawn(null); onLand({ tab: "task", taskCard: card }); }
+  };
+
+  // move 類即時好運卡（向前躍進 / 時光倒流 / 傳送門）：就地用面板移動控制執行。
+  // 文字含「前進」→ +2；「後退 / 倒流」→ toIndex −2（不重觸發過起點 / 過路費，同微調語意）；
+  // 其餘（傳送門）→ 進入傳送模式，由關主點目標格。
+  const runMapReward = (rewardText?: string) => {
+    if (!cur) { toast("請先選擇小隊", "err"); return; }
+    const t = rewardText ?? "";
+    // 卡片觸發的移動一律 noSettle（不重觸發回合結算 / 過路費）。
+    if (/前進|躍進/.test(t)) { void move({ steps: 2, noSettle: true }); }
+    else if (/後退|倒流/.test(t)) { void move({ toIndex: cur.boardPos - 2, noSettle: true }); }
+    else { setTeleport(true); toast("已開啟傳送：點地圖上目標格", "ok"); }
+  };
 
   // 某區「所選小隊實付」的過路費：base × (1 + 獨佔隊 TOLL_INCOME + 該隊 TOLL_PAID)，
   // 並依道具 condition 篩選區域。未選小隊時只計獨佔隊的 TOLL_INCOME（顯示基準值）。
@@ -305,12 +397,14 @@ export function RealMapView({
 
   // 執行移動。steps 正向時播放逐格動畫；落地寫入 routing card（不自動切頁）。
   // useItemId：本次由主動移動道具觸發，伺服器會消耗該道具一次。
-  const move = async (payload: { steps?: number; toIndex?: number; useItemId?: number }) => {
+  // noSettle：本次由卡片獎勵觸發（向前躍進 / 時光倒流 / 傳送門），刻意不做回合結算 / 過路費。
+  const move = async (payload: { steps?: number; toIndex?: number; useItemId?: number; noSettle?: boolean }) => {
     if (team === "" || !cur) { toast("請先選擇小隊", "err"); return; }
     if (busy) return; // 序列化網路請求，避免兩筆 POST 競爭同隊位置
     setBusy(true);
     const fromPos = cur.boardPos;
     const isDiceMove = !!payload.steps && payload.steps > 0;
+    const doSettle = isDiceMove && !payload.noSettle; // 卡片觸發的移動不結算
 
     // 樂觀動畫：擲骰前進「立刻」開始走（路徑＝目前格 + 步數，與伺服器 advance 同算法），
     // 不等任何 API；棋子在等待結算 / 過路費期間維持在動畫途中 / 目的地，不會閃回原位。
@@ -323,12 +417,18 @@ export function RealMapView({
     }
 
     try {
-      const r = await postJson("/api/map/move", { teamId: team, ...payload });
+      // noSettle 純前端旗標，不送伺服器（只送 steps / toIndex / useItemId）。
+      const r = await postJson("/api/map/move", {
+        teamId: team,
+        steps: payload.steps,
+        toIndex: payload.toIndex,
+        useItemId: payload.useItemId,
+      });
       const target = r.landed as BoardSquare;
 
       // 擲骰前進＝該隊一回合 → 自動結算每輪收益（僅當該隊持有相關道具，否則 API 會報錯）。
       let roundIncome = 0;
-      if (isDiceMove && (cur.items ?? []).some((i) => ROUND_GATE_TYPES.includes(i.effectType))) {
+      if (doSettle && (cur.items ?? []).some((i) => ROUND_GATE_TYPES.includes(i.effectType))) {
         try {
           const s = await postJson("/api/host/round-income", { teamId: team });
           roundIncome = (s.results ?? []).reduce(
@@ -342,9 +442,10 @@ export function RealMapView({
 
       // 踩到資產格且該區由他隊獨佔 → 自動收過路費（用落地前快照判定獨佔，移動不改變持有）。
       let tollPaid = 0;
+      let tollPayee: string | null = null; // 收款的獨佔隊名（明細用）
       let tollUndo: UndoRecipe | undefined;
       let tollErr: string | null = null;
-      if (isDiceMove && target.kind === "PROPERTY" && target.region) {
+      if (doSettle && target.kind === "PROPERTY" && target.region) {
         const ri = snap.regions.find((x) => x.code === target.region);
         // 僅當該區由他隊獨佔、且「實付」過路費 > 0（免疫道具可能扣到 0）才扣款。
         if (
@@ -359,6 +460,7 @@ export function RealMapView({
             try {
               const tr = await postJson("/api/exchange/toll", { propertyId: prop.id, payerTeamId: team });
               tollPaid = tr.toll ?? 0;
+              tollPayee = ri.monopolyTeamName;
               tollUndo = tr.undo as UndoRecipe;
             } catch (e) {
               tollErr = e instanceof Error ? e.message : "過路費扣款失敗";
@@ -369,11 +471,13 @@ export function RealMapView({
 
       await mutate();
       setLanded(target);
+      setDrawn(null); // 新一次移動 → 清掉上一格抽到的即時卡
       // 移動成功後清掉已選的移動道具（已消耗一次；下一回合重新選取）。
       if (payload.useItemId != null) setSelectedMoveId(null);
 
-      // 整合提示與撤銷（過起點 + 過路費 合併 ledger，一鍵還原）。
+      // 金流明細（過起點 + 過路費 合併 ledger，一鍵還原）：存進 result 供階段 2 面板顯示，並彈簡易 toast。
       if (tollErr) {
+        setResult(null);
         toast(`${cur.name}・過路費未扣（${tollErr}），請至交易所手動收取`, "err");
       } else {
         const undoIds = [
@@ -381,12 +485,39 @@ export function RealMapView({
           ...(tollUndo ? tollUndo.ledgerIds : []),
         ];
         const undo = undoIds.length ? { label: "撤銷移動結算", ledgerIds: undoIds } : undefined;
+        const rows: MoneyRow[] = [];
+        if (r.passedStart) rows.push({ label: "過起點收益", amount: PASS_START_INCOME });
+        if (roundIncome > 0) {
+          // 回合收益來源：本隊持有的每輪收益型道具（提醒類不計金額，排除）。
+          // UNDERDOG（末位補貼）僅在該隊為全場最低淨值時才觸發 → 否則不列為來源（與伺服器一致）。
+          const minNW = Math.min(...teams.map((t) => t.netWorth));
+          const isLast = cur.netWorth === minNW;
+          const incomeItems = (cur.items ?? []).filter(
+            (i) =>
+              ROUND_GATE_TYPES.includes(i.effectType) &&
+              i.effectType !== EffectType.REMINDER &&
+              (i.effectType !== EffectType.UNDERDOG || isLast),
+          );
+          rows.push({ label: "回合收益", amount: roundIncome, items: incomeItems });
+        }
+        if (tollPaid > 0) {
+          // 過路費減免來源：本隊套用到該區的 TOLL_PAID 道具（讓關主看出為何金額被打折）。
+          const tollItems = (cur.items ?? []).filter(
+            (i) => i.effectType === EffectType.TOLL_PAID && (!target.region || condMatchesRegion(i.condition, target.region)),
+          );
+          rows.push({ label: `過路費 → ${tollPayee ?? "獨佔隊"}`, amount: -tollPaid, items: tollItems });
+        }
+        // 卡片觸發（noSettle）→ 標記不結算；正常移動無變動 → 空 rows（面板顯示「本回合無結算項目」）。
+        setResult({ rows, undo: rows.length ? undo : undefined, noSettle: payload.noSettle });
         const bits: string[] = [];
         if (roundIncome > 0) bits.push(`回合收益 +${roundIncome}`);
         if (tollPaid > 0) bits.push(`付過路費 -${tollPaid}`);
         if (r.passedStart) bits.push("過起點 +收益");
         if (bits.length) toast(`${cur.name}・${bits.join("・")}`, "ok", undo);
       }
+      // 擲骰前進（一回合）→ 自動推進到階段 2 結算結果；微調 / 傳送（toIndex）也顯示結果但不強推。
+      if (isDiceMove) setPhase(2);
+      else setPhase((p) => (p === 1 ? 2 : p));
     } catch (e) {
       // 移動 API 失敗 → 取消樂觀動畫，棋子回到實際（未移動）位置。
       setAnim(null);
@@ -678,14 +809,7 @@ export function RealMapView({
             );
           })}
 
-          {/* 落地路由卡：浮在地圖上、貼在停留格的正下方 */}
-          {landed && (
-            <MapRoutingCard
-              sq={landed}
-              onGo={() => onLand(squareToTab(landed))}
-              onClose={() => setLanded(null)}
-            />
-          )}
+          {/* 落地結算改於右側面板「階段 2」顯示（取代舊的浮動路由卡）。*/}
         </div>
 
         {/* ── 原圖切換鈕（互動後 3 秒自動隱藏）── */}
@@ -719,8 +843,26 @@ export function RealMapView({
         )}
       </div>
 
-      {/* ── 控制台（側欄）：整頁不捲動，只有隊伍清單在空間不足時內部捲動 ── */}
-      <aside className="flex w-[300px] shrink-0 flex-col gap-2 overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-2.5 backdrop-blur-xl xl:w-[360px] max-lg:h-auto max-lg:w-full max-lg:overflow-visible">
+      {/* ── 控制台（側欄）：三段流程（移動 / 結算 / 抽卡），分頁點切換、可左右滑動 ──
+          width 鎖在階段 1 量得的寬度 → 階段 2/3（內容較少）維持同寬、不縮水。*/}
+      <aside
+        ref={phase1Ref}
+        style={{ width: phaseBoxW ?? undefined }}
+        className="flex w-[300px] shrink-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-2.5 backdrop-blur-xl xl:w-[360px] max-lg:!w-full max-lg:h-auto max-lg:overflow-visible"
+      >
+        {/* 流程分頁點：指示目前階段 + 可點切換（階段 2/3 需有落地結果才可達）*/}
+        <PhaseDots phase={phase} reachable={reachablePhase} color={teamColor} onJump={goPhase} />
+
+        {/* 滑動容器：水平滑動切換階段（不攔截內部垂直捲動），垂直留給頁面 / 內捲 */}
+        <div
+          className="flex min-h-0 w-full flex-1 flex-col"
+          style={{ touchAction: "pan-y" }}
+          onPointerDown={onPhasePointerDown}
+          onPointerUp={onPhasePointerUp}
+        >
+        {/* ── 階段 1：移動 ───────────────────────────────────── */}
+        {phase === 1 && (
+        <div className="flex min-h-0 flex-1 flex-col gap-2">
         {/* 1. 當前小隊 + 擲骰 */}
         <section className="shrink-0 rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
           <div className="mb-2 flex items-center justify-between">
@@ -929,9 +1071,203 @@ export function RealMapView({
             </p>
           )}
         </section>
+        </div>
+        )}
+
+        {/* ── 階段 2：結算結果 + 路由 ─────────────────────────── */}
+        {phase === 2 && (
+          <PhaseResult
+            landed={landed}
+            result={result}
+            team={cur}
+            teamColor={teamColor}
+            isCardSquare={isCardSquare}
+            onGoTab={() => landed && onLand(squareToTab(landed))}
+            onDraw={() => setPhase(3)}
+          />
+        )}
+
+        {/* ── 階段 3：抽卡（GLOW・FOG）─────────────────────────── */}
+        {phase === 3 && (
+          <section className="flex min-h-0 flex-1 flex-col gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold tracking-wider text-slate-400">
+                {landed?.kind === "GLOW" ? "光源點・抽好運卡" : "迷霧區・抽厄運卡"}
+              </span>
+              {cur && <span className="text-xs text-slate-400">{cur.name}</span>}
+            </div>
+            <button
+              type="button"
+              disabled={team === ""}
+              onClick={() => handleDraw(landed?.kind === "FOG" ? "bad" : "good")}
+              className={`h-11 w-full rounded-xl text-sm font-bold transition active:scale-95 disabled:opacity-40 ${
+                landed?.kind === "FOG" ? "btn-rose" : "btn-amber"
+              }`}
+            >
+              {drawn ? "重新抽卡" : landed?.kind === "FOG" ? "抽厄運卡" : "抽好運卡"}
+            </button>
+            {drawn && (
+              <div data-scrollable className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                <InstantCardPanel
+                  drawn={drawn}
+                  settler={settler}
+                  team={team}
+                  event1={event1}
+                  onMapMove={(_reward, card) => runMapReward(card.rewardText)}
+                  onSettled={() => setDrawn(null)}
+                />
+              </div>
+            )}
+          </section>
+        )}
+        </div>
       </aside>
     </div>
     </div>
+  );
+}
+
+// 階段 2：結算結果 + 路由（面板版的落地卡）。顯示停留格、金流明細（收入綠 / 支出紅、含淨變動），
+// 以及下一步：抽卡格 → 進階段 3 抽卡；其餘格 → 前往對應分頁。
+function PhaseResult({
+  landed,
+  result,
+  team,
+  teamColor,
+  isCardSquare,
+  onGoTab,
+  onDraw,
+}: {
+  landed: BoardSquare | null;
+  result: { rows: MoneyRow[]; undo?: UndoRecipe; noSettle?: boolean } | null;
+  team?: TeamView;
+  teamColor: string;
+  isCardSquare: boolean;
+  onGoTab: () => void;
+  onDraw: () => void;
+}) {
+  if (!landed) {
+    return (
+      <section className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] p-4 text-center text-sm text-slate-400">
+        先在階段 1 移動棋子，這裡會顯示結算結果。
+      </section>
+    );
+  }
+  const tone = landingTone(landed);
+  const { tab } = squareToTab(landed);
+  const rows = result?.rows ?? [];
+  const net = rows.reduce((s, r) => s + r.amount, 0);
+  // 空結算的兩種訊息：卡片觸發＝刻意不結算；正常移動但無項目＝無結算項目。
+  const emptyMsg = result?.noSettle ? "本回合不結算（卡片移動）" : "本回合無結算項目";
+  return (
+    <section className={`flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain rounded-xl border bg-white/[0.03] p-3 ${tone.ring}`}>
+      <div>
+        <div className="text-[11px] font-semibold tracking-wider text-slate-400">棋子停在</div>
+        <div className="text-lg font-black text-slate-100">{landed.label}</div>
+        <p className="mt-0.5 text-sm text-slate-300">{squareHint(landed)}</p>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-3 text-center text-sm font-semibold text-slate-400">
+          {emptyMsg}
+        </div>
+      ) : (
+        <div className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2">
+          <div className="mb-1 text-[11px] font-bold tracking-wide text-slate-400">本次結算</div>
+          {rows.map((r, i) => (
+            <div key={i} className="border-b border-white/5 py-1 last:border-0">
+              <div className="flex items-center justify-between gap-4 text-sm">
+                <span className="text-slate-200">{r.label}</span>
+                <span className={`font-mono font-extrabold tabular-nums ${r.amount > 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                  {r.amount > 0 ? `+${r.amount}` : r.amount}
+                </span>
+              </div>
+              {/* 來源道具徽章：說明這筆金額由哪些動產促成（收益來源 / 過路費減免）。*/}
+              {r.items && r.items.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {r.items.map((it) => (
+                    <ItemBadge key={it.id} item={it} />
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          {rows.length > 1 && (
+            <div className="mt-1 flex items-center justify-between gap-4 border-t border-white/10 pt-1 text-sm">
+              <span className="font-bold text-slate-400">淨變動</span>
+              <span className={`font-mono font-black tabular-nums ${net >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                {net >= 0 ? `+${net}` : net}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 該隊目前資產價值（光幣 + 不動產現值 = 結算淨值），讓關主一眼掌握全局。*/}
+      {team && (
+        <div className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2">
+          <div className="mb-1 text-[11px] font-bold tracking-wide text-slate-400">{team.name}・目前資產價值</div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-slate-400">光幣</span>
+            <Num className="neon-gold font-bold tabular-nums">{team.coins}</Num>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-slate-400">不動產現值</span>
+            <Num className="font-bold tabular-nums text-cyan-300">{team.propertyValue}</Num>
+          </div>
+          <div className="mt-1 flex items-center justify-between border-t border-white/10 pt-1 text-sm">
+            <span className="font-bold text-slate-300">總資產價值</span>
+            <Num className="font-black tabular-nums text-emerald-300">{team.netWorth}</Num>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-auto">
+        {isCardSquare ? (
+          <button
+            type="button"
+            onClick={onDraw}
+            style={{ background: teamColor }}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-black text-slate-950 transition active:scale-[0.98]"
+          >
+            前往抽卡 <ArrowRight className="h-4 w-4" />
+          </button>
+        ) : landed.kind !== "START" ? (
+          <button
+            type="button"
+            onClick={onGoTab}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 text-sm font-black text-slate-950 transition hover:bg-cyan-400 active:scale-[0.98]"
+          >
+            前往{TAB_LABEL[tab]} <ArrowRight className="h-4 w-4" />
+          </button>
+        ) : (
+          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 py-2.5 text-center text-sm font-semibold text-emerald-300">
+            起點・過起點領收益
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+// 結算明細裡的來源道具徽章（grade 配色 + 名稱 + 效果值；title 顯示完整說明）。
+function ItemBadge({ item }: { item: ActiveItemView }) {
+  // 效果值文字：每輪收益 +N/輪、補貼 +N光幣、其餘以百分比表示（過路費減免等）。
+  const val =
+    item.effectType === EffectType.COINS_PER_ROUND
+      ? `+${item.effectValue}/輪`
+      : item.effectType === EffectType.ALLIANCE_BONUS || item.effectType === EffectType.UNDERDOG
+        ? `+${item.effectValue}光幣`
+        : `${item.effectValue >= 0 ? "+" : ""}${(item.effectValue * 100).toFixed(0)}%`;
+  return (
+    <span
+      title={item.description}
+      className={`inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium ${ITEM_GRADE_COLORS[item.grade] ?? "chip"}`}
+    >
+      <span className="font-bold opacity-70">{item.grade}</span>
+      <span className="max-w-[8rem] truncate">{item.name}</span>
+      <span className={`font-mono ${item.effectValue >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{val}</span>
+    </span>
   );
 }
 
@@ -964,196 +1300,5 @@ function ZoomBtn({
     >
       {children}
     </button>
-  );
-}
-
-// 落地路由卡：顯示停留格 + 一句行動指引 + 大顆「前往〔分頁〕」。
-// 浮在地圖上的落地路由卡：座標系與棋格相同（盤為 100cqmin 正方，1cqmin = 1% of board）。
-// 預設貼在停留格正下方並水平置中；靠近盤底時改貼在格子上方，靠左右邊時夾住避免溢出。
-function MapRoutingCard({
-  sq,
-  onGo,
-  onClose,
-}: {
-  sq: BoardSquare;
-  onGo: () => void;
-  onClose: () => void;
-}) {
-  const tone = landingTone(sq);
-  const { tab } = squareToTab(sq);
-  const showGo = sq.kind !== "START";
-
-  // 卡片實際高度（cqmin）。高度由內容決定，固定估值會讓底部夾不準（內容多時溢出底圈格）。
-  // 量出卡身像素高 ÷ 棋盤像素邊長 × 100 → 換成 cqmin，回饋給下方夾住計算。
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [cardHCq, setCardHCq] = useState(22); // 估值；量到後覆蓋
-  useEffect(() => {
-    const el = cardRef.current;
-    const board = el?.offsetParent as HTMLElement | null; // 100cqmin 正方棋盤
-    if (!el || !board) return;
-    const measure = () => {
-      const side = Math.min(board.clientWidth, board.clientHeight) || 1;
-      setCardHCq((el.offsetHeight / side) * 100);
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    ro.observe(board);
-    return () => ro.disconnect();
-  }, [sq]);
-
-  // 座標系與棋格相同（盤為 100cqmin 正方）。卡片可蓋住中央插畫，但絕不能蓋到
-  // 外圈格子（棋子所在）。外圈格帶約佔每邊 RING；卡片整體落在中央安全區
-  // [RING, 100-RING]，但會「跟著棋子」沿安全區邊緣滑動，再夾住避免壓到任何格子。
-  const RING = 17; // 外圈格帶寬（cqmin）
-  const SAFE_MIN = RING;
-  const SAFE_MAX = 100 - RING;
-  const CARD_W = 40; // 卡片寬（cqmin）；以左上角為定位點
-  const CARD_H = cardHCq; // 卡片實高（cqmin，量得）；用於夾住與三角定位
-  const GAP = 0.8;
-
-  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
-
-  let leftCq: number;
-  let topCq: number;
-
-  // 棋子在左 / 右欄 → 卡片往盤內水平展開，垂直跟著棋子；其餘 → 往盤內垂直展開，水平跟著棋子。
-  const fromLeft = sq.x < RING;
-  const fromRight = sq.x > 100 - RING;
-
-  if (fromLeft || fromRight) {
-    // 水平貼著該欄內緣往盤內；垂直中心跟隨棋子（夾在安全區內）。
-    leftCq = fromLeft ? sq.x + sq.w / 2 + GAP : sq.x - sq.w / 2 - GAP - CARD_W;
-    const cy = clamp(sq.y, SAFE_MIN + CARD_H / 2, SAFE_MAX - CARD_H / 2);
-    topCq = cy - CARD_H / 2;
-  } else {
-    // 垂直貼著該排內緣往盤內；水平中心跟隨棋子（夾在安全區內）。
-    const fromTop = sq.y < 50;
-    topCq = fromTop ? sq.y + sq.h / 2 + GAP : sq.y - sq.h / 2 - GAP - CARD_H;
-    const cx = clamp(sq.x, SAFE_MIN + CARD_W / 2, SAFE_MAX - CARD_W / 2);
-    leftCq = cx - CARD_W / 2;
-  }
-
-  // 最終再夾一次左上角，確保整張卡都在安全區內，絕不壓到外圈格子。
-  leftCq = clamp(leftCq, SAFE_MIN, SAFE_MAX - CARD_W);
-  topCq = clamp(topCq, SAFE_MIN, SAFE_MAX - CARD_H);
-
-  const style: CSSProperties = {
-    left: `${leftCq}cqmin`,
-    top: `${topCq}cqmin`,
-    width: `${CARD_W}cqmin`,
-  };
-
-  // ── 指向棋子的小三角 ──
-  // 依棋子相對卡片框的位置決定三角落在哪一邊：超出卡左/右 → 左/右；超出卡上/下 → 上/下。
-  // 角格會同時明顯超出兩軸 → 用對角（topLeft / topRight / bottomLeft / bottomRight），
-  // 三角貼在卡片該角、指向對角方向（修正角格箭頭）。
-  const overLeft = leftCq - sq.x; // >0：棋子在卡左外
-  const overRight = sq.x - (leftCq + CARD_W); // >0：棋子在卡右外
-  const overTop = topCq - sq.y; // >0：棋子在卡上外
-  const overBottom = sq.y - (topCq + CARD_H); // >0：棋子在卡下外
-  const hOut = Math.max(overLeft, overRight, 0);
-  const vOut = Math.max(overTop, overBottom, 0);
-  const DIAG = 2.5; // 兩軸皆超出此量（cqmin）即視為對角（角格）
-  const isDiagonal = hOut > DIAG && vOut > DIAG;
-  const horiz = overLeft >= overRight ? "left" : "right"; // 主要水平方向
-  const vert = overTop >= overBottom ? "top" : "bottom"; // 主要垂直方向
-  type ArrowSide = "left" | "right" | "top" | "bottom" | "topLeft" | "topRight" | "bottomLeft" | "bottomRight";
-  const arrowSide: ArrowSide = isDiagonal
-    ? (`${vert === "top" ? "top" : "bottom"}${horiz === "left" ? "Left" : "Right"}` as ArrowSide)
-    : hOut >= vOut
-      ? horiz
-      : vert;
-
-  // 三角沿該邊的位置：對齊棋子中心，轉成佔卡片該軸的百分比，留邊距避免跑到圓角外。
-  const SIZE = 1.6; // 三角邊長（cqmin）
-  const off = `-${SIZE / 2}cqmin`; // 三角中心壓在卡邊上
-  const along =
-    arrowSide === "left" || arrowSide === "right"
-      ? clamp(((sq.y - topCq) / CARD_H) * 100, 14, 86)
-      : clamp(((sq.x - leftCq) / CARD_W) * 100, 14, 86);
-  const isCorner = arrowSide.length > 6; // topLeft / topRight / bottomLeft / bottomRight
-
-  // ── 正交邊：旋轉 45° 的方塊，角直直朝棋子戳出；只描朝棋子的兩邊，與卡框連續。 ──
-  const sideStyles: Record<string, CSSProperties> = {
-    left: { left: off, top: `${along}%`, marginTop: off },
-    right: { right: off, top: `${along}%`, marginTop: off },
-    top: { top: off, left: `${along}%`, marginLeft: off },
-    bottom: { bottom: off, left: `${along}%`, marginLeft: off },
-  };
-  const squareBorderClass: Record<string, string> = {
-    left: "border-b border-l",
-    right: "border-t border-r",
-    top: "border-t border-l",
-    bottom: "border-b border-r",
-  };
-  const squareStyle: CSSProperties = {
-    position: "absolute",
-    width: `${SIZE}cqmin`,
-    height: `${SIZE}cqmin`,
-    background: "rgb(2 6 23 / 0.85)", // 與卡片底色一致
-    transform: "rotate(45deg)",
-    ...sideStyles[arrowSide],
-  };
-
-  // ── 對角（角格）：和正交邊同款「旋轉 45° 的方塊」，但往斜對角推出卡角。 ──
-  // 旋轉後方塊的四個尖點朝上下左右；把方塊往斜對角平移，使「朝棋子那一點」露出卡角外
-  // 成為尖端，對側點壓進卡身相連，再描出朝棋子的兩條外緣 → 與卡框連續的斜向箭頭。
-  const D = SIZE * 0.2; // 沿各軸往卡外推的量（cqmin）；露出一個尖角、另一點仍咬住卡身
-  const triPos: Record<string, CSSProperties> = {
-    bottomRight: { bottom: `-${D}cqmin`, right: `-${D}cqmin` },
-    bottomLeft: { bottom: `-${D}cqmin`, left: `-${D}cqmin` },
-    topRight: { top: `-${D}cqmin`, right: `-${D}cqmin` },
-    topLeft: { top: `-${D}cqmin`, left: `-${D}cqmin` },
-  };
-  // 旋轉 45° 後，朝棋子的兩條外緣 = 露在外面那一點兩側的邊。
-  const triBorderClass: Record<string, string> = {
-    bottomRight: "border-b border-r",
-    bottomLeft: "border-b border-l",
-    topRight: "border-t border-r",
-    topLeft: "border-t border-l",
-  };
-  const triStyle: CSSProperties = {
-    position: "absolute",
-    width: `${SIZE}cqmin`,
-    height: `${SIZE}cqmin`,
-    background: "rgb(2 6 23 / 0.85)", // 與卡片底色一致
-    ...triPos[arrowSide],
-  };
-
-  return (
-    <div ref={cardRef} className="pointer-events-none absolute z-30" style={style}>
-      <section
-        className={`pointer-events-auto relative rounded-xl border bg-slate-950/85 p-3 backdrop-blur-md ${tone.ring} shadow-[0_8px_30px_rgba(0,0,0,0.55)]`}
-      >
-        {isCorner ? (
-          <span aria-hidden className={`${tone.ring} ${triBorderClass[arrowSide]}`} style={triStyle} />
-        ) : (
-          <span aria-hidden className={`${tone.ring} ${squareBorderClass[arrowSide]}`} style={squareStyle} />
-        )}
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute right-2 top-2 text-slate-500 transition hover:text-slate-200"
-          aria-label="關閉"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        <div className="mb-1 text-[11px] font-semibold tracking-wider text-slate-400">棋子停在</div>
-        <div className="flex items-center gap-2">
-          <span className="text-lg font-black text-slate-100">{sq.label}</span>
-        </div>
-        <p className="mt-1.5 text-sm text-slate-300">{squareHint(sq)}</p>
-        {showGo && (
-          <button
-            type="button"
-            onClick={onGo}
-            className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 text-sm font-black text-slate-950 transition hover:bg-cyan-400 active:scale-[0.98]"
-          >
-            前往{TAB_LABEL[tab]} <ArrowRight className="h-4 w-4" />
-          </button>
-        )}
-      </section>
-    </div>
   );
 }

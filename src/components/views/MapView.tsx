@@ -6,7 +6,8 @@ import { useSnapshot, postJson, ActionButton, TeamSelect, fetcher } from "@/comp
 import { RewardButtons } from "@/components/RewardPanel";
 import { LotteryView } from "@/components/views/LotteryView";
 import { WheelView } from "@/components/views/WheelView";
-import { LuckDraw } from "@/components/views/LuckDraw";
+import { LuckDraw, type DrawnCard } from "@/components/views/LuckDraw";
+import { TaskView } from "@/components/views/TaskView";
 import { ExchangeView } from "@/components/views/ExchangeView";
 import { ShopView } from "@/components/views/ShopView";
 import { RealMapView } from "@/components/views/RealMapView";
@@ -14,7 +15,7 @@ import { ScrollLock } from "@/components/ui/scroll-lock";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, EventBanner, HudTabs, TeamItemBadges, FloatingDesc } from "@/components/ui";
 import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, EffectType, ITEM_GRADE_COLORS, stackEffects, applyToll, type UndoRecipe } from "@/lib/game";
-import { Map, CircleDollarSign, LoaderPinwheel, Building2, Store, Gamepad2 } from "lucide-react";
+import { Map, CircleDollarSign, LoaderPinwheel, Building2, Store, Gamepad2, ClipboardList } from "lucide-react";
 
 export function MapView() {
   const { snap, mutate } = useSnapshot(2500);
@@ -26,7 +27,9 @@ export function MapView() {
   const [tollRegion, setTollRegion] = useState("AURORA");
   // 交易所預選區域（由真實地圖落在不動產格時自動帶入）
   const [region, setRegion] = useState("AURORA");
-  const [tab, setTab] = useState<"realmap" | "map" | "lottery" | "wheel" | "exchange" | "shop">("realmap");
+  const [tab, setTab] = useState<"realmap" | "map" | "lottery" | "wheel" | "exchange" | "shop" | "task">("realmap");
+  // 由地圖階段 3 抽到任務卡時帶來的卡 → 切到「任務」分頁並自動載入。
+  const [pendingTask, setPendingTask] = useState<DrawnCard | null>(null);
   const [openItemId, setOpenItemId] = useState<number | null>(null);
   const [hoverItemId, setHoverItemId] = useState<number | null>(null);
   // 點擊版本數秒後自動消失
@@ -78,6 +81,7 @@ export function MapView() {
           ["shop", "神秘商店", <Store key="s" className="h-4 w-4" />],
           ["lottery", "大樂透", <CircleDollarSign key="l" className="h-4 w-4" />],
           ["wheel", "命運輪盤", <LoaderPinwheel key="w" className="h-4 w-4" />],
+          ["task", "任務", <ClipboardList key="t" className="h-4 w-4" />],
         ] as const}
       />
 
@@ -89,8 +93,9 @@ export function MapView() {
         <RealMapView
           team={team}
           setTeam={setTeam}
-          onLand={({ tab: nextTab, region: nextRegion }) => {
+          onLand={({ tab: nextTab, region: nextRegion, taskCard }) => {
             if (nextRegion) setRegion(nextRegion);
+            if (taskCard) setPendingTask(taskCard);
             setTab(nextTab);
           }}
         />
@@ -103,6 +108,8 @@ export function MapView() {
         <ExchangeView team={team} setTeam={setTeam} region={region} setRegion={setRegion} />
       ) : tab === "shop" ? (
         <ShopView team={team} setTeam={setTeam} />
+      ) : tab === "task" ? (
+        <TaskView team={team} setTeam={setTeam} pending={pendingTask} clearPending={() => setPendingTask(null)} />
       ) : (
         <>
           <EventBanner events={snap.activeEvents} />

@@ -64,6 +64,55 @@ export function LevelDots({ level }: { level: number }) {
   );
 }
 
+// 流程步驟分頁點：地圖右側面板的「階段 1/2/3」指示 + 可點切換。
+// active 用當前小隊色（color）發光；已解鎖未到的點稍亮、鎖定點最暗且不可點。
+// onJump(p) 切到第 p 階段；reachable 標出目前可達的最大階段（避免點到尚無結果的階段）。
+export function PhaseDots({
+  phase,
+  count = 3,
+  reachable = phase,
+  color = "#22d3ee",
+  onJump,
+}: {
+  phase: number;
+  count?: number;
+  reachable?: number;
+  color?: string;
+  onJump?: (p: number) => void;
+}) {
+  return (
+    <div className="flex items-center justify-center gap-2 py-1.5">
+      {Array.from({ length: count }, (_, idx) => {
+        const p = idx + 1;
+        const active = p === phase;
+        const locked = p > reachable;
+        return (
+          <button
+            key={p}
+            type="button"
+            disabled={locked || !onJump}
+            onClick={() => onJump?.(p)}
+            aria-label={`階段 ${p}`}
+            aria-current={active ? "step" : undefined}
+            className="group flex items-center justify-center p-1 disabled:cursor-not-allowed"
+          >
+            <span
+              style={active ? { background: color, boxShadow: `0 0 8px ${color}` } : undefined}
+              className={`block rounded-full transition-all ${
+                active
+                  ? "h-2.5 w-5"
+                  : locked
+                    ? "h-2 w-2 bg-slate-700"
+                    : "h-2 w-2 bg-slate-500 group-hover:bg-slate-300"
+              }`}
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // 現價 + 受事件影響的漲跌（對比初始價）
 export function PriceTag({
   current,
