@@ -18,6 +18,39 @@ export function Num({
   return <span className={`num ${className}`}>{children}</span>;
 }
 
+// 回合操作完成列：地圖落地導向某分頁時於底部顯示，呈現本回合此分頁的累計金流，
+// 按「完成」把 delta 帶回地圖階段 2 並切回地圖。各操作分頁共用。
+export function TurnCompleteBar({
+  delta,
+  onComplete,
+  label = "完成・返回地圖",
+}: {
+  delta: number;
+  onComplete: (delta: number) => void;
+  label?: string;
+}) {
+  return (
+    <div className="sticky bottom-0 z-20 mt-4 flex items-center gap-3 rounded-xl border border-cyan-400/30 bg-slate-950/85 px-3 py-2.5 backdrop-blur">
+      <span className="rounded-md bg-cyan-400/15 px-2 py-0.5 text-[11px] font-bold tracking-wide text-cyan-200">
+        回合操作
+      </span>
+      <span className="flex items-center gap-1.5 text-sm">
+        <span className="text-slate-400">本回合此處</span>
+        <Num className={`font-mono font-black tabular-nums ${delta > 0 ? "text-emerald-300" : delta < 0 ? "text-rose-300" : "text-slate-300"}`}>
+          {delta > 0 ? `+${delta}` : delta}
+        </Num>
+      </span>
+      <button
+        type="button"
+        onClick={() => onComplete(delta)}
+        className="ml-auto rounded-lg bg-cyan-500 px-4 py-2 text-sm font-black text-slate-950 transition hover:bg-cyan-400 active:scale-[0.98]"
+      >
+        {label}
+      </button>
+    </div>
+  );
+}
+
 // 數字滾動：值改變時平滑補間（大螢幕 / 拍賣現場的「跳動感」）。
 // 用於會即時變動的金額（淨值、喊價、過路費、獎金池…）。
 export function AnimatedNum({

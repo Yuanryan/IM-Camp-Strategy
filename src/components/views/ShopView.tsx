@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { CreditCard, Package } from "lucide-react";
 import { fetcher, useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num, HudTabs } from "@/components/ui";
+import { Num, HudTabs, TurnCompleteBar } from "@/components/ui";
 import { ITEM_GRADE_COLORS } from "@/lib/game";
 
 type ShopCard = { type: string; cost: number; effect: string; remaining: number };
@@ -195,15 +195,23 @@ const itemWeight = (it: ShopItem) => GRADE_DRAW_WEIGHT[it.grade] ?? 1;
 export function ShopView({
   team: teamProp,
   setTeam: setTeamProp,
+  turnMode = false,
+  onComplete,
 }: {
   team?: number | "";
   setTeam?: (id: number | "") => void;
+  // 地圖回合操作：顯示「完成」鈕，累計本回合動產購買支出（負值）並回報。
+  // 卡片以卡牌點數購買、非光幣，不計入回合金流。
+  turnMode?: boolean;
+  onComplete?: (delta: number) => void;
 } = {}) {
   // 受控（由 MapView 共用 team）或自管（/shop 獨立頁）
   const [teamInner, setTeamInner] = useState<number | "">("");
   const team = teamProp ?? teamInner;
   const setTeam = setTeamProp ?? setTeamInner;
   const [tab, setTab] = useState<"cards" | "assets">("cards");
+  // 本回合累計動產購買支出（負值）；按「完成」時併入地圖階段 2。
+  const [turnDelta, setTurnDelta] = useState(0);
   const { snap } = useSnapshot(3000);
   // 只輪詢目前 tab 的庫存（另一個 tab 暫停＝refreshInterval 0），減少不必要的 API 呼叫。
   // 切回該 tab 時 SWR 仍會立即重新驗證一次（revalidateOnMount/focus），不會看到過期庫存。
@@ -325,6 +333,8 @@ export function ShopView({
                         const r = await postJson("/api/shop/item", { teamId: team, assetId: it!.id });
                         await mutateItems();
                         itemDisplay.clearLock(); // 買一件 → 清掉該隊鎖定並重抽
+                        // 回合操作：動產購買是支出 → 累計為負，待「完成」併入地圖階段 2。
+                        if (turnMode) setTurnDelta((d) => d - (r.price ?? 0));
                         return `售出 ${r.name}（-${r.price} 光幣）`;
                       }}
                     />
@@ -336,6 +346,8 @@ export function ShopView({
         )}
       </Card>
       )}
+
+      {turnMode && onComplete && <TurnCompleteBar delta={turnDelta} onComplete={onComplete} />}
     </div>
   );
 }

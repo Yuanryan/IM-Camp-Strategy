@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useSnapshot, postJson, TeamSelect, toast, confirmDialog } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num, TeamItemBadges } from "@/components/ui";
+import { Num, TeamItemBadges, TurnCompleteBar } from "@/components/ui";
 import { lotteryFee, EffectType } from "@/lib/game";
 
 type DrawResult = { number: number; winnerName: string | null; finalPool: number };
@@ -11,9 +11,14 @@ type DrawResult = { number: number; winnerName: string | null; finalPool: number
 export function LotteryView({
   team: teamProp,
   setTeam: setTeamProp,
+  turnMode = false,
+  onComplete,
 }: {
   team?: number | "";
   setTeam?: (id: number | "") => void;
+  // 由地圖回合操作開啟時為 true：顯示「完成」鈕，累計本回合登記費用（負值）並回報。
+  turnMode?: boolean;
+  onComplete?: (delta: number) => void;
 } = {}) {
   const { snap, mutate } = useSnapshot(2500);
   // 受控（由 MapView 共用 team）或自管（/lottery 獨立頁）
@@ -21,6 +26,8 @@ export function LotteryView({
   const team = teamProp ?? teamInner;
   const setTeam = setTeamProp ?? setTeamInner;
   const [pending, setPending] = useState<number | null>(null);
+  // 本回合累計金流（登記號碼的費用總和，為負）；按「完成」時回報給地圖階段 2。
+  const [turnDelta, setTurnDelta] = useState(0);
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [highlight, setHighlight] = useState<number | null>(null);
 
@@ -79,6 +86,8 @@ export function LotteryView({
     try {
       const r = await postJson("/api/lottery/register", { teamId: team, number });
       await mutate();
+      // 回合操作：登記費用是支出 → 累計為負值，待「完成」時併入地圖階段 2。
+      if (turnMode) setTurnDelta((d) => d - (r.fee ?? 0));
       const msg = `已登記 ${number} 號（費用 ${r.fee}）`;
       setResult({ ok: true, msg });
       toast(msg, "ok");
@@ -214,6 +223,8 @@ export function LotteryView({
           onClose={() => setDraw(null)}
         />
       )}
+
+      {turnMode && onComplete && <TurnCompleteBar delta={turnDelta} onComplete={onComplete} />}
     </div>
   );
 }

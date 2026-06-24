@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSnapshot, TeamSelect } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num } from "@/components/ui";
+import { Num, TurnCompleteBar } from "@/components/ui";
 import {
   drawCard,
   useCardSettle,
@@ -18,11 +18,18 @@ export function TaskView({
   setTeam,
   pending,
   clearPending,
+  turnMode = false,
+  onComplete,
 }: {
   team: number | "";
   setTeam: (id: number | "") => void;
   pending: DrawnCard | null;
   clearPending: () => void;
+  // 地圖回合操作：顯示「完成」鈕返回地圖。任務卡金額由伺服器套動產效果計算、
+  // 且判定型卡無固定金額，故不在此回報金流（delta 0）；卡片金流仍寫入伺服器、
+  // 反映在階段 2 的即時光幣。
+  turnMode?: boolean;
+  onComplete?: (delta: number) => void;
 }) {
   const { snap, mutate } = useSnapshot(2500);
   // 本地抽到的卡（在此分頁直接抽）；若無則顯示由地圖帶來的 pending 卡。
@@ -121,6 +128,8 @@ export function TaskView({
           </button>
         )}
       </Card>
+
+      {turnMode && onComplete && <TurnCompleteBar delta={0} onComplete={onComplete} label="完成任務・返回地圖" />}
     </div>
   );
 }

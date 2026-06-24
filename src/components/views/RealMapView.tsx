@@ -21,6 +21,9 @@ import {
   EffectType,
   ITEM_GRADE_COLORS,
   applyToll,
+  applyRoundIncome,
+  applyCompoundInterest,
+  applyPropertyDividend,
   stackEffects,
   movementMode,
   applyMovement,
@@ -39,6 +42,7 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
+  Check,
 } from "lucide-react";
 
 // ── 棋子配色（依小隊清單順序循環）──────────────────────────────
@@ -163,10 +167,16 @@ export function RealMapView({
   team,
   setTeam,
   onLand,
+  actionResult,
+  clearActionResult,
 }: {
   team: number | "";
   setTeam: (id: number | "") => void;
   onLand: (target: { tab: MapTab; region?: RegionCode; taskCard?: DrawnCard }) => void;
+  // 分頁「完成」帶回的累計金流（label＝分頁名、delta＝淨變動、subRows＝可選文字子列）；
+  // 併入階段 2 後由 clearActionResult 清掉。
+  actionResult?: { label: string; delta: number; subRows?: { label: string; amount: number }[] } | null;
+  clearActionResult?: () => void;
 }) {
   const { snap, mutate } = useSnapshot(2500);
   const [steps, setSteps] = useState(1);
@@ -176,6 +186,9 @@ export function RealMapView({
   const [rolling, setRolling] = useState(false);
   const [teleport, setTeleport] = useState(false);
   const [landed, setLanded] = useState<BoardSquare | null>(null);
+  // 本回合是否已從操作分頁「完成」回來（金流已併入階段 2）：
+  // 為 true 時階段 2 的按鈕改為「結束回合」（清隊伍、回階段 1），而非再次前往分頁。
+  const [actionDone, setActionDone] = useState(false);
   // 右側面板流程階段：1 移動 / 2 結算結果 / 3 抽卡（GLOW・FOG 才可達）。
   const [phase, setPhase] = useState<1 | 2 | 3>(1);
   // 階段 3 就地抽到的即時卡（任務卡會改導向「任務」分頁，不存這裡）。
@@ -276,7 +289,24 @@ export function RealMapView({
 
   // 換隊時清掉已選的移動道具（避免套用到別隊不存在的道具），關閉落地路由卡（屬上一隊），
   // 並把流程退回階段 1（重新驅動棋子）。
-  useEffect(() => { setSelectedMoveId(null); setLanded(null); setDrawn(null); setResult(null); setPhase(1); }, [team]);
+  useEffect(() => { setSelectedMoveId(null); setLanded(null); setDrawn(null); setResult(null); setActionDone(false); setPhase(1); }, [team]);
+
+  // 分頁操作完成回傳金流 → 併入階段 2 結算面板（新增一列），刷新餘額並跳到階段 2，最後清掉來源。
+  useEffect(() => {
+    if (!actionResult) return;
+    const { label, delta, subRows } = actionResult;
+    // 有金流（delta≠0）或有子列（如輪盤持平：投入/拿回 仍需呈現）就新增一列。
+    if (delta !== 0 || (subRows && subRows.length > 0)) {
+      setResult((prev) => {
+        const rows = [...(prev?.rows ?? []), { label, amount: delta, subRows }];
+        return { rows, undo: prev?.undo, noSettle: prev?.noSettle };
+      });
+    }
+    mutate();
+    setPhase(2);
+    setActionDone(true); // 已從分頁完成回來 → 階段 2 按鈕改為「結束回合」
+    clearActionResult?.();
+  }, [actionResult, mutate, clearActionResult]);
 
   // 量階段 1 的渲染寬度 → 套到滑動容器 width，讓階段 2/3 維持同寬不縮水。
   useEffect(() => {
@@ -402,6 +432,7 @@ export function RealMapView({
     if (team === "" || !cur) { toast("請先選擇小隊", "err"); return; }
     if (busy) return; // 序列化網路請求，避免兩筆 POST 競爭同隊位置
     setBusy(true);
+    setActionDone(false); // 新一次移動＝新落地，清掉上一回合「已完成」狀態
     const fromPos = cur.boardPos;
     const isDiceMove = !!payload.steps && payload.steps > 0;
     const doSettle = isDiceMove && !payload.noSettle; // 卡片觸發的移動不結算
@@ -498,7 +529,25 @@ export function RealMapView({
               i.effectType !== EffectType.REMINDER &&
               (i.effectType !== EffectType.UNDERDOG || isLast),
           );
-          rows.push({ label: "回合收益", amount: roundIncome, items: incomeItems });
+          // 逐項拆分：用與 distributeRoundIncome 相同公式算出每個動產的貢獻，
+          // 讓面板把「回合收益」按來源道具一條一條列出。基準值取移動前快照
+          // （cur.coins / cur.propertyValue），與伺服器結算口徑一致。
+          const breakdown = incomeItems
+            .map((it) => {
+              let amount = 0;
+              if (it.effectType === EffectType.COINS_PER_ROUND) {
+                amount = applyRoundIncome(it.effectValue);
+              } else if (it.effectType === EffectType.COMPOUND_INTEREST) {
+                amount = applyCompoundInterest(cur.coins, it.effectValue);
+              } else if (it.effectType === EffectType.PROPERTY_DIVIDEND) {
+                amount = applyPropertyDividend(cur.propertyValue, it.effectValue);
+              } else if (it.effectType === EffectType.UNDERDOG) {
+                amount = Math.round(it.effectValue);
+              }
+              return { item: it, amount };
+            })
+            .filter((b) => b.amount > 0);
+          rows.push({ label: "回合收益", amount: roundIncome, items: incomeItems, breakdown });
         }
         if (tollPaid > 0) {
           // 過路費減免來源：本隊套用到該區的 TOLL_PAID 道具（讓關主看出為何金額被打折）。
@@ -1082,8 +1131,10 @@ export function RealMapView({
             team={cur}
             teamColor={teamColor}
             isCardSquare={isCardSquare}
+            actionDone={actionDone}
             onGoTab={() => landed && onLand(squareToTab(landed))}
             onDraw={() => setPhase(3)}
+            onEndTurn={() => setTeam("")}
           />
         )}
 
@@ -1135,16 +1186,21 @@ function PhaseResult({
   team,
   teamColor,
   isCardSquare,
+  actionDone,
   onGoTab,
   onDraw,
+  onEndTurn,
 }: {
   landed: BoardSquare | null;
   result: { rows: MoneyRow[]; undo?: UndoRecipe; noSettle?: boolean } | null;
   team?: TeamView;
   teamColor: string;
   isCardSquare: boolean;
+  // 已從操作分頁完成回來：底部按鈕改為「結束回合」。
+  actionDone: boolean;
   onGoTab: () => void;
   onDraw: () => void;
+  onEndTurn: () => void;
 }) {
   if (!landed) {
     return (
@@ -1182,11 +1238,45 @@ function PhaseResult({
                   {r.amount > 0 ? `+${r.amount}` : r.amount}
                 </span>
               </div>
-              {/* 來源道具徽章：說明這筆金額由哪些動產促成（收益來源 / 過路費減免）。*/}
-              {r.items && r.items.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {r.items.map((it) => (
-                    <ItemBadge key={it.id} item={it} />
+              {/* 逐項拆分：回合收益按來源動產一條一條列出（左側 grade 徽章 + 右側該筆貢獻光幣）。*/}
+              {r.breakdown && r.breakdown.length > 0 ? (
+                <div className="mt-1 space-y-1">
+                  {r.breakdown.map((b) => (
+                    <div key={b.item.id} className="flex items-center justify-between gap-3 pl-2">
+                      <span
+                        title={b.item.description}
+                        className={`inline-flex min-w-0 items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-medium ${ITEM_GRADE_COLORS[b.item.grade] ?? "chip"}`}
+                      >
+                        <span className="shrink-0 font-bold opacity-70">{b.item.grade}</span>
+                        <span className="max-w-[8rem] truncate">{b.item.name}</span>
+                        <span className={`shrink-0 font-mono ${b.item.effectValue >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                          {itemEffectLabel(b.item)}
+                        </span>
+                      </span>
+                      <span className="shrink-0 font-mono text-xs tabular-nums text-emerald-400/90">+{b.amount}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                /* 無逐項拆分者（如過路費減免）退回顯示來源道具徽章（效果值文字）。*/
+                r.items && r.items.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {r.items.map((it) => (
+                      <ItemBadge key={it.id} item={it} />
+                    ))}
+                  </div>
+                )
+              )}
+              {/* 文字子列（如命運輪盤：投入 / 拿回）：縮排顯示，header amount 為合計。*/}
+              {r.subRows && r.subRows.length > 0 && (
+                <div className="mt-1 space-y-0.5">
+                  {r.subRows.map((s, j) => (
+                    <div key={j} className="flex items-center justify-between gap-3 pl-2 text-xs">
+                      <span className="text-slate-400">{s.label}</span>
+                      <span className={`shrink-0 font-mono tabular-nums ${s.amount >= 0 ? "text-emerald-400/90" : "text-rose-400/90"}`}>
+                        {s.amount >= 0 ? `+${s.amount}` : s.amount}
+                      </span>
+                    </div>
                   ))}
                 </div>
               )}
@@ -1209,7 +1299,16 @@ function PhaseResult({
           <div className="mb-1 text-[11px] font-bold tracking-wide text-slate-400">{team.name}・目前資產價值</div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-slate-400">光幣</span>
-            <Num className="neon-gold font-bold tabular-nums">{team.coins}</Num>
+            {/* 本回合有金流變動時顯示「原值 → 新值」，讓關主看出加總前後差異。*/}
+            {net !== 0 ? (
+              <span className="flex items-center gap-1.5 font-mono tabular-nums">
+                <Num className="text-slate-500">{team.coins - net}</Num>
+                <ArrowRight className="h-3 w-3 text-slate-500" />
+                <Num className="neon-gold font-bold">{team.coins}</Num>
+              </span>
+            ) : (
+              <Num className="neon-gold font-bold tabular-nums">{team.coins}</Num>
+            )}
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-slate-400">不動產現值</span>
@@ -1223,7 +1322,16 @@ function PhaseResult({
       )}
 
       <div className="mt-auto">
-        {isCardSquare ? (
+        {actionDone ? (
+          /* 已從操作分頁完成回來 → 結束本回合：清空選隊並退回階段 1，準備下一隊。*/
+          <button
+            type="button"
+            onClick={onEndTurn}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 text-sm font-black text-slate-950 transition hover:bg-emerald-400 active:scale-[0.98]"
+          >
+            <Check className="h-4 w-4" /> 結束回合
+          </button>
+        ) : isCardSquare ? (
           <button
             type="button"
             onClick={onDraw}
@@ -1250,15 +1358,17 @@ function PhaseResult({
   );
 }
 
+// 道具效果值文字：每輪收益 +N/輪、補貼 +N光幣、其餘以百分比表示（過路費減免、複利、分紅等）。
+function itemEffectLabel(item: ActiveItemView): string {
+  return item.effectType === EffectType.COINS_PER_ROUND
+    ? `+${item.effectValue}/輪`
+    : item.effectType === EffectType.ALLIANCE_BONUS || item.effectType === EffectType.UNDERDOG
+      ? `+${item.effectValue}光幣`
+      : `${item.effectValue >= 0 ? "+" : ""}${(item.effectValue * 100).toFixed(0)}%`;
+}
+
 // 結算明細裡的來源道具徽章（grade 配色 + 名稱 + 效果值；title 顯示完整說明）。
 function ItemBadge({ item }: { item: ActiveItemView }) {
-  // 效果值文字：每輪收益 +N/輪、補貼 +N光幣、其餘以百分比表示（過路費減免等）。
-  const val =
-    item.effectType === EffectType.COINS_PER_ROUND
-      ? `+${item.effectValue}/輪`
-      : item.effectType === EffectType.ALLIANCE_BONUS || item.effectType === EffectType.UNDERDOG
-        ? `+${item.effectValue}光幣`
-        : `${item.effectValue >= 0 ? "+" : ""}${(item.effectValue * 100).toFixed(0)}%`;
   return (
     <span
       title={item.description}
@@ -1266,7 +1376,7 @@ function ItemBadge({ item }: { item: ActiveItemView }) {
     >
       <span className="font-bold opacity-70">{item.grade}</span>
       <span className="max-w-[8rem] truncate">{item.name}</span>
-      <span className={`font-mono ${item.effectValue >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{val}</span>
+      <span className={`font-mono ${item.effectValue >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{itemEffectLabel(item)}</span>
     </span>
   );
 }

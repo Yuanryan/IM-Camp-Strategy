@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { postJson, TeamSelect, toast } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num, TeamItemBadges } from "@/components/ui";
+import { Num, TeamItemBadges, TurnCompleteBar } from "@/components/ui";
 import { WHEEL_OUTCOMES, applyWheelMaxStake, applyWheelBonus, EffectType, type UndoRecipe } from "@/lib/game";
 import type { ActiveItemView } from "@/lib/snapshot";
 
@@ -42,14 +42,24 @@ export function WheelView({
   setTeam,
   cur,
   onDone,
+  turnMode = false,
+  onComplete,
 }: {
   teams: TeamLite[];
   team: number | "";
   setTeam: (id: number | "") => void;
   cur?: TeamLite;
   onDone: () => void | Promise<unknown>;
+  // 地圖回合操作：顯示「完成」鈕，累計本回合轉盤金流並回報（含投入 / 拿回子列）。
+  turnMode?: boolean;
+  onComplete?: (delta: number, subRows?: { label: string; amount: number }[]) => void;
 }) {
   const [stake, setStake] = useState(100);
+  // 本回合累計：投入＝各次押注總和（正數）、拿回＝各次實得總和（正數）。
+  // 淨變動 = 拿回 − 投入；「完成」時以「投入 −X / 拿回 +Y」兩條子列回報，合計為淨變動。
+  const [turnStakeTotal, setTurnStakeTotal] = useState(0);
+  const [turnPayoutTotal, setTurnPayoutTotal] = useState(0);
+  const turnDelta = turnPayoutTotal - turnStakeTotal;
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [last, setLast] = useState<{ mult: number; delta: number; baseDelta: number; stake: number } | null>(null);
@@ -105,6 +115,11 @@ export function WheelView({
         // 還原加成前的淨變動（base = round(stake×mult) − stake），讓面板顯示加成計算
         const baseDelta = Math.round(stake * r.mult) - stake;
         setLast({ mult: r.mult, delta: r.delta, baseDelta, stake });
+        // 回合操作：累計投入（押注）與拿回（押注 + 淨變動），待「完成」拆成兩條子列。
+        if (turnMode) {
+          setTurnStakeTotal((s) => s + stake);
+          setTurnPayoutTotal((p) => p + stake + (r.delta ?? 0));
+        }
         toast(
           `×${r.mult}！${r.delta >= 0 ? "賺" : "賠"} ${Math.abs(r.delta)} 光幣`,
           r.delta >= 0 ? "ok" : "err",
@@ -294,6 +309,24 @@ export function WheelView({
           </button>
         </div>
       </Card>
+
+      {turnMode && onComplete && (
+        <TurnCompleteBar
+          delta={turnDelta}
+          onComplete={(net) =>
+            onComplete(
+              net,
+              // 有押注才附「投入 / 拿回」子列；合計（header）為淨變動。
+              turnStakeTotal > 0
+                ? [
+                    { label: "投入", amount: -turnStakeTotal },
+                    { label: "拿回", amount: turnPayoutTotal },
+                  ]
+                : undefined,
+            )
+          }
+        />
+      )}
     </div>
   );
 }

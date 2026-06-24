@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num, PriceTag, LevelDots, EventBanner, TeamItemBadges, HudTabs } from "@/components/ui";
+import { Num, PriceTag, LevelDots, EventBanner, TeamItemBadges, HudTabs, TurnCompleteBar } from "@/components/ui";
 import { REGIONS, REGION_UI, EffectType, upgradeFee, applyShopPrice, stackEffects, roundTo10, type UndoRecipe } from "@/lib/game";
 import { Building2, Sword } from "lucide-react";
 
@@ -31,11 +31,16 @@ export function ExchangeView({
   setTeam: setTeamProp,
   region: regionProp,
   setRegion: setRegionProp,
+  turnMode = false,
+  onComplete,
 }: {
   team?: number | "";
   setTeam?: (id: number | "") => void;
   region?: string;
   setRegion?: (r: string) => void;
+  // 地圖回合操作：顯示「完成」鈕，累計本回合購買 / 升級支出（負值）並回報。
+  turnMode?: boolean;
+  onComplete?: (delta: number) => void;
 } = {}) {
   const { snap, mutate } = useSnapshot(2500);
   const [tab, setTab] = useState<"props" | "cards">("props");
@@ -44,6 +49,8 @@ export function ExchangeView({
   const team = teamProp ?? teamInner;
   const setTeam = setTeamProp ?? setTeamInner;
   const [discount, setDiscount] = useState(0);
+  // 本回合累計購買 / 升級支出（負值）；按「完成」時併入地圖階段 2。
+  const [turnDelta, setTurnDelta] = useState(0);
   // 受控（由 MapView / 真實地圖預選區域）或自管
   const [regionInner, setRegionInner] = useState<string>("AURORA");
   const region = regionProp ?? regionInner;
@@ -63,10 +70,12 @@ export function ExchangeView({
     );
   };
 
-  const act = async (fn: () => Promise<{ [k: string]: unknown }>, ok: string) => {
+  // spent：本次操作對作用隊的支出（>0），回合操作時累計為負；功能卡等不傳則不計。
+  const act = async (fn: () => Promise<{ [k: string]: unknown }>, ok: string, spent?: number) => {
     const r = await fn();
     await mutate();
     if (r.error) return String(r.error);
+    if (turnMode && spent) setTurnDelta((d) => d - spent);
     return { message: ok, undo: r.undo as UndoRecipe | undefined };
   };
 
@@ -162,13 +171,13 @@ export function ExchangeView({
                         className="w-full btn-emerald"
                         disabled={team === ""}
                         onAction={() => team === "" ? Promise.resolve("請先選小隊") :
-                          act(() => postJson("/api/exchange/buy", { propertyId: p.id, teamId: team, discount }), `已購買 ${p.name}`)} />
+                          act(() => postJson("/api/exchange/buy", { propertyId: p.id, teamId: team, discount }), `已購買 ${p.name}`, buyPrice)} />
                     )}
                     {p.ownerTeamId === team && fee != null && upgradePrice != null && upgradeBase != null && (
                       <ActionButton
                         label={<PriceLabel prefix="升級" final={upgradePrice} base={upgradeBase} />}
                         className="w-full btn-amber"
-                        onAction={() => act(() => postJson("/api/exchange/upgrade", { propertyId: p.id, discount }), `已升級 ${p.name}`)} />
+                        onAction={() => act(() => postJson("/api/exchange/upgrade", { propertyId: p.id, discount }), `已升級 ${p.name}`, upgradePrice)} />
                     )}
                     {p.ownerTeamId != null && p.ownerTeamId !== team && (
                       <ActionButton label="已售出" className="w-full chip" disabled
@@ -184,6 +193,8 @@ export function ExchangeView({
       )}
 
       {/* <LedgerCard /> */}
+
+      {turnMode && onComplete && <TurnCompleteBar delta={turnDelta} onComplete={onComplete} />}
     </div>
   );
 }

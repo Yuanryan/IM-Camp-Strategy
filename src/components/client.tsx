@@ -160,8 +160,16 @@ export function toast(message: string, kind: "ok" | "err" = "ok", undo?: UndoRec
 
 // 一筆金流明細：label＝事件名（過路費→第5隊 等），amount＝帶號金額（正收入 / 負支出）。
 // items＝促成這筆金額的動產（收益來源 / 過路費減免等），於階段 2 面板顯示徽章。
+// breakdown＝逐項拆分（回合收益按各動產分列：哪個道具貢獻多少），動產徽章呈現。
+// subRows＝一般文字子列（如命運輪盤：投入 / 拿回），於面板縮排顯示；header amount 為合計。
 // 供地圖階段 2 結算面板（PhaseResult）逐列顯示金額用。
-export type MoneyRow = { label: string; amount: number; items?: ActiveItemView[] };
+export type MoneyRow = {
+  label: string;
+  amount: number;
+  items?: ActiveItemView[];
+  breakdown?: { item: ActiveItemView; amount: number }[];
+  subRows?: { label: string; amount: number }[];
+};
 
 // 樣式化確認對話框（取代 window.confirm）。回傳 Promise<boolean>：確定=true、取消=false。
 // 與 toast 一樣用命令式 DOM 建立，故任何地方都可呼叫、不需 React 掛載點。

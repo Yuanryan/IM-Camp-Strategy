@@ -17,6 +17,16 @@ import { Num, EventBanner, HudTabs, TeamItemBadges, FloatingDesc } from "@/compo
 import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, EffectType, ITEM_GRADE_COLORS, stackEffects, applyToll, type UndoRecipe } from "@/lib/game";
 import { Map, CircleDollarSign, LoaderPinwheel, Building2, Store, Gamepad2, ClipboardList } from "lucide-react";
 
+// 可作為「回合操作」的分頁（地圖落地會導向、完成後把金流併回階段 2）。
+type TurnActionTab = "lottery" | "wheel" | "exchange" | "shop" | "task";
+const TURN_ACTION_LABEL: Record<TurnActionTab, string> = {
+  lottery: "大樂透",
+  wheel: "命運輪盤",
+  exchange: "交易所",
+  shop: "神秘商店",
+  task: "任務",
+};
+
 export function MapView() {
   const { snap, mutate } = useSnapshot(2500);
   useSWR("/api/shop", fetcher);
@@ -30,6 +40,22 @@ export function MapView() {
   const [tab, setTab] = useState<"realmap" | "map" | "lottery" | "wheel" | "exchange" | "shop" | "task">("realmap");
   // 由地圖階段 3 抽到任務卡時帶來的卡 → 切到「任務」分頁並自動載入。
   const [pendingTask, setPendingTask] = useState<DrawnCard | null>(null);
+  // 進行中的「回合操作」：由地圖落地導向某分頁時記下 { 小隊, 分頁 }。
+  // 該分頁據此顯示「完成」按鈕並累計自身金流；按下完成才回報。null＝非回合操作（自由瀏覽分頁）。
+  const [turnAction, setTurnAction] = useState<{ teamId: number; tab: TurnActionTab } | null>(null);
+  // 分頁「完成」回報的累計金流，待併入地圖階段 2 結算面板；由 RealMapView 取用後清掉。
+  // subRows＝可選的文字子列（如命運輪盤的投入 / 拿回），於階段 2 縮排呈現。
+  const [actionResult, setActionResult] = useState<
+    { label: string; delta: number; subRows?: { label: string; amount: number }[] } | null
+  >(null);
+
+  // 分頁操作完成：把累計金流（含可選子列）帶回地圖階段 2，並切回地圖分頁、結束本回合操作標記。
+  const completeTurnAction = (delta: number, subRows?: { label: string; amount: number }[]) => {
+    if (!turnAction) return;
+    setActionResult({ label: TURN_ACTION_LABEL[turnAction.tab], delta, subRows });
+    setTurnAction(null);
+    setTab("realmap");
+  };
   const [openItemId, setOpenItemId] = useState<number | null>(null);
   const [hoverItemId, setHoverItemId] = useState<number | null>(null);
   // 點擊版本數秒後自動消失
@@ -85,32 +111,75 @@ export function MapView() {
         ] as const}
       />
 
-      {tab === "realmap" ? (
-        <>
+      {/* RealMapView 一律掛載、僅以 CSS 隱藏（非條件卸載）：
+          這樣切到操作分頁再回來時，階段 2 的 landed / result / phase 不會被重置，
+          分頁「完成」回報的金流才能正確併入既有的階段 2 結算面板。*/}
+      <div className={tab === "realmap" ? "" : "hidden"}>
         {/* 遊戲地圖分頁固定一個視窗高、本就不需捲動 → 鎖死整份文件捲動，
             避免 iPad/Safari 橡皮筋過捲把工具列叫回（看似退出全螢幕）。*/}
-        <ScrollLock />
+        {tab === "realmap" && <ScrollLock />}
         <RealMapView
           team={team}
           setTeam={setTeam}
           onLand={({ tab: nextTab, region: nextRegion, taskCard }) => {
             if (nextRegion) setRegion(nextRegion);
             if (taskCard) setPendingTask(taskCard);
+            // 由地圖落地導向操作分頁＝開啟一段「回合操作」，該分頁顯示完成鈕並累計金流。
+            // 「map」（地圖中控站）非操作分頁，不視為回合操作。
+            if (team !== "" && nextTab !== "map") {
+              setTurnAction({ teamId: team, tab: nextTab });
+            }
             setTab(nextTab);
           }}
+          // 分頁完成回報的金流，併入階段 2；取用後 RealMapView 會呼叫 clearActionResult 清掉。
+          actionResult={actionResult}
+          clearActionResult={() => setActionResult(null)}
         />
-        </>
-      ) : tab === "lottery" ? (
-        <LotteryView team={team} setTeam={setTeam} />
+      </div>
+
+      {tab === "lottery" ? (
+        <LotteryView
+          team={team}
+          setTeam={setTeam}
+          turnMode={turnAction?.tab === "lottery"}
+          onComplete={completeTurnAction}
+        />
       ) : tab === "wheel" ? (
-        <WheelView teams={teams} team={team} setTeam={setTeam} cur={cur} onDone={mutate} />
+        <WheelView
+          teams={teams}
+          team={team}
+          setTeam={setTeam}
+          cur={cur}
+          onDone={mutate}
+          turnMode={turnAction?.tab === "wheel"}
+          onComplete={completeTurnAction}
+        />
       ) : tab === "exchange" ? (
-        <ExchangeView team={team} setTeam={setTeam} region={region} setRegion={setRegion} />
+        <ExchangeView
+          team={team}
+          setTeam={setTeam}
+          region={region}
+          setRegion={setRegion}
+          turnMode={turnAction?.tab === "exchange"}
+          onComplete={completeTurnAction}
+        />
       ) : tab === "shop" ? (
-        <ShopView team={team} setTeam={setTeam} />
+        <ShopView
+          team={team}
+          setTeam={setTeam}
+          turnMode={turnAction?.tab === "shop"}
+          onComplete={completeTurnAction}
+        />
       ) : tab === "task" ? (
-        <TaskView team={team} setTeam={setTeam} pending={pendingTask} clearPending={() => setPendingTask(null)} />
-      ) : (
+        <TaskView
+          team={team}
+          setTeam={setTeam}
+          pending={pendingTask}
+          clearPending={() => setPendingTask(null)}
+          turnMode={turnAction?.tab === "task"}
+          onComplete={completeTurnAction}
+        />
+      ) : tab === "map" ? (
         <>
           <EventBanner events={snap.activeEvents} />
 
@@ -331,7 +400,7 @@ export function MapView() {
 
           </div>
         </>
-      )}
+      ) : null}
     </div>
   );
 }
