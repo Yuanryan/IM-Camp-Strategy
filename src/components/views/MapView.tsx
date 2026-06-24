@@ -6,8 +6,7 @@ import { useSnapshot, postJson, ActionButton, TeamSelect, fetcher } from "@/comp
 import { RewardButtons } from "@/components/RewardPanel";
 import { LotteryView } from "@/components/views/LotteryView";
 import { WheelView } from "@/components/views/WheelView";
-import { LuckDraw, type DrawnCard } from "@/components/views/LuckDraw";
-import { TaskView } from "@/components/views/TaskView";
+import { LuckDraw } from "@/components/views/LuckDraw";
 import { ExchangeView } from "@/components/views/ExchangeView";
 import { ShopView } from "@/components/views/ShopView";
 import { RealMapView } from "@/components/views/RealMapView";
@@ -15,16 +14,15 @@ import { ScrollLock } from "@/components/ui/scroll-lock";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, EventBanner, HudTabs, TeamItemBadges, FloatingDesc } from "@/components/ui";
 import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, EffectType, ITEM_GRADE_COLORS, stackEffects, applyToll, type UndoRecipe } from "@/lib/game";
-import { Map, CircleDollarSign, LoaderPinwheel, Building2, Store, Gamepad2, ClipboardList } from "lucide-react";
+import { Map, CircleDollarSign, LoaderPinwheel, Building2, Store, Gamepad2 } from "lucide-react";
 
 // 可作為「回合操作」的分頁（地圖落地會導向、完成後把金流併回階段 2）。
-type TurnActionTab = "lottery" | "wheel" | "exchange" | "shop" | "task";
+type TurnActionTab = "lottery" | "wheel" | "exchange" | "shop";
 const TURN_ACTION_LABEL: Record<TurnActionTab, string> = {
   lottery: "大樂透",
   wheel: "命運輪盤",
   exchange: "交易所",
   shop: "神秘商店",
-  task: "任務",
 };
 
 export function MapView() {
@@ -37,9 +35,7 @@ export function MapView() {
   const [tollRegion, setTollRegion] = useState("AURORA");
   // 交易所預選區域（由真實地圖落在不動產格時自動帶入）
   const [region, setRegion] = useState("AURORA");
-  const [tab, setTab] = useState<"realmap" | "map" | "lottery" | "wheel" | "exchange" | "shop" | "task">("realmap");
-  // 由地圖階段 3 抽到任務卡時帶來的卡 → 切到「任務」分頁並自動載入。
-  const [pendingTask, setPendingTask] = useState<DrawnCard | null>(null);
+  const [tab, setTab] = useState<"realmap" | "map" | "lottery" | "wheel" | "exchange" | "shop">("realmap");
   // 進行中的「回合操作」：由地圖落地導向某分頁時記下 { 小隊, 分頁 }。
   // 該分頁據此顯示「完成」按鈕並累計自身金流；按下完成才回報。null＝非回合操作（自由瀏覽分頁）。
   const [turnAction, setTurnAction] = useState<{ teamId: number; tab: TurnActionTab } | null>(null);
@@ -107,7 +103,6 @@ export function MapView() {
           ["shop", "神秘商店", <Store key="s" className="h-4 w-4" />],
           ["lottery", "大樂透", <CircleDollarSign key="l" className="h-4 w-4" />],
           ["wheel", "命運輪盤", <LoaderPinwheel key="w" className="h-4 w-4" />],
-          ["task", "任務", <ClipboardList key="t" className="h-4 w-4" />],
         ] as const}
       />
 
@@ -121,9 +116,8 @@ export function MapView() {
         <RealMapView
           team={team}
           setTeam={setTeam}
-          onLand={({ tab: nextTab, region: nextRegion, taskCard }) => {
+          onLand={({ tab: nextTab, region: nextRegion }) => {
             if (nextRegion) setRegion(nextRegion);
-            if (taskCard) setPendingTask(taskCard);
             // 由地圖落地導向操作分頁＝開啟一段「回合操作」，該分頁顯示完成鈕並累計金流。
             // 「map」（地圖中控站）非操作分頁，不視為回合操作。
             if (team !== "" && nextTab !== "map") {
@@ -170,15 +164,6 @@ export function MapView() {
           turnMode={turnAction?.tab === "shop"}
           onComplete={completeTurnAction}
         />
-      ) : tab === "task" ? (
-        <TaskView
-          team={team}
-          setTeam={setTeam}
-          pending={pendingTask}
-          clearPending={() => setPendingTask(null)}
-          turnMode={turnAction?.tab === "task"}
-          onComplete={completeTurnAction}
-        />
       ) : tab === "map" ? (
         <>
           <EventBanner events={snap.activeEvents} />
@@ -222,7 +207,7 @@ export function MapView() {
           {/* ── 光源點 / 迷霧區 ──────────────────────────────── */}
           <Card title="光源點 / 迷霧區">
             <div className="mb-1 text-xs text-slate-400">
-              好運卡完成任務可獲得光幣；厄運卡扣錢或執行懲罰任務。
+              好運卡直接獲得光幣等獎勵；厄運卡扣錢或執行懲罰。
             </div>
             <LuckDraw team={team} curName={cur?.name} event1={event1} items={cur?.items ?? []} onDone={mutate} />
           </Card>

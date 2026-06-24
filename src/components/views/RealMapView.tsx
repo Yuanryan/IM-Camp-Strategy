@@ -160,7 +160,6 @@ const TAB_LABEL: Record<MapTab, string> = {
   shop: "神秘商店",
   lottery: "大樂透",
   wheel: "命運輪盤",
-  task: "任務",
 };
 
 export function RealMapView({
@@ -172,7 +171,7 @@ export function RealMapView({
 }: {
   team: number | "";
   setTeam: (id: number | "") => void;
-  onLand: (target: { tab: MapTab; region?: RegionCode; taskCard?: DrawnCard }) => void;
+  onLand: (target: { tab: MapTab; region?: RegionCode }) => void;
   // 分頁「完成」帶回的累計金流（label＝分頁名、delta＝淨變動、subRows＝可選文字子列）；
   // 併入階段 2 後由 clearActionResult 清掉。
   actionResult?: { label: string; delta: number; subRows?: { label: string; amount: number }[] } | null;
@@ -191,7 +190,7 @@ export function RealMapView({
   const [actionDone, setActionDone] = useState(false);
   // 右側面板流程階段：1 移動 / 2 結算結果 / 3 抽卡（GLOW・FOG 才可達）。
   const [phase, setPhase] = useState<1 | 2 | 3>(1);
-  // 階段 3 就地抽到的即時卡（任務卡會改導向「任務」分頁，不存這裡）。
+  // 階段 3 就地抽到的即時卡。
   const [drawn, setDrawn] = useState<DrawnCard | null>(null);
   // 階段 2 結算結果（與 toast 同資料）：逐筆金流明細，於面板顯示。
   // result：本回合結算明細。noSettle=true 代表本次移動由卡片觸發、刻意不結算（顯示「本回合不結算」）；
@@ -384,12 +383,10 @@ export function RealMapView({
     }
   };
 
-  // 階段 3 抽卡：即時卡就地呈現（drawn）；任務卡導向「任務」分頁並帶卡過去。
+  // 階段 3 抽卡：好運 / 厄運卡皆為即時卡，就地呈現於面板。
   const handleDraw = (side: "good" | "bad") => {
     if (team === "") { toast("請先選擇小隊", "err"); return; }
-    const card = drawCard(side);
-    if (card.instant) setDrawn(card);
-    else { setDrawn(null); onLand({ tab: "task", taskCard: card }); }
+    setDrawn(drawCard(side));
   };
 
   // move 類即時好運卡（向前躍進 / 時光倒流 / 傳送門）：就地用面板移動控制執行。

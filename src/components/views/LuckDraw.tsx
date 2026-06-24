@@ -2,8 +2,6 @@
 
 import { useState, type ReactNode } from "react";
 import { ActionButton, postJson } from "@/components/client";
-import { QuestionBank } from "@/components/QuestionBank";
-import { useGameTimer, FloatingTimer } from "@/components/GameTimer";
 import {
   GOOD_LUCK_CARDS,
   BAD_LUCK_CARDS,
@@ -27,12 +25,6 @@ const REWARD_TAB_HINT: Record<string, string> = {
   card: "神秘商店 / 直接發放",
   move: "地圖移動棋子",
 };
-// 從判定字串抽出目標題數（如「答對 3 題」→ 3）；無數字回 null（改人工判定）。
-const targetOf = (s?: string | null): number | null => {
-  const m = s?.match(/(\d+)/);
-  return m ? parseInt(m[1], 10) : null;
-};
-
 // ── 一張抽到的卡 + 是否為即時結算卡（可在面板就地處理）──────────────
 export type DrawnCard =
   | { side: "good"; card: GoodCard; instant: boolean }
@@ -218,112 +210,7 @@ export function InstantCardPanel({
   );
 }
 
-// ── 任務卡（全幅分頁處理）：題庫 + 計時器 + 成功 / 失敗判定 ────────────────
-export function TaskCardView({
-  drawn,
-  settler,
-  team,
-  event1,
-  onSettled,
-}: {
-  drawn: DrawnCard;
-  settler: Settler;
-  team: number | "";
-  event1: boolean;
-  onSettled: () => void;
-}) {
-  const { settle, goodLabel, badLabel } = settler;
-  const mult = event1 ? 2 : 1;
-  const [count, setCount] = useState(0); // 題庫答對題數
-  const [timerOpen, setTimerOpen] = useState(false);
-  const timer = useGameTimer(0);
-  const wrap = (action: () => Promise<{ message: string; undo?: UndoRecipe }>) => async () => {
-    const r = await action();
-    onSettled();
-    return r;
-  };
-
-  if (drawn.side === "good") {
-    const good = drawn.card;
-    return (
-      <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4 ring-1 ring-amber-400/15">
-        <div className="mb-2 flex items-start justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-md bg-amber-400/20 px-2 py-0.5 text-[11px] font-bold text-amber-300">
-              好運卡・任務
-            </span>
-            <span className="font-bold text-amber-100">{good.name}</span>
-            <span className="chip px-1.5 py-0.5 text-xs">{good.difficulty}</span>
-            {event1 && <span className="text-[11px] font-semibold text-amber-300">× 2（事件一）</span>}
-          </div>
-          {good.game && <HeaderTally count={count} target={targetOf(good.criteria)} />}
-        </div>
-        <p className="mb-1 text-sm text-slate-200">{good.task}</p>
-        <p className="mb-3 text-xs text-slate-500">判定：{good.criteria}・成功獎勵隨機（40% 光幣 / 40% 卡牌點數〔÷5〕/ 20% 動產〔稀有度加權〕）</p>
-        {good.game && (
-          <div className="mb-3 rounded-lg border border-white/10 bg-slate-950/40 p-3">
-            <QuestionBank key={good.name} game={good.game} onCorrect={() => setCount((c) => c + 1)} />
-          </div>
-        )}
-        <div className="grid grid-cols-2 gap-2">
-          <ActionButton
-            label={goodLabel("成功", (good.success ?? 0) * mult)}
-            className="w-full btn-emerald"
-            disabled={team === ""}
-            onAction={wrap(() => settle((good.success ?? 0) * mult, `好運卡 ${good.name}（成功）`))}
-          />
-          <ActionButton
-            label={goodLabel("失敗", (good.fail ?? 0) * mult)}
-            className="w-full chip"
-            disabled={team === ""}
-            onAction={wrap(() => settle((good.fail ?? 0) * mult, `好運卡 ${good.name}（失敗）`))}
-          />
-        </div>
-        <FloatingTimer timer={timer} expanded={timerOpen} setExpanded={setTimerOpen} />
-      </div>
-    );
-  }
-
-  const bad = drawn.card;
-  return (
-    <div className="rounded-xl border border-rose-400/30 bg-rose-500/5 p-4 ring-1 ring-rose-400/15">
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-md bg-rose-500/20 px-2 py-0.5 text-[11px] font-bold text-rose-300">
-            厄運卡・{bad.kind}
-          </span>
-          <span className="font-bold text-rose-100">{bad.name}</span>
-          {bad.difficulty && <span className="chip px-1.5 py-0.5 text-xs">{bad.difficulty}</span>}
-          {event1 && bad.kind === "扣錢牌" && (
-            <span className="text-[11px] font-semibold text-amber-300">× 2（事件一）</span>
-          )}
-        </div>
-        {bad.game && <HeaderTally count={count} target={targetOf(bad.criteria)} />}
-      </div>
-      <p className="mb-1 text-sm text-slate-200">{bad.content}</p>
-      {bad.criteria && <p className="mb-3 text-xs text-slate-500">判定：{bad.criteria}</p>}
-      {bad.game && (
-        <div className="mb-3 rounded-lg border border-white/10 bg-slate-950/40 p-3">
-          <QuestionBank key={bad.name} game={bad.game} onCorrect={() => setCount((c) => c + 1)} />
-        </div>
-      )}
-      <div className={`grid gap-2 ${bad.outcomes.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
-        {bad.outcomes.map((o, i) => (
-          <ActionButton
-            key={i}
-            label={badLabel(o.label, o.deduct * mult)}
-            className={`w-full ${o.deduct > 0 ? "btn-rose" : "chip"}`}
-            disabled={team === ""}
-            onAction={wrap(() => settle(-(o.deduct * mult), `厄運卡 ${bad.name}（${o.label}）`))}
-          />
-        ))}
-      </div>
-      <FloatingTimer timer={timer} expanded={timerOpen} setExpanded={setTimerOpen} />
-    </div>
-  );
-}
-
-// ── 原「光源點 / 迷霧區」抽卡卡（地圖中控站分頁沿用）：抽好運 / 厄運，即時或任務一律就地呈現。 ──
+// ── 原「光源點 / 迷霧區」抽卡卡（地圖中控站分頁沿用）：抽好運 / 厄運，皆為即時卡就地呈現。 ──
 export function LuckDraw({
   team,
   curName,
@@ -358,24 +245,15 @@ export function LuckDraw({
         </button>
       </div>
 
-      {drawn &&
-        (drawn.instant ? (
-          <InstantCardPanel
-            drawn={drawn}
-            settler={settler}
-            team={team}
-            event1={event1}
-            onSettled={clear}
-          />
-        ) : (
-          <TaskCardView
-            drawn={drawn}
-            settler={settler}
-            team={team}
-            event1={event1}
-            onSettled={clear}
-          />
-        ))}
+      {drawn && (
+        <InstantCardPanel
+          drawn={drawn}
+          settler={settler}
+          team={team}
+          event1={event1}
+          onSettled={clear}
+        />
+      )}
 
       {drawn && (
         <button
@@ -385,20 +263,6 @@ export function LuckDraw({
           收起
         </button>
       )}
-    </div>
-  );
-}
-
-// 答對題數（卡片右上、無外框）：顯示「答對 N／目標 M」，達標時轉綠，輔助關主判定成功 / 失敗。
-function HeaderTally({ count, target }: { count: number; target: number | null }) {
-  const met = target != null && count >= target;
-  return (
-    <div className="shrink-0 text-right leading-tight">
-      <div className="text-[10px] text-slate-500">答對</div>
-      <div className={`text-xl font-black tabular-nums ${met ? "text-emerald-300" : "text-cyan-300"}`}>
-        {count}{target != null && <span className="text-xs font-semibold text-slate-500"> / {target}</span>}
-      </div>
-      {met && <div className="text-[10px] font-bold text-emerald-400">已達標 ✓</div>}
     </div>
   );
 }

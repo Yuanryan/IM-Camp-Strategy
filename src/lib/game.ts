@@ -599,17 +599,8 @@ export type BadCard = {
   game?: string; // 任務需題庫時，對應的 gameName
 };
 
-// 好運卡：光幣牌
+// 好運卡：直接獎勵卡（無任務，關主依說明直接執行）
 export const GOOD_LUCK_CARDS: GoodCard[] = [
-  { name: "晨光大禮", task: "跟關主猜拳，過半數隊員贏過關主", difficulty: "簡單", success: 150, fail: 0, criteria: "半數以上勝利" },
-  { name: "繁星獎池", task: "冷知識 5 題答對 3 題", difficulty: "中等", success: 250, fail: 0, criteria: "答對 3 題", game: "冷知識" },
-  { name: "資本大賞", task: "全隊用身體呈現指定國字，隊輔猜出 3 題", difficulty: "中等", success: 300, fail: 0, criteria: "猜出 3 題" },
-  { name: "光幣雙倍", task: "繞口令完成 3 題", difficulty: "中等", success: 300, fail: 0, criteria: "完成 3 題", game: "繞口令" },
-  { name: "迷霧財寶", task: "說出 10 位工人的本名", difficulty: "困難", success: 500, fail: 100, criteria: "名字正確" },
-  { name: "福星高照", task: "比手畫腳，3 分鐘內猜對 8 題", difficulty: "中等", success: 300, fail: 0, criteria: "猜對 8 題", game: "比手畫腳" },
-  { name: "默契滿分", task: "默契大考驗（關鍵字全隊同動作），完成 3 題", difficulty: "簡單", success: 150, fail: 0, criteria: "完成 3 題", game: "默契大考驗" },
-
-  // ── 直接獎勵卡（無任務，關主依說明直接執行）─────────────────────
   { name: "天降光幣", difficulty: "直接", reward: { kind: "coins", amount: 200 }, rewardText: "直接獲得 200 光幣，無需任務。" },
   { name: "意外之財", difficulty: "直接", reward: { kind: "coins", amount: 350 }, rewardText: "直接獲得 350 光幣，無需任務。" },
   { name: "命運眷顧", difficulty: "直接", reward: { kind: "wheel" }, rewardText: "免費轉一次命運輪盤（請到「命運輪盤」分頁執行）。" },
@@ -620,14 +611,8 @@ export const GOOD_LUCK_CARDS: GoodCard[] = [
   { name: "傳送門", difficulty: "直接", reward: { kind: "move" }, rewardText: "直接移動到指定格（由關主指定並移動棋子）。" },
 ];
 
-// 厄運卡：扣錢牌 + 懲罰任務牌
+// 厄運卡：懲罰任務牌（一翻兩瞪眼，無題庫 / 判定）
 export const BAD_LUCK_CARDS: BadCard[] = [
-  { name: "迷霧收費站", kind: "扣錢牌", content: "減免任務：猜拳，過半數隊員贏過關主", criteria: "半數以上勝利", outcomes: [{ label: "未完成", deduct: 200 }, { label: "完成減免", deduct: 100 }] },
-  { name: "資本寒流", kind: "扣錢牌", content: "減免任務：每人做 15 下波比跳", criteria: "全員完成", outcomes: [{ label: "未完成", deduct: 300 }, { label: "完成減免", deduct: 100 }] },
-  { name: "黑市稅捐", kind: "扣錢牌", content: "減免任務：繞口令完成 2 題", criteria: "完成 2 題", outcomes: [{ label: "未完成", deduct: 200 }, { label: "完成減免", deduct: 100 }], game: "繞口令" },
-  { name: "迷霧罰款", kind: "扣錢牌", content: "減免任務：冷知識 5 題答對 3 題", criteria: "答對 3 題", outcomes: [{ label: "未完成", deduct: 100 }, { label: "完成減免", deduct: 50 }], game: "冷知識" },
-  { name: "暗影徵收", kind: "扣錢牌", content: "減免任務：默契大考驗 5 題完成 3 題", criteria: "完成 3 題", outcomes: [{ label: "未完成", deduct: 100 }, { label: "完成減免", deduct: 50 }], game: "默契大考驗" },
-  { name: "影焰稅單", kind: "扣錢牌", content: "減免任務：說出 10 位工人的本名", criteria: "名字正確", outcomes: [{ label: "未完成", deduct: 100 }, { label: "完成減免", deduct: 0 }] },
   { name: "大頭貼時刻", kind: "懲罰任務牌", content: "全隊鬼臉五連拍，關主拍照存檔", difficulty: "簡單", outcomes: [{ label: "完成", deduct: 0 }, { label: "未完成", deduct: 100 }] },
   { name: "訓練時間", kind: "懲罰任務牌", content: "每人捲腹 10 下", difficulty: "簡單", outcomes: [{ label: "完成", deduct: 0 }, { label: "未完成", deduct: 100 }] },
   { name: "神秘書法家", kind: "懲罰任務牌", content: "用屁股寫指定國字，隊輔猜對才完成", difficulty: "中等", outcomes: [{ label: "猜中", deduct: 0 }, { label: "沒猜中", deduct: 100 }] },
@@ -638,22 +623,15 @@ export const BAD_LUCK_CARDS: BadCard[] = [
   { name: "部首大考驗", kind: "懲罰任務牌", content: "90 秒內寫出指定數量含該部首的字", difficulty: "困難", outcomes: [{ label: "完成", deduct: 0 }, { label: "失敗", deduct: 100 }] },
 ];
 
-// ── 卡片分類：即時結算卡（可在右側面板就地處理）vs 任務卡（需關主判定的小遊戲，移到「任務」分頁）──
+// ── 卡片分類：所有好運 / 厄運卡皆為即時結算卡（可在右側面板就地處理）。──
 // 即時好運卡＝直接獎勵型（有 reward）：coins 一鍵入帳；wheel/lottery/card 給分頁指示；move 接地圖移動。
 export function isInstantGood(c: GoodCard): boolean {
   return !!c.reward;
 }
-// 即時厄運卡＝無需小遊戲判定的扣錢牌：沒有題庫（game）也沒有判定條件（criteria），
-// 結果一翻兩瞪眼（單一 outcome 或純扣款），可在面板一鍵套用。其餘（含題庫 / 判定）視為任務卡。
+// 即時厄運卡＝無需小遊戲判定：沒有題庫（game）也沒有判定條件（criteria），
+// 結果一翻兩瞪眼（單一 outcome 或純扣款），可在面板一鍵套用。
 export function isInstantBad(c: BadCard): boolean {
   return !c.game && !c.criteria;
-}
-// 是否為任務卡（需移到「任務」分頁的小遊戲 / 判定流程）。
-export function isTaskGood(c: GoodCard): boolean {
-  return !isInstantGood(c);
-}
-export function isTaskBad(c: BadCard): boolean {
-  return !isInstantBad(c);
 }
 
 // 加權隨機抽樣（rng∈[0,1)）：依各項 weight 比例回傳其 value；空陣列回 null。
@@ -1053,7 +1031,7 @@ export function advance(from: number, steps: number): { to: number; passedStart:
 
 // 停留格 → MapView 既有分頁 + （PROPERTY）預選區域。
 // GLOW / FOG 都導向 "map" 分頁（光源點 / 迷霧區抽卡），由 draw 區分好運 / 厄運。
-export type MapTab = "map" | "exchange" | "shop" | "lottery" | "wheel" | "task";
+export type MapTab = "map" | "exchange" | "shop" | "lottery" | "wheel";
 export function squareToTab(sq: BoardSquare): { tab: MapTab; region?: RegionCode } {
   switch (sq.kind) {
     case "PROPERTY":
