@@ -86,17 +86,11 @@ export function useCardSettle({
   const settle = async (delta: number, note: string): Promise<{ message: string; undo?: UndoRecipe }> => {
     if (team === "") return { message: "請先選小隊" };
     if (delta > 0) {
-      // 好運卡：金額固定（卡面 × 動產效果），但「形式」由伺服器隨機骰 40/40/20
+      // 好運卡：以光幣發放（卡面金額 × 動產效果）。
       const r = await postJson("/api/map/good-card", { teamId: team, baseReward: delta, note });
       await onDone();
       const who = curName ? `${curName} ` : "";
       const amt = r.finalReward as number;
-      if (r.form === "asset") {
-        return { message: `${who}🎁 抽中動產：${r.grantedAsset}（${r.grantedGrade} 級）`, undo: r.undo };
-      }
-      if (r.form === "cardPoints") {
-        return { message: `${who}🎴 +${r.pointsGiven} 卡牌點數（${amt} 光幣 ÷5）`, undo: r.undo };
-      }
       return { message: `${who}🪙 +${amt} 光幣`, undo: r.undo };
     }
     if (delta < 0) {

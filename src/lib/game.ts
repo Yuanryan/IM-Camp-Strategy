@@ -647,37 +647,6 @@ export function weightedPick<T>(items: { value: T; weight: number }[], rng: () =
   return items[items.length - 1]?.value ?? null; // 浮點誤差保險
 }
 
-// 好運卡獎勵「形式」隨機骰：成功時用同一筆金額換成 40% 光幣 / 40% 卡牌點數 / 20% 動產。
-// 動產為系統實際發放（隨機一張，依稀有度加權）；此函式只決定形式。
-export type RewardForm = "coins" | "cardPoints" | "asset";
-export const REWARD_FORM_WEIGHTS: { value: RewardForm; weight: number }[] = [
-  { value: "coins", weight: 0.4 },
-  { value: "cardPoints", weight: 0.4 },
-  { value: "asset", weight: 0.2 },
-];
-export function rollRewardForm(rng: () => number = Math.random): RewardForm {
-  return weightedPick(REWARD_FORM_WEIGHTS, rng) ?? "coins";
-}
-
-// 光幣 ↔ 卡牌點數 兌換比：5 光幣 = 1 點數。好運卡骰中「點數」時，給 round(光幣金額 / 5)。
-export const COINS_PER_POINT = 5;
-export function coinsToPoints(coins: number): number {
-  return Math.max(0, Math.round(coins / COINS_PER_POINT));
-}
-
-// 動產稀有度抽取權重：B 級最常見、S 級最稀有（B 70 / A 25 / S 5）。
-export const ASSET_GRADE_WEIGHTS: { value: string; weight: number }[] = [
-  { value: "B", weight: 70 },
-  { value: "A", weight: 25 },
-  { value: "S", weight: 5 },
-];
-// 依稀有度權重抽一個「該場實際存在」的級別；候選級別由呼叫端（DB 有哪些 grade）傳入過濾。
-export function pickAssetGrade(availableGrades: string[], rng: () => number = Math.random): string | null {
-  const pool = ASSET_GRADE_WEIGHTS.filter((g) => availableGrades.includes(g.value));
-  if (pool.length === 0) return availableGrades[0] ?? null;
-  return weightedPick(pool, rng);
-}
-
 // 功能卡清單（cost = 卡牌點數，企畫書未定，預設值可於 admin 調整）
 export const FUNCTION_CARDS: {
   type: string;
