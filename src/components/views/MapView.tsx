@@ -52,6 +52,7 @@ export function MapView() {
     setTurnAction(null);
     setTab("realmap");
   };
+  const [tabsVisible] = useState(false);
   const [openItemId, setOpenItemId] = useState<number | null>(null);
   const [hoverItemId, setHoverItemId] = useState<number | null>(null);
   // 點擊版本數秒後自動消失
@@ -93,18 +94,20 @@ export function MapView() {
   return (
     <div className="space-y-4">
       {/* ── Tab bar ──────────────────────────────────────────── */}
-      <HudTabs
-        active={tab}
-        onChange={setTab}
-        tabs={[
-          ["realmap", "遊戲地圖", <Gamepad2 key="r" className="h-4 w-4" />],
-          ["map", "地圖中控站", <Map key="m" className="h-4 w-4" />],
-          ["exchange", "交易所", <Building2 key="e" className="h-4 w-4" />],
-          ["shop", "神秘商店", <Store key="s" className="h-4 w-4" />],
-          ["lottery", "大樂透", <CircleDollarSign key="l" className="h-4 w-4" />],
-          ["wheel", "命運輪盤", <LoaderPinwheel key="w" className="h-4 w-4" />],
-        ] as const}
-      />
+      {tabsVisible && (
+        <HudTabs
+          active={tab}
+          onChange={setTab}
+          tabs={[
+            ["realmap", "遊戲地圖", <Gamepad2 key="r" className="h-4 w-4" />],
+            ["map", "地圖中控站", <Map key="m" className="h-4 w-4" />],
+            ["exchange", "交易所", <Building2 key="e" className="h-4 w-4" />],
+            ["shop", "神秘商店", <Store key="s" className="h-4 w-4" />],
+            ["lottery", "大樂透", <CircleDollarSign key="l" className="h-4 w-4" />],
+            ["wheel", "命運輪盤", <LoaderPinwheel key="w" className="h-4 w-4" />],
+          ] as const}
+        />
+      )}
 
       {/* RealMapView 一律掛載、僅以 CSS 隱藏（非條件卸載）：
           這樣切到操作分頁再回來時，階段 2 的 landed / result / phase 不會被重置，

@@ -29,7 +29,10 @@ import {
   movementMode,
   applyMovement,
   movementActionLabel,
-  PASS_START_INCOME,
+  PASS_START_COINS,
+  PASS_START_CARD_POINTS,
+  LAND_START_COINS,
+  LAND_START_CARD_POINTS,
   type BoardSquare,
   type MapTab,
   type RegionCode,
@@ -195,7 +198,7 @@ export function RealMapView({
   // 階段 3 就地抽到的即時卡。
   const [drawn, setDrawn] = useState<DrawnCard | null>(null);
   // 階段 3 抽卡結算摘要：套用 / 登記完成後顯示總結算 + 「回到地圖」。null = 尚未結算。
-  const [cardResult, setCardResult] = useState<{ message: string; undo?: UndoRecipe } | null>(null);
+  const [cardResult, setCardResult] = useState<{ message: string; label?: string; finalDelta?: number; undo?: UndoRecipe } | null>(null);
   // 階段 2 結算結果（與 toast 同資料）：逐筆金流明細，於面板顯示。
   // result：本回合結算明細。noSettle=true 代表本次移動由卡片觸發、刻意不結算（顯示「本回合不結算」）；
   // rows 為空且非 noSettle → 正常移動但無金錢變動（顯示「本回合無結算項目」）。
@@ -295,6 +298,11 @@ export function RealMapView({
   useEffect(() => { setSelectedMoveId(null); setLanded(null); setDrawn(null); setCardResult(null); setResult(null); setActionDone(false); setPhase(1); }, [team]);
 
   // 分頁操作完成回傳金流 → 評估任務 → 併入階段 2 結算面板，刷新餘額並跳到階段 2，最後清掉來源。
+  // 注意：mutate / clearActionResult 不放 deps，避免其 identity 變動重複觸發。
+  const mutateRef = useRef(mutate);
+  mutateRef.current = mutate;
+  const clearActionResultRef = useRef(clearActionResult);
+  clearActionResultRef.current = clearActionResult;
   useEffect(() => {
     if (!actionResult) return;
     const { label, delta, subRows } = actionResult;
@@ -321,12 +329,13 @@ export function RealMapView({
           : prevUndo;
         return { rows, undo, noSettle: prev?.noSettle };
       });
-      await mutate();
+      await mutateRef.current();
       setPhase(2);
       setActionDone(true); // 已從分頁完成回來 → 階段 2 按鈕改為「結束回合」
-      clearActionResult?.();
+      clearActionResultRef.current?.();
     })();
-  }, [actionResult, team, mutate, clearActionResult]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionResult, team]);
 
   // 量階段 1 的渲染寬度 → 套到滑動容器 width，讓階段 2/3 維持同寬不縮水。
   useEffect(() => {
@@ -540,7 +549,12 @@ export function RealMapView({
         ];
         const undo = undoIds.length ? { label: "撤銷移動結算", ledgerIds: undoIds } : undefined;
         const rows: MoneyRow[] = [];
-        if (r.passedStart) rows.push({ label: "過起點收益", amount: PASS_START_INCOME });
+        if (r.passedStart) {
+          rows.push({ label: "通過起點收益", amount: PASS_START_COINS, cardPoints: PASS_START_CARD_POINTS });
+        }
+        if (r.landedOnStart) {
+          rows.push({ label: "中央燈塔收益", amount: LAND_START_COINS, cardPoints: LAND_START_CARD_POINTS });
+        }
         if (roundIncome > 0) {
           // 回合收益來源：本隊持有的每輪收益型道具（提醒類不計金額，排除）。
           // UNDERDOG（末位補貼）僅在該隊為全場最低淨值時才觸發 → 否則不列為來源（與伺服器一致）。
@@ -587,9 +601,8 @@ export function RealMapView({
         if (r.passedStart) bits.push("過起點 +收益");
         if (bits.length) toast(`${cur.name}・${bits.join("・")}`, "ok", undo);
       }
-      // 擲骰前進（一回合）→ 自動推進到階段 2 結算結果；微調 / 傳送（toIndex）也顯示結果但不強推。
+      // 擲骰前進（一回合）→ 自動推進到階段 2 結算結果；道具移動維持目前階段（不打斷流程）。
       if (isDiceMove) setPhase(2);
-      else setPhase((p) => (p === 1 ? 2 : p));
     } catch (e) {
       // 移動 API 失敗 → 取消樂觀動畫，棋子回到實際（未移動）位置。
       setAnim(null);
@@ -1200,7 +1213,10 @@ export function RealMapView({
                     event1={event1}
                     settled={!!cardResult}
                     onMapMove={(_reward, card) => runMapReward(card.rewardText)}
-                    onSettled={(r) => setCardResult(r ?? { message: "已套用" })}
+                    onSettled={(r) => setCardResult(r
+                      ? { ...r, label: drawn.card.name }
+                      : { message: "已套用" }
+                    )}
                   />
                 )}
               </div>
@@ -1208,7 +1224,21 @@ export function RealMapView({
             {cardResult && (
               <button
                 type="button"
-                onClick={() => { setActionDone(true); setPhase(2); }}
+                onClick={() => {
+                  if (cardResult.finalDelta != null && cardResult.label) {
+                    const cardUndo = cardResult.undo;
+                    setResult((prev) => {
+                      const rows = [...(prev?.rows ?? []), { label: cardResult.label!, amount: cardResult.finalDelta! }];
+                      const prevUndo = prev?.undo;
+                      const undo: UndoRecipe | undefined = cardUndo
+                        ? { label: prevUndo?.label ?? "撤銷結算", ledgerIds: [...(prevUndo?.ledgerIds ?? []), ...cardUndo.ledgerIds] }
+                        : prevUndo;
+                      return { rows, undo, noSettle: prev?.noSettle };
+                    });
+                  }
+                  setActionDone(true);
+                  setPhase(2);
+                }}
                 className="mt-auto flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-500 text-sm font-black text-slate-950 transition hover:bg-cyan-400 active:scale-[0.98]"
               >
                 回到結算畫面 <ArrowLeft className="h-4 w-4" />
@@ -1279,8 +1309,15 @@ function PhaseResult({
             <div key={i} className="border-b border-white/5 py-1 last:border-0">
               <div className="flex items-center justify-between gap-4 text-sm">
                 <span className="text-slate-200">{r.label}</span>
-                <span className={`font-mono font-extrabold tabular-nums ${r.amount > 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                  {r.amount > 0 ? `+${r.amount}` : r.amount}
+                <span className="flex items-center gap-2">
+                  {r.cardPoints != null && r.cardPoints !== 0 && (
+                    <span className="font-mono font-extrabold tabular-nums text-cyan-400">
+                      +{r.cardPoints}pt
+                    </span>
+                  )}
+                  <span className={`font-mono font-extrabold tabular-nums ${r.amount > 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                    {r.amount > 0 ? `+${r.amount}` : r.amount}
+                  </span>
                 </span>
               </div>
               {/* 逐項拆分：回合收益按來源動產一條一條列出（左側 grade 徽章 + 右側該筆貢獻光幣）。*/}
@@ -1412,9 +1449,13 @@ function PhaseResult({
             前往{TAB_LABEL[tab]} <ArrowRight className="h-4 w-4" />
           </button>
         ) : (
-          <div className="rounded-xl border border-emerald-400/20 bg-emerald-400/5 py-2.5 text-center text-sm font-semibold text-emerald-300">
-            起點・過起點領收益
-          </div>
+          <button
+            type="button"
+            onClick={onEndTurn}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 text-sm font-black text-slate-950 transition hover:bg-emerald-400 active:scale-[0.98]"
+          >
+            <Check className="h-4 w-4" /> 結束回合
+          </button>
         )}
       </div>
     </section>

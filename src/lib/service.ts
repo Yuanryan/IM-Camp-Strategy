@@ -29,7 +29,10 @@ import {
   advance,
   boardSquareAt,
   BOARD_SIZE,
-  PASS_START_INCOME,
+  PASS_START_COINS,
+  PASS_START_CARD_POINTS,
+  LAND_START_COINS,
+  LAND_START_CARD_POINTS,
   TOLL_RATE,
   REGIONS,
   TASK_GOOD_CARDS,
@@ -197,25 +200,34 @@ export async function moveTeamPiece(params: {
 
     await tx.team.update({ where: { id: teamId }, data: { boardPos: to } });
 
-    // 過起點收益（僅 steps 正向經過時）；沿用 adjustBalance 的記帳 / 撤銷形式。
-    let undo: UndoRecipe | undefined;
-    if (passedStart && PASS_START_INCOME > 0) {
-      const note = "過起點收益";
+    // 起點收益：過起點給光幣 + 卡牌點數；停在起點再追加一次。
+    const landedOnStart = to === 0 && passedStart;
+    const ledgerIds: number[] = [];
+    if (passedStart) {
       await tx.team.update({
         where: { id: teamId },
-        data: { coins: { increment: PASS_START_INCOME } },
+        data: { coins: { increment: PASS_START_COINS }, cardPoints: { increment: PASS_START_CARD_POINTS } },
       });
-      const lid = await logLedger(tx, {
-        teamId,
-        kind: "system",
-        delta: PASS_START_INCOME,
-        note,
-        byToken,
-      });
-      undo = { label: note, ledgerIds: [lid] };
+      ledgerIds.push(
+        await logLedger(tx, { teamId, kind: "system", delta: PASS_START_COINS, note: "過起點・光幣", byToken }),
+        await logLedger(tx, { teamId, kind: "cardPoints", delta: PASS_START_CARD_POINTS, note: "過起點・卡牌點數", byToken }),
+      );
     }
+    if (landedOnStart) {
+      await tx.team.update({
+        where: { id: teamId },
+        data: { coins: { increment: LAND_START_COINS }, cardPoints: { increment: LAND_START_CARD_POINTS } },
+      });
+      ledgerIds.push(
+        await logLedger(tx, { teamId, kind: "system", delta: LAND_START_COINS, note: "中央燈塔・光幣", byToken }),
+        await logLedger(tx, { teamId, kind: "cardPoints", delta: LAND_START_CARD_POINTS, note: "中央燈塔・卡牌點數", byToken }),
+      );
+    }
+    const undo: UndoRecipe | undefined = ledgerIds.length
+      ? { label: passedStart ? "撤銷起點收益" : "撤銷結算", ledgerIds }
+      : undefined;
 
-    return { boardPos: to, landed: boardSquareAt(to), passedStart, undo };
+    return { boardPos: to, landed: boardSquareAt(to), passedStart, landedOnStart, undo };
   });
 }
 

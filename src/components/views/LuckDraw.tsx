@@ -99,27 +99,25 @@ export function useCardSettle({
     );
   };
 
-  const settle = async (delta: number, note: string): Promise<{ message: string; undo?: UndoRecipe }> => {
-    if (team === "") return { message: "請先選小隊" };
+  const settle = async (delta: number, note: string): Promise<{ message: string; finalDelta: number; undo?: UndoRecipe }> => {
+    if (team === "") return { message: "請先選小隊", finalDelta: 0 };
     if (delta > 0) {
-      // 好運卡：以光幣發放（卡面金額 × 動產效果）。
       const r = await postJson("/api/map/good-card", { teamId: team, baseReward: delta, note });
       await onDone();
-      const who = curName ? `${curName} ` : "";
       const amt = r.finalReward as number;
-      return { message: `${who}🪙 +${amt} 光幣`, undo: r.undo };
+      const who = curName ? `${curName} ` : "";
+      return { message: `${who}🪙 +${amt} 光幣`, finalDelta: amt, undo: r.undo };
     }
     if (delta < 0) {
       const r = await postJson("/api/map/bad-card", { teamId: team, basePenalty: -delta, note });
       await onDone();
-      const finalDelta = -r.finalPenalty;
+      const finalDelta = -(r.finalPenalty as number);
       const suffix = finalDelta !== delta ? `（原 ${delta}，動產效果後 ${finalDelta}）` : `（${finalDelta}）`;
-      return { message: `${curName ?? ""} ${note} ${suffix}`, undo: r.undo };
+      return { message: `${curName ?? ""} ${note} ${suffix}`, finalDelta, undo: r.undo };
     }
-    // delta === 0（好運卡 fail=0）：仍走 good-card API 記一筆
     const r = await postJson("/api/map/good-card", { teamId: team, baseReward: 0, note });
     await onDone();
-    return { message: `${curName ?? ""} ${note}（無獎勵）`, undo: r.undo };
+    return { message: `${curName ?? ""} ${note}（無獎勵）`, finalDelta: 0, undo: r.undo };
   };
 
   return { settle, goodLabel, badLabel };
@@ -145,12 +143,12 @@ export function InstantCardPanel({
   event1: boolean;
   settled?: boolean; // 已結算過 → 鎖住動作鈕，避免重複套用（卡面仍保留顯示）
   onMapMove?: (reward: GoodCard["reward"], card: GoodCard) => void;
-  onSettled: (result?: { message: string; undo?: UndoRecipe }) => void;
+  onSettled: (result?: { message: string; finalDelta?: number; undo?: UndoRecipe }) => void;
 }) {
   const { settle, goodLabel, badLabel } = settler;
   const mult = event1 ? 2 : 1;
   const lock = team === "" || settled; // 動作鈕鎖定條件
-  const wrap = (action: () => Promise<{ message: string; undo?: UndoRecipe }>) => async () => {
+  const wrap = (action: () => Promise<{ message: string; finalDelta?: number; undo?: UndoRecipe }>) => async () => {
     const r = await action();
     onSettled(r);
     return r;

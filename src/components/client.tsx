@@ -166,6 +166,7 @@ export function toast(message: string, kind: "ok" | "err" = "ok", undo?: UndoRec
 export type MoneyRow = {
   label: string;
   amount: number;
+  cardPoints?: number; // 同時發放卡牌點數時附帶顯示（不計入光幣淨變動）
   items?: ActiveItemView[];
   breakdown?: { item: ActiveItemView; amount: number }[];
   subRows?: { label: string; amount: number }[];

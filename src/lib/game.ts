@@ -624,8 +624,8 @@ export type BadCard = {
 
 // 好運卡：直接獎勵卡（無任務，關主依說明直接執行）
 export const GOOD_LUCK_CARDS: GoodCard[] = [
-  { name: "天降光幣", difficulty: "直接", reward: { kind: "coins", amount: 400 }, rewardText: "獲得 500 光幣。" },
-  { name: "意外之財", difficulty: "直接", reward: { kind: "coins", amount: 550 }, rewardText: "獲得 650 光幣。" },
+  { name: "天降光幣", difficulty: "直接", reward: { kind: "coins", amount: 400 }, rewardText: "獲得 400 光幣。" },
+  { name: "意外之財", difficulty: "直接", reward: { kind: "coins", amount: 450 }, rewardText: "獲得 450 光幣。" },
   { name: "命運眷顧", difficulty: "直接", reward: { kind: "wheel" }, rewardText: "免費轉一次命運輪盤（請到「命運輪盤」分頁執行）。" },
   { name: "幸運彩券", difficulty: "直接", reward: { kind: "lottery" }, rewardText: "免費獲得一次大樂透抽籤（請到「大樂透」分頁登記號碼）。" },
   { name: "神秘禮物", difficulty: "直接", reward: { kind: "card" }, rewardText: "免費抽一張功能卡 / 動產（由關主發放）。" },
@@ -1117,8 +1117,13 @@ export const BOARD: BoardSquare[] = BOARD_META.map((m, index) => ({
 
 export const BOARD_SIZE = BOARD.length; // 36
 
-// 過起點收益（沿用好運卡量級；可於此調整）。
-export const PASS_START_INCOME = 200;
+// 起點收益。過起點（含停在起點）發 PASS；停在起點額外再發 LAND。
+export const PASS_START_COINS = 500;
+export const PASS_START_CARD_POINTS = 30;
+export const LAND_START_COINS = 500;
+export const LAND_START_CARD_POINTS = 20;
+/** @deprecated use PASS_START_COINS */
+export const PASS_START_INCOME = PASS_START_COINS;
 
 // 取格（index 一律先正規化到 0..35）。
 export function boardSquareAt(index: number): BoardSquare {
