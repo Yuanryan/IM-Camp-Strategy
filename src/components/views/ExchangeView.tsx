@@ -179,6 +179,10 @@ export function ExchangeView({
                         className="w-full btn-amber"
                         onAction={() => act(() => postJson("/api/exchange/upgrade", { propertyId: p.id, discount }), `已升級 ${p.name}`, upgradePrice)} />
                     )}
+                    {p.ownerTeamId === team && fee == null && (
+                      <ActionButton label="已升至最高級" className="w-full chip" disabled
+                        onAction={() => Promise.resolve()} />
+                    )}
                     {p.ownerTeamId != null && p.ownerTeamId !== team && (
                       <ActionButton label="已售出" className="w-full chip" disabled
                         onAction={() => Promise.resolve()} />

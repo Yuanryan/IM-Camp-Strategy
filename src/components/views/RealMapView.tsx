@@ -203,6 +203,8 @@ export function RealMapView({
   // result：本回合結算明細。noSettle=true 代表本次移動由卡片觸發、刻意不結算（顯示「本回合不結算」）；
   // rows 為空且非 noSettle → 正常移動但無金錢變動（顯示「本回合無結算項目」）。
   const [result, setResult] = useState<{ rows: MoneyRow[]; undo?: UndoRecipe; noSettle?: boolean } | null>(null);
+  // 移動時快照任務列表，保持顯示直到結束回合（避免結算後 completedAt 非 null 導致任務從快照消失）。
+  const [frozenObjectives, setFrozenObjectives] = useState<NonNullable<typeof cur>["objectives"]>([]);
   // 階段滑動：記錄 pointerdown 起點，放開時判定是否為水平滑動（切換階段）。
   const phaseSwipeRef = useRef<{ x: number; y: number } | null>(null);
   // 面板寬度鎖：量階段 1（最大）的渲染寬度，套到滑動容器 width，
@@ -295,7 +297,7 @@ export function RealMapView({
 
   // 換隊時清掉已選的移動道具（避免套用到別隊不存在的道具），關閉落地路由卡（屬上一隊），
   // 並把流程退回階段 1（重新驅動棋子）。
-  useEffect(() => { setSelectedMoveId(null); setLanded(null); setDrawn(null); setCardResult(null); setResult(null); setActionDone(false); setPhase(1); }, [team]);
+  useEffect(() => { setSelectedMoveId(null); setLanded(null); setDrawn(null); setCardResult(null); setResult(null); setActionDone(false); setPhase(1); setFrozenObjectives([]); }, [team]);
 
   // 分頁操作完成回傳金流 → 評估任務 → 併入階段 2 結算面板，刷新餘額並跳到階段 2，最後清掉來源。
   // 注意：mutate / clearActionResult 不放 deps，避免其 identity 變動重複觸發。
@@ -464,6 +466,7 @@ export function RealMapView({
     if (busy) return; // 序列化網路請求，避免兩筆 POST 競爭同隊位置
     setBusy(true);
     setActionDone(false); // 新一次移動＝新落地，清掉上一回合「已完成」狀態
+    setFrozenObjectives(cur.objectives); // 快照任務列表，結算後繼續顯示直到結束回合
     const fromPos = cur.boardPos;
     const isDiceMove = !!payload.steps && payload.steps > 0;
     const doSettle = isDiceMove && !payload.noSettle; // 卡片觸發的移動不結算
@@ -1165,6 +1168,10 @@ export function RealMapView({
             landed={landed}
             result={result}
             team={cur}
+            objectives={frozenObjectives.map((o) => ({
+              ...o,
+              done: o.done || (result?.rows ?? []).some((r) => r.label.includes(o.cardName)),
+            }))}
             teamColor={teamColor}
             isCardSquare={isCardSquare}
             actionDone={actionDone}
@@ -1259,6 +1266,7 @@ function PhaseResult({
   landed,
   result,
   team,
+  objectives,
   teamColor,
   isCardSquare,
   actionDone,
@@ -1269,9 +1277,9 @@ function PhaseResult({
   landed: BoardSquare | null;
   result: { rows: MoneyRow[]; undo?: UndoRecipe; noSettle?: boolean } | null;
   team?: TeamView;
+  objectives: TeamView["objectives"];
   teamColor: string;
   isCardSquare: boolean;
-  // 已從操作分頁完成回來：底部按鈕改為「結束回合」。
   actionDone: boolean;
   onGoTab: () => void;
   onDraw: () => void;
@@ -1404,10 +1412,10 @@ function PhaseResult({
       )}
 
       {/* 該隊進行中好運卡任務目標（達標後回合結算自動發獎；與「本次結算」同卡片風格）。*/}
-      {team && team.objectives.length > 0 && (
+      {objectives.length > 0 && (
         <div className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2">
           <div className="mb-1 text-[11px] font-bold tracking-wide text-slate-400">進行中任務</div>
-          {team.objectives.map((o) => (
+          {objectives.map((o) => (
             <div key={o.id} className="flex items-start justify-between gap-4 border-b border-white/5 py-1 text-sm last:border-0">
               <span className="min-w-0">
                 <span className="text-slate-200">{o.description}</span>
