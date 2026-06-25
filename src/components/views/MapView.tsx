@@ -209,7 +209,7 @@ export function MapView() {
             <div className="mb-1 text-xs text-slate-400">
               好運卡直接獲得光幣等獎勵；厄運卡扣錢或執行懲罰。
             </div>
-            <LuckDraw team={team} curName={cur?.name} event1={event1} items={cur?.items ?? []} onDone={mutate} />
+            <LuckDraw team={team} curName={cur?.name} event1={event1} items={cur?.items ?? []} openTasks={cur?.objectives ?? []} onDone={mutate} />
           </Card>
 
           {/* ── 資本據點 / 過路費 ─────────────────────────────── */}

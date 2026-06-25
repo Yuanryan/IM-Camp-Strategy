@@ -42,6 +42,7 @@ model Team {
   tokens         AccessToken[]
   items          TeamItem[]
   auctionsWon    AuctionLot[]
+  objectives     TeamObjective[]
   createdAt      DateTime        @default(now()) @db.Timestamptz
 }
 
@@ -235,4 +236,30 @@ model Trade {
 
   @@index([toTeamId, status])
   @@index([fromTeamId, status])
+}
+
+// 好運卡「任務型」目標：抽卡當下登記，記下各項基準（since-draw），
+// 之後該隊回合結算（地圖階段 2）時自動評估是否達標，達標即發獎並 completedAt。
+model TeamObjective {
+  id                  Int       @id @default(autoincrement())
+  teamId              Int
+  team                Team      @relation(fields: [teamId], references: [id])
+  cardName            String // 對應 TASK_GOOD_CARDS[].name（顯示用）
+  taskKind            String // TaskKind 值
+  targetCount         Int       @default(1) // 交易 / 拍賣 次數；其餘用 1
+  targetRegion        String? // BUY_LAND 指定區（AURORA/SPECTRA/EMBER/HAVEN）；null = 任一區
+  rewardCoins         Int
+  // ── 抽卡當下基準（since-draw；各 kind 只用到其中一項，其餘無害）──
+  baseTradeCount      Int       @default(0)
+  basePropertyCount   Int       @default(0) // 指定區時僅該區
+  baseLevel3Count     Int       @default(0)
+  baseCardUseCount    Int       @default(0)
+  baseAuctionWins     Int       @default(0)
+  baseMonopolyRegions String    @default("") // 抽卡時已獨佔的區碼 CSV
+  // ── 完成狀態 ──
+  completedAt         DateTime? @db.Timestamptz // null = 進行中
+  rewardLedgerId      Int? // 發獎 ledger id，供撤銷
+  createdAt           DateTime  @default(now()) @db.Timestamptz
+
+  @@index([teamId, completedAt])
 }

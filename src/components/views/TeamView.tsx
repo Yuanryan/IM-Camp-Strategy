@@ -196,7 +196,33 @@ export function TeamView({ teamId }: { teamId: number }) {
           
           {/* ── 我的道具 ────────────────────────────────────────── */}
           <ItemsCard me={me} teams={snap.teams} onDone={mutate} authDisabled={authDisabled} />
-          
+
+          {/* ── 進行中任務（好運卡任務目標）─────────────────────────── */}
+          {me.objectives.length > 0 && (
+            <Card title={`進行中任務（${me.objectives.length}）`}>
+              <ul className="space-y-2">
+                {me.objectives.map((o) => (
+                  <li
+                    key={o.id}
+                    className="flex items-start justify-between gap-3 rounded-lg border border-violet-400/25 bg-violet-500/8 px-3 py-2.5"
+                  >
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-violet-100">{o.cardName}</span>
+                      <span className="mt-0.5 block text-[11px] leading-snug text-violet-300/70">{o.description}</span>
+                    </span>
+                    <span
+                      className={`shrink-0 rounded px-2 py-0.5 text-xs font-bold tabular-nums ${
+                        o.done ? "bg-emerald-500/20 text-emerald-300" : "bg-white/5 text-violet-200"
+                      }`}
+                    >
+                      {o.done ? "已達標 ✓" : `${o.current} / ${o.target}`}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
           {/* ── Lottery ────────────────────────────────────────── */}
           <Card title={`大樂透號碼（第 ${snap.lottery.period} 期）`}>
             {myNumbers.length === 0 ? (

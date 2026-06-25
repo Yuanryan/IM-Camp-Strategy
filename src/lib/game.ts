@@ -574,6 +574,23 @@ export type GoodReward =
   | { kind: "card" }
   | { kind: "move" };
 
+// ── 任務目標型好運卡：大富翁玩法目標，抽卡即登記、回合結算自動評估發獎 ──
+//  USE_CARD_ON_TEAM ：對其他隊伍使用一張功能卡（以 ledger kind="card_use" 計數）
+//  BUILD_LEVEL3     ：蓋出一棟三級大樓（Property.level==3）
+//  BUY_LAND         ：買一塊地（任一區或指定區，依 targetRegion）
+//  TRADE_N_TIMES    ：跟其他隊伍完成 N 次交易（Trade ACCEPTED，雙向）
+//  WIN_AUCTION_N    ：在拍賣中得標 N 次（AuctionLot SOLD）
+//  MONOPOLY_REGION  ：獨佔一個（抽卡時尚未獨佔的）區域
+export const TaskKind = {
+  USE_CARD_ON_TEAM: "USE_CARD_ON_TEAM",
+  BUILD_LEVEL3: "BUILD_LEVEL3",
+  BUY_LAND: "BUY_LAND",
+  TRADE_N_TIMES: "TRADE_N_TIMES",
+  WIN_AUCTION_N: "WIN_AUCTION_N",
+  MONOPOLY_REGION: "MONOPOLY_REGION",
+} as const;
+export type TaskKind = (typeof TaskKind)[keyof typeof TaskKind];
+
 export type GoodCard = {
   name: string;
   difficulty: string;
@@ -586,6 +603,12 @@ export type GoodCard = {
   // 直接獎勵型（無任務）：有 reward，關主依描述直接執行
   reward?: GoodReward;
   rewardText?: string; // 直接獎勵卡的說明文字（顯示給關主執行）
+  // 任務目標型（大富翁玩法追蹤）：有 taskKind，抽卡即登記，回合結算自動評估發獎。
+  // 一張卡只會是「直接獎勵」或「任務目標」其一（reward 與 taskKind 互斥）。
+  taskKind?: TaskKind;
+  targetCount?: number; // 交易 / 拍賣 次數目標；其餘 kind 用 1
+  targetRegion?: RegionCode | null; // BUY_LAND 指定區；null = 任一區
+  rewardCoins?: number; // 完成獎勵光幣
 };
 
 export type BadOutcome = { label: string; deduct: number }; // deduct 為要扣的光幣（正數）
@@ -601,8 +624,8 @@ export type BadCard = {
 
 // 好運卡：直接獎勵卡（無任務，關主依說明直接執行）
 export const GOOD_LUCK_CARDS: GoodCard[] = [
-  { name: "天降光幣", difficulty: "直接", reward: { kind: "coins", amount: 200 }, rewardText: "直接獲得 200 光幣，無需任務。" },
-  { name: "意外之財", difficulty: "直接", reward: { kind: "coins", amount: 350 }, rewardText: "直接獲得 350 光幣，無需任務。" },
+  { name: "天降光幣", difficulty: "直接", reward: { kind: "coins", amount: 400 }, rewardText: "獲得 500 光幣。" },
+  { name: "意外之財", difficulty: "直接", reward: { kind: "coins", amount: 550 }, rewardText: "獲得 650 光幣。" },
   { name: "命運眷顧", difficulty: "直接", reward: { kind: "wheel" }, rewardText: "免費轉一次命運輪盤（請到「命運輪盤」分頁執行）。" },
   { name: "幸運彩券", difficulty: "直接", reward: { kind: "lottery" }, rewardText: "免費獲得一次大樂透抽籤（請到「大樂透」分頁登記號碼）。" },
   { name: "神秘禮物", difficulty: "直接", reward: { kind: "card" }, rewardText: "免費抽一張功能卡 / 動產（由關主發放）。" },
@@ -632,6 +655,128 @@ export function isInstantGood(c: GoodCard): boolean {
 // 結果一翻兩瞪眼（單一 outcome 或純扣款），可在面板一鍵套用。
 export function isInstantBad(c: BadCard): boolean {
   return !c.game && !c.criteria;
+}
+// 一隊同時最多可持有的進行中任務數（達上限即不再抽到任務卡，伺服器登記也擋下）。
+export const MAX_OPEN_TASKS = 3;
+// 任務目標型好運卡＝有 taskKind（與 reward 互斥）。抽卡即登記，回合結算自動評估。
+export function isTaskGood(c: GoodCard): boolean {
+  return !!c.taskKind;
+}
+
+// ── 任務目標好運卡牌庫（與 GOOD_LUCK_CARDS 一起進入好運抽牌池）──
+// 獎勵 rewardCoins 為佔位值，可自由調整；targetCount / targetRegion 亦可調。
+export const TASK_GOOD_CARDS: GoodCard[] = [
+  { name: "外交手腕", difficulty: "任務", taskKind: TaskKind.USE_CARD_ON_TEAM, rewardCoins: 250,
+    rewardText: "對其他隊伍使用一張功能卡。" },
+  { name: "地產大亨", difficulty: "任務", taskKind: TaskKind.BUILD_LEVEL3, rewardCoins: 400,
+    rewardText: "將一棟房子升到三級。" },
+  { name: "插旗・極光金域", difficulty: "任務", taskKind: TaskKind.BUY_LAND, targetRegion: "AURORA", rewardCoins: 200,
+    rewardText: "在極光金域買下一塊地" },
+  { name: "插旗・靈序研究", difficulty: "任務", taskKind: TaskKind.BUY_LAND, targetRegion: "SPECTRA", rewardCoins: 200,
+    rewardText: "在靈序研究買下一塊地" },
+  { name: "插旗・影焰工域", difficulty: "任務", taskKind: TaskKind.BUY_LAND, targetRegion: "EMBER", rewardCoins: 200,
+    rewardText: "在影焰工域買下一塊地" },
+  { name: "插旗・晨霧棲城", difficulty: "任務", taskKind: TaskKind.BUY_LAND, targetRegion: "HAVEN", rewardCoins: 200,
+    rewardText: "在晨霧棲城買下一塊地" },
+  { name: "插旗・自由", difficulty: "任務", taskKind: TaskKind.BUY_LAND, targetRegion: null, rewardCoins: 180,
+    rewardText: "買下任一塊地（不限區域）" },
+  { name: "商會聯盟", difficulty: "任務", taskKind: TaskKind.TRADE_N_TIMES, targetCount: 3, rewardCoins: 300,
+    rewardText: "跟其他隊伍完成 3 次交易" },
+  { name: "拍賣常勝", difficulty: "任務", taskKind: TaskKind.WIN_AUCTION_N, targetCount: 1, rewardCoins: 250,
+    rewardText: "在拍賣中得標 1 次" },
+  { name: "區域霸主", difficulty: "任務", taskKind: TaskKind.MONOPOLY_REGION, rewardCoins: 450,
+    rewardText: "獨佔一個區域" },
+];
+
+// 計算某區獨佔隊伍：需有 ≥1 棟三級 → 最多三級 → 再比總持有數 → 平手則無。
+// 與 service.payToll 的獨佔判定一致（含三級門檻）。snapshot 與 service 共用此單一事實來源。
+export function findMonopoly(
+  regionProps: { ownerTeamId: number | null; level: number }[],
+): number | null {
+  const stat = new Map<number, { lvl3: number; total: number }>();
+  for (const p of regionProps) {
+    if (p.ownerTeamId == null) continue;
+    const s = stat.get(p.ownerTeamId) ?? { lvl3: 0, total: 0 };
+    s.total += 1;
+    if (p.level >= 3) s.lvl3 += 1;
+    stat.set(p.ownerTeamId, s);
+  }
+  if (stat.size === 0) return null;
+  // 最低門檻：至少 1 棟三級不動產才可能獨佔。
+  const ranked = [...stat.entries()]
+    .filter(([, s]) => s.lvl3 >= 1)
+    .sort((a, b) => b[1].lvl3 - a[1].lvl3 || b[1].total - a[1].total);
+  if (ranked.length === 0) return null;
+  if (ranked.length === 1) return ranked[0][0];
+  const [first, second] = ranked;
+  // 第一名需嚴格大於第二名（三級數或總持有數）才算獨佔
+  if (first[1].lvl3 === second[1].lvl3 && first[1].total === second[1].total) {
+    return null;
+  }
+  return first[0];
+}
+
+// 抽任務卡：自 TASK_GOOD_CARDS 排除該隊已有進行中的 taskKind（避免同種堆疊），再加權隨機抽一張。
+// 全部都被排除時回 null（呼叫端可改抽直接獎勵卡）。
+export function pickTaskCard(openKinds: Set<TaskKind>, rng: () => number = Math.random): GoodCard | null {
+  const pool = TASK_GOOD_CARDS.filter((c) => c.taskKind && !openKinds.has(c.taskKind));
+  if (pool.length === 0) return null;
+  return weightedPick(pool.map((value) => ({ value, weight: 1 })), rng);
+}
+
+// ── 任務目標進度評估（純函式，供 snapshot 顯示與結算判定共用）──
+// current：該隊「目前」的各項計數 / 狀態；baseline：抽卡當下的基準（since-draw）。
+// BUY_LAND 的 propertyCount 由呼叫端先依 targetRegion 過濾後傳入（此處只比差值）。
+export type ObjectiveState = {
+  tradeCount: number;
+  propertyCount: number; // 指定區任務時，呼叫端傳「該區」持有數
+  level3Count: number;
+  cardUseCount: number;
+  auctionWins: number;
+  monopolyRegions: RegionCode[]; // 目前獨佔的區
+};
+export type ObjectiveBaseline = {
+  baseTradeCount: number;
+  basePropertyCount: number;
+  baseLevel3Count: number;
+  baseCardUseCount: number;
+  baseAuctionWins: number;
+  baseMonopolyRegions: RegionCode[];
+};
+export function evalObjectiveProgress(
+  taskKind: TaskKind,
+  target: { count: number; region: RegionCode | null },
+  baseline: ObjectiveBaseline,
+  current: ObjectiveState,
+): { current: number; target: number; done: boolean } {
+  const since = (now: number, base: number) => Math.max(0, now - base);
+  switch (taskKind) {
+    case TaskKind.TRADE_N_TIMES: {
+      const c = since(current.tradeCount, baseline.baseTradeCount);
+      return { current: c, target: target.count, done: c >= target.count };
+    }
+    case TaskKind.WIN_AUCTION_N: {
+      const c = since(current.auctionWins, baseline.baseAuctionWins);
+      return { current: c, target: target.count, done: c >= target.count };
+    }
+    case TaskKind.USE_CARD_ON_TEAM: {
+      const c = since(current.cardUseCount, baseline.baseCardUseCount);
+      return { current: c, target: target.count, done: c >= target.count };
+    }
+    case TaskKind.BUY_LAND: {
+      const c = since(current.propertyCount, baseline.basePropertyCount);
+      return { current: c, target: 1, done: c >= 1 };
+    }
+    case TaskKind.BUILD_LEVEL3: {
+      const c = since(current.level3Count, baseline.baseLevel3Count);
+      return { current: c, target: 1, done: c >= 1 };
+    }
+    case TaskKind.MONOPOLY_REGION: {
+      // 達標＝獨佔了一個「抽卡時尚未獨佔」的區域。
+      const gained = current.monopolyRegions.some((r) => !baseline.baseMonopolyRegions.includes(r));
+      return { current: gained ? 1 : 0, target: 1, done: gained };
+    }
+  }
 }
 
 // 加權隨機抽樣（rng∈[0,1)）：依各項 weight 比例回傳其 value；空陣列回 null。

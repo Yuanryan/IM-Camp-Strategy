@@ -9,8 +9,13 @@ import {
   parseActiveEvents,
   roundTo10,
   stackEffects,
+  findMonopoly,
+  evalObjectiveProgress,
+  TASK_GOOD_CARDS,
   TOLL_RATE,
   type RegionCode,
+  type TaskKind as TaskKindT,
+  type ObjectiveState,
 } from "./game";
 import { hasAuctionStarted } from "./auction-animation";
 import {
@@ -46,6 +51,18 @@ export type ActiveItemView = {
   markTeamId: number | null;    // 海盜旗鎖定目標（PIRACY）
 };
 
+// 進行中的好運卡任務目標（含即時進度，供面板顯示）。進度由 game.evalObjectiveProgress 計算。
+export type ObjectiveView = {
+  id: number;
+  cardName: string;
+  taskKind: TaskKindT;
+  current: number;
+  target: number;
+  done: boolean; // 已達標（下次回合結算將自動發獎）
+  rewardCoins: number;
+  description: string; // 任務說明（取自 TASK_GOOD_CARDS[].rewardText）
+};
+
 export type TeamView = {
   id: number;
   name: string;
@@ -58,6 +75,7 @@ export type TeamView = {
   itemCount: number;
   items: ActiveItemView[];
   recentAttacks: string[]; // 最近被功能卡攻擊的通知訊息（時間窗內，新到舊）；小隊頁警示橫幅用
+  objectives: ObjectiveView[]; // 進行中的好運卡任務目標（含進度）
 };
 
 export type RegionView = {
@@ -118,39 +136,13 @@ export type Snapshot = {
   auction: AuctionSnapshot;
 };
 
-// 計算某區獨佔隊伍：需有 ≥1 棟三級 → 最多三級 → 再比總持有數 → 平手則無。
-// 與 service.payToll 的獨佔判定一致（含三級門檻），否則投影顯示的獨佔/過路費會與實際收取不符。
-function findMonopoly(
-  regionProps: { ownerTeamId: number | null; level: number }[],
-): number | null {
-  const stat = new Map<number, { lvl3: number; total: number }>();
-  for (const p of regionProps) {
-    if (p.ownerTeamId == null) continue;
-    const s = stat.get(p.ownerTeamId) ?? { lvl3: 0, total: 0 };
-    s.total += 1;
-    if (p.level >= 3) s.lvl3 += 1;
-    stat.set(p.ownerTeamId, s);
-  }
-  if (stat.size === 0) return null;
-  // 最低門檻：至少 1 棟三級不動產才可能獨佔。
-  const ranked = [...stat.entries()]
-    .filter(([, s]) => s.lvl3 >= 1)
-    .sort((a, b) => b[1].lvl3 - a[1].lvl3 || b[1].total - a[1].total);
-  if (ranked.length === 0) return null;
-  if (ranked.length === 1) return ranked[0][0];
-  const [first, second] = ranked;
-  // 第一名需嚴格大於第二名（三級數或總持有數）才算獨佔
-  if (first[1].lvl3 === second[1].lvl3 && first[1].total === second[1].total) {
-    return null;
-  }
-  return first[0];
-}
+// findMonopoly 已移至 game.ts（snapshot 與 service 共用單一事實來源），由 import 取得。
 
 // 攻擊通知時間窗：被功能卡攻擊後，小隊頁警示橫幅顯示這麼久即自動淡出（輪詢 3s，足夠重現數次）。
 const ATTACK_WINDOW_MS = 1_800_000;
 
 export async function getSnapshot(): Promise<Snapshot> {
-  const [state, teams, properties, lotteryNumbers, teamItems, auctionEvent, attackLogs] =
+  const [state, teams, properties, lotteryNumbers, teamItems, auctionEvent, attackLogs, openObjectives, acceptedTrades, cardUseGroups, soldLotWins] =
     await Promise.all([
       prisma.gameState.findUnique({ where: { id: 1 } }),
       prisma.team.findMany({ orderBy: { id: "asc" } }),
@@ -168,6 +160,14 @@ export async function getSnapshot(): Promise<Snapshot> {
         where: { kind: "attack", reversed: false, createdAt: { gte: new Date(Date.now() - ATTACK_WINDOW_MS) } },
         orderBy: { id: "desc" },
       }),
+      // 任務目標：進行中（completedAt null）；好運卡任務進度顯示用
+      prisma.teamObjective.findMany({ where: { completedAt: null }, orderBy: { id: "asc" } }),
+      // 各隊 ACCEPTED 交易（雙向計數，TRADE_N_TIMES 進度用）
+      prisma.trade.findMany({ where: { status: "ACCEPTED" }, select: { fromTeamId: true, toTeamId: true } }),
+      // 各隊出卡次數（USE_CARD_ON_TEAM 進度用）
+      prisma.ledger.groupBy({ by: ["teamId"], where: { kind: "card_use" }, _count: { _all: true } }),
+      // 各隊拍賣得標數（WIN_AUCTION_N 進度用）
+      prisma.auctionLot.groupBy({ by: ["winnerTeamId"], where: { status: "SOLD" }, _count: { _all: true } }),
     ]);
 
   const activeEvents = parseActiveEvents(state?.activeEvents ?? "");
@@ -235,6 +235,73 @@ export async function getSnapshot(): Promise<Snapshot> {
     teamPropValue.set(p.ownerTeamId, s);
   }
 
+  // ── 好運卡任務進度所需的各隊計數 / 狀態 ──
+  // ACCEPTED 交易（雙向）
+  const tradeCountByTeam = new Map<number, number>();
+  for (const tr of acceptedTrades) {
+    tradeCountByTeam.set(tr.fromTeamId, (tradeCountByTeam.get(tr.fromTeamId) ?? 0) + 1);
+    tradeCountByTeam.set(tr.toTeamId, (tradeCountByTeam.get(tr.toTeamId) ?? 0) + 1);
+  }
+  // 出卡次數
+  const cardUseByTeam = new Map<number, number>();
+  for (const g of cardUseGroups) {
+    if (g.teamId != null) cardUseByTeam.set(g.teamId, g._count._all);
+  }
+  // 拍賣得標數
+  const auctionWinsByTeam = new Map<number, number>();
+  for (const g of soldLotWins) {
+    if (g.winnerTeamId != null) auctionWinsByTeam.set(g.winnerTeamId, g._count._all);
+  }
+  // 各隊持有地數（依區）與三級數；以及各區獨佔隊（findMonopoly）。
+  const propCountByTeamRegion = new Map<string, number>(); // key: `${teamId}:${region}`
+  const level3ByTeam = new Map<number, number>();
+  for (const p of propViews) {
+    if (p.ownerTeamId == null) continue;
+    const k = `${p.ownerTeamId}:${p.region}`;
+    propCountByTeamRegion.set(k, (propCountByTeamRegion.get(k) ?? 0) + 1);
+    if (p.level >= 3) level3ByTeam.set(p.ownerTeamId, (level3ByTeam.get(p.ownerTeamId) ?? 0) + 1);
+  }
+  const monopolyByTeam = new Map<number, RegionCode[]>();
+  for (const r of REGIONS) {
+    const owner = findMonopoly(propViews.filter((p) => p.region === r.code));
+    if (owner != null) monopolyByTeam.set(owner, [...(monopolyByTeam.get(owner) ?? []), r.code]);
+  }
+
+  // 依某隊現況 + 進行中任務，算出 ObjectiveView[]（進度由 game.evalObjectiveProgress 計）。
+  const objectivesByTeam = (teamId: number): ObjectiveView[] => {
+    const open = openObjectives.filter((o) => o.teamId === teamId);
+    if (open.length === 0) return [];
+    return open.map((o) => {
+      const region = (o.targetRegion as RegionCode | null) ?? null;
+      const cur: ObjectiveState = {
+        tradeCount: tradeCountByTeam.get(teamId) ?? 0,
+        propertyCount: region
+          ? (propCountByTeamRegion.get(`${teamId}:${region}`) ?? 0)
+          : (teamPropValue.get(teamId)?.count ?? 0),
+        level3Count: level3ByTeam.get(teamId) ?? 0,
+        cardUseCount: cardUseByTeam.get(teamId) ?? 0,
+        auctionWins: auctionWinsByTeam.get(teamId) ?? 0,
+        monopolyRegions: monopolyByTeam.get(teamId) ?? [],
+      };
+      const baseline = {
+        baseTradeCount: o.baseTradeCount,
+        basePropertyCount: o.basePropertyCount,
+        baseLevel3Count: o.baseLevel3Count,
+        baseCardUseCount: o.baseCardUseCount,
+        baseAuctionWins: o.baseAuctionWins,
+        baseMonopolyRegions: (o.baseMonopolyRegions ? o.baseMonopolyRegions.split(",") : []) as RegionCode[],
+      };
+      const p = evalObjectiveProgress(
+        o.taskKind as TaskKindT,
+        { count: o.targetCount, region },
+        baseline,
+        cur,
+      );
+      const description = TASK_GOOD_CARDS.find((c) => c.name === o.cardName)?.rewardText ?? "";
+      return { id: o.id, cardName: o.cardName, taskKind: o.taskKind as TaskKindT, current: p.current, target: p.target, done: p.done, rewardCoins: o.rewardCoins, description };
+    });
+  };
+
   const teamViews: TeamView[] = teams.map((t) => {
     const pv = teamPropValue.get(t.id) ?? { count: 0, value: 0 };
     const items = teamItemsMap.get(t.id) ?? [];
@@ -255,6 +322,7 @@ export async function getSnapshot(): Promise<Snapshot> {
       itemCount: items.length,
       items,
       recentAttacks: attacksByTeam.get(t.id) ?? [],
+      objectives: objectivesByTeam(t.id),
     };
   });
 

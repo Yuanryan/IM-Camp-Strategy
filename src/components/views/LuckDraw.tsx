@@ -5,14 +5,18 @@ import { ActionButton, postJson } from "@/components/client";
 import {
   GOOD_LUCK_CARDS,
   BAD_LUCK_CARDS,
+  TASK_GOOD_CARDS,
+  MAX_OPEN_TASKS,
   EffectType,
   stackEffects,
   applyGoodCardReward,
   applyBadCardPenalty,
   isInstantGood,
   isInstantBad,
+  isTaskGood,
   type GoodCard,
   type BadCard,
+  type TaskKind,
   type UndoRecipe,
 } from "@/lib/game";
 import type { ActiveItemView } from "@/lib/snapshot";
@@ -25,19 +29,31 @@ const REWARD_TAB_HINT: Record<string, string> = {
   card: "神秘商店 / 直接發放",
   move: "地圖移動棋子",
 };
-// ── 一張抽到的卡 + 是否為即時結算卡（可在面板就地處理）──────────────
+// ── 一張抽到的卡 + 分類旗標 ──────────────
+//  instant：可在面板就地結算的即時卡（直接獎勵好運卡 / 一翻兩瞪眼厄運卡）
+//  task   ：任務目標型好運卡（抽到即登記，回合結算自動評估）
 export type DrawnCard =
-  | { side: "good"; card: GoodCard; instant: boolean }
-  | { side: "bad"; card: BadCard; instant: boolean };
+  | { side: "good"; card: GoodCard; instant: boolean; task: boolean }
+  | { side: "bad"; card: BadCard; instant: boolean; task: boolean };
 
-// 隨機抽一張卡並分類即時 / 任務，供面板（即時）或任務分頁（任務）決定去向。
-export function drawCard(side: "good" | "bad"): DrawnCard {
+// 隨機抽一張卡。好運卡牌池＝直接獎勵卡 + 任務目標卡。
+// open.kinds：該隊已有進行中的任務種類（避免同種堆疊）；open.count：進行中任務總數，
+// 達 MAX_OPEN_TASKS 即整個任務池排除（只抽直接獎勵卡）。
+export function drawCard(
+  side: "good" | "bad",
+  open: { kinds: Set<TaskKind>; count: number } = { kinds: new Set(), count: 0 },
+): DrawnCard {
   if (side === "good") {
-    const card = pick(GOOD_LUCK_CARDS);
-    return { side, card, instant: isInstantGood(card) };
+    // 任務已達上限 → 任務池整個排除；否則排除已進行中的種類。
+    const atCap = open.count >= MAX_OPEN_TASKS;
+    const taskPool = atCap
+      ? []
+      : TASK_GOOD_CARDS.filter((c) => c.taskKind && !open.kinds.has(c.taskKind));
+    const card = pick([...GOOD_LUCK_CARDS, ...taskPool]);
+    return { side, card, instant: isInstantGood(card), task: isTaskGood(card) };
   }
   const card = pick(BAD_LUCK_CARDS);
-  return { side, card, instant: isInstantBad(card) };
+  return { side, card, instant: isInstantBad(card), task: false };
 }
 
 // ── 結算 hook：把卡面金額（含動產效果、事件加倍）寫進後端，回傳統一的 settle / 預覽標籤 ──
@@ -112,12 +128,14 @@ export function useCardSettle({
 type Settler = ReturnType<typeof useCardSettle>;
 
 // ── 即時卡（面板就地處理）：直接獎勵好運卡 / 一翻兩瞪眼厄運卡 ────────────────
-// onMapMove：move 類獎勵（前進 / 後退 / 傳送）改由地圖面板就地執行；onSettled：套用後收尾（清卡）。
+// onMapMove：move 類獎勵（前進 / 後退 / 傳送）改由地圖面板就地執行；
+// onSettled：套用後收尾，帶回結算摘要（訊息 + undo）供呼叫端顯示總結算。
 export function InstantCardPanel({
   drawn,
   settler,
   team,
   event1,
+  settled = false,
   onMapMove,
   onSettled,
 }: {
@@ -125,14 +143,16 @@ export function InstantCardPanel({
   settler: Settler;
   team: number | "";
   event1: boolean;
+  settled?: boolean; // 已結算過 → 鎖住動作鈕，避免重複套用（卡面仍保留顯示）
   onMapMove?: (reward: GoodCard["reward"], card: GoodCard) => void;
-  onSettled: () => void;
+  onSettled: (result?: { message: string; undo?: UndoRecipe }) => void;
 }) {
   const { settle, goodLabel, badLabel } = settler;
   const mult = event1 ? 2 : 1;
+  const lock = team === "" || settled; // 動作鈕鎖定條件
   const wrap = (action: () => Promise<{ message: string; undo?: UndoRecipe }>) => async () => {
     const r = await action();
-    onSettled();
+    onSettled(r);
     return r;
   };
 
@@ -143,7 +163,7 @@ export function InstantCardPanel({
       <div className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-3 ring-1 ring-amber-400/15">
         <div className="mb-2 flex flex-wrap items-center gap-2">
           <span className="rounded-md bg-amber-400/20 px-2 py-0.5 text-[11px] font-bold text-amber-300">
-            好運卡・直接獎勵
+            好運卡・獎勵
           </span>
           <span className="font-bold text-amber-100">{good.name}</span>
           <span className="chip px-1.5 py-0.5 text-xs">{good.difficulty}</span>
@@ -153,13 +173,13 @@ export function InstantCardPanel({
           <ActionButton
             label={goodLabel("領取", reward.amount)}
             className="w-full btn-emerald"
-            disabled={team === ""}
-            onAction={wrap(() => settle(reward.amount, `好運卡 ${good.name}（直接獎勵）`))}
+            disabled={lock}
+            onAction={wrap(() => settle(reward.amount, `好運卡 ${good.name}（獎勵）`))}
           />
         ) : reward.kind === "move" && onMapMove ? (
           <button
             type="button"
-            disabled={team === ""}
+            disabled={lock}
             onClick={() => { onMapMove(reward, good); onSettled(); }}
             className="w-full rounded-xl bg-cyan-500 py-2.5 text-sm font-bold text-slate-950 transition hover:bg-cyan-400 active:scale-[0.98] disabled:opacity-40"
           >
@@ -195,11 +215,53 @@ export function InstantCardPanel({
             key={i}
             label={badLabel(o.label, o.deduct * mult)}
             className={`w-full ${o.deduct > 0 ? "btn-rose" : "chip"}`}
-            disabled={team === ""}
+            disabled={lock}
             onAction={wrap(() => settle(-(o.deduct * mult), `厄運卡 ${bad.name}（${o.label}）`))}
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── 任務目標型好運卡：按「發放任務」登記目標（記下 since-draw 基準），達成後回合結算自動發獎。──
+// 此面板不發獎，只負責登記任務；登記成功後呼叫 onRegistered，已登記則鎖住按鈕。
+export function TaskObjectivePanel({
+  drawn,
+  team,
+  registered = false,
+  onRegistered,
+}: {
+  drawn: Extract<DrawnCard, { side: "good" }>;
+  team: number | "";
+  registered?: boolean; // 已登記過 → 鎖住「發放任務」鈕（卡面仍保留顯示）
+  onRegistered?: () => void;
+}) {
+  const good = drawn.card;
+
+  const register = async (): Promise<{ message: string }> => {
+    if (team === "") return { message: "請先選小隊" };
+    await postJson("/api/map/objective", { teamId: team, cardName: good.name });
+    onRegistered?.();
+    return { message: `已發放任務・${good.name}` };
+  };
+
+  return (
+    <div className="rounded-xl border border-violet-400/30 bg-violet-500/5 p-3 ring-1 ring-violet-400/15">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="rounded-md bg-violet-500/20 px-2 py-0.5 text-[11px] font-bold text-violet-300">
+          好運卡・任務目標
+        </span>
+        <span className="font-bold text-violet-100">{good.name}</span>
+      </div>
+      <p className="mb-3 text-sm text-slate-200">{good.rewardText}</p>
+      <p className="mb-3 text-xs text-violet-200/80">🎯 達成後，該隊下回合在地圖結算時自動發獎。</p>
+      <ActionButton
+        label={registered ? "已發放任務" : "發放任務"}
+        className="w-full btn-purple"
+        disabled={team === "" || registered}
+        onAction={register}
+      />
     </div>
   );
 }
@@ -210,23 +272,26 @@ export function LuckDraw({
   curName,
   event1,
   items = [],
+  openTasks = [],
   onDone,
 }: {
   team: number | "";
   curName?: string;
   event1: boolean;
   items?: ActiveItemView[];
+  openTasks?: { taskKind: TaskKind }[]; // 該隊進行中的任務（抽好運卡時排除同種、達上限不抽任務）
   onDone: () => void | Promise<unknown>;
 }) {
   const [drawn, setDrawn] = useState<DrawnCard | null>(null);
   const settler = useCardSettle({ team, curName, items, onDone });
   const clear = () => setDrawn(null);
+  const openArg = { kinds: new Set(openTasks.map((o) => o.taskKind)), count: openTasks.length };
 
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
         <button
-          onClick={() => setDrawn(drawCard("good"))}
+          onClick={() => setDrawn(drawCard("good", openArg))}
           className="btn-amber rounded-xl py-3 text-sm font-bold transition active:scale-95"
         >
           抽好運卡
@@ -239,7 +304,9 @@ export function LuckDraw({
         </button>
       </div>
 
-      {drawn && (
+      {drawn && drawn.side === "good" && drawn.task ? (
+        <TaskObjectivePanel drawn={drawn} team={team} onRegistered={() => { void onDone(); clear(); }} />
+      ) : drawn ? (
         <InstantCardPanel
           drawn={drawn}
           settler={settler}
@@ -247,7 +314,7 @@ export function LuckDraw({
           event1={event1}
           onSettled={clear}
         />
-      )}
+      ) : null}
 
       {drawn && (
         <button

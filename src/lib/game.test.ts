@@ -42,7 +42,28 @@ import {
   MOBILE_REWARD_RATES,
   MOBILE_GAMES,
   weightedPick,
+  GOOD_LUCK_CARDS,
+  TASK_GOOD_CARDS,
+  MAX_OPEN_TASKS,
+  TaskKind,
+  isInstantGood,
+  isTaskGood,
+  pickTaskCard,
+  evalObjectiveProgress,
+  findMonopoly,
+  type ObjectiveBaseline,
+  type ObjectiveState,
 } from "./game";
+
+// 任務目標測試共用：建一個「全 0 基準 + 全 0 現況」，個別 case 只覆寫需要的欄位。
+const ZERO_BASE: ObjectiveBaseline = {
+  baseTradeCount: 0, basePropertyCount: 0, baseLevel3Count: 0,
+  baseCardUseCount: 0, baseAuctionWins: 0, baseMonopolyRegions: [],
+};
+const ZERO_STATE: ObjectiveState = {
+  tradeCount: 0, propertyCount: 0, level3Count: 0,
+  cardUseCount: 0, auctionWins: 0, monopolyRegions: [],
+};
 
 // ── 動產效果疊加（相加，無遞減）──────────────────────────────
 describe("stackEffects", () => {
@@ -719,5 +740,120 @@ describe("weightedPick", () => {
   it("空陣列回 null；全 0 權重回第一項", () => {
     expect(weightedPick([], () => 0.5)).toBeNull();
     expect(weightedPick([{ value: "x", weight: 0 }], () => 0.5)).toBe("x");
+  });
+});
+
+// ── 好運卡任務目標牌庫結構 ─────────────────────────────────────
+describe("TASK_GOOD_CARDS / 牌庫結構", () => {
+  it("每張任務卡有 taskKind 且無 reward（與直接獎勵卡互斥）", () => {
+    for (const c of TASK_GOOD_CARDS) {
+      expect(isTaskGood(c)).toBe(true);
+      expect(isInstantGood(c)).toBe(false);
+      expect(c.reward).toBeUndefined();
+      expect(typeof c.rewardCoins).toBe("number");
+    }
+  });
+  it("直接獎勵好運卡皆非任務卡", () => {
+    for (const c of GOOD_LUCK_CARDS) {
+      expect(isInstantGood(c)).toBe(true);
+      expect(isTaskGood(c)).toBe(false);
+    }
+  });
+  it("BUY_LAND 任務含 4 個指定區 + 1 個任一區", () => {
+    const buyLand = TASK_GOOD_CARDS.filter((c) => c.taskKind === TaskKind.BUY_LAND);
+    const regions = buyLand.map((c) => c.targetRegion);
+    expect(buyLand.length).toBe(5);
+    expect(regions).toContain("AURORA");
+    expect(regions).toContain("SPECTRA");
+    expect(regions).toContain("EMBER");
+    expect(regions).toContain("HAVEN");
+    expect(regions.filter((r) => r == null).length).toBe(1); // 任一區
+  });
+  it("同時任務上限為 3", () => {
+    expect(MAX_OPEN_TASKS).toBe(3);
+  });
+});
+
+// ── 抽任務卡：排除已進行中的種類 ───────────────────────────────
+describe("pickTaskCard（排除已進行中的 taskKind）", () => {
+  it("openKinds 為空時可抽到任一任務卡", () => {
+    const c = pickTaskCard(new Set(), () => 0);
+    expect(c).not.toBeNull();
+    expect(c!.taskKind).toBeDefined();
+  });
+  it("永不回傳已在 openKinds 中的種類", () => {
+    const open = new Set([TaskKind.TRADE_N_TIMES]);
+    // 掃描整個 rng 範圍，確認絕不抽到 TRADE_N_TIMES
+    for (let i = 0; i < 50; i++) {
+      const c = pickTaskCard(open, () => i / 50);
+      expect(c?.taskKind).not.toBe(TaskKind.TRADE_N_TIMES);
+    }
+  });
+  it("所有種類都進行中時回 null", () => {
+    const allKinds = new Set(TASK_GOOD_CARDS.map((c) => c.taskKind!));
+    expect(pickTaskCard(allKinds, () => 0)).toBeNull();
+  });
+});
+
+// ── 任務進度評估（evalObjectiveProgress）─────────────────────────
+describe("evalObjectiveProgress", () => {
+  it("TRADE_N_TIMES：自抽卡後計差值，達標 / 未達標", () => {
+    const base = { ...ZERO_BASE, baseTradeCount: 2 };
+    expect(evalObjectiveProgress(TaskKind.TRADE_N_TIMES, { count: 3, region: null }, base, { ...ZERO_STATE, tradeCount: 5 }))
+      .toEqual({ current: 3, target: 3, done: true });
+    expect(evalObjectiveProgress(TaskKind.TRADE_N_TIMES, { count: 3, region: null }, base, { ...ZERO_STATE, tradeCount: 4 }))
+      .toEqual({ current: 2, target: 3, done: false });
+  });
+  it("TRADE_N_TIMES：現況低於基準時夾為 0（不該發生的保險）", () => {
+    const base = { ...ZERO_BASE, baseTradeCount: 5 };
+    expect(evalObjectiveProgress(TaskKind.TRADE_N_TIMES, { count: 3, region: null }, base, { ...ZERO_STATE, tradeCount: 3 }))
+      .toEqual({ current: 0, target: 3, done: false });
+  });
+  it("WIN_AUCTION_N：得標數差值達標", () => {
+    expect(evalObjectiveProgress(TaskKind.WIN_AUCTION_N, { count: 1, region: null }, ZERO_BASE, { ...ZERO_STATE, auctionWins: 1 }))
+      .toEqual({ current: 1, target: 1, done: true });
+  });
+  it("USE_CARD_ON_TEAM：出卡數差值達標 / 未達標", () => {
+    const base = { ...ZERO_BASE, baseCardUseCount: 1 };
+    expect(evalObjectiveProgress(TaskKind.USE_CARD_ON_TEAM, { count: 1, region: null }, base, { ...ZERO_STATE, cardUseCount: 2 }).done).toBe(true);
+    expect(evalObjectiveProgress(TaskKind.USE_CARD_ON_TEAM, { count: 1, region: null }, base, { ...ZERO_STATE, cardUseCount: 1 }).done).toBe(false);
+  });
+  it("BUY_LAND：持有地數（呼叫端已依區過濾）差值 ≥ 1 即達標", () => {
+    const base = { ...ZERO_BASE, basePropertyCount: 4 };
+    expect(evalObjectiveProgress(TaskKind.BUY_LAND, { count: 1, region: "AURORA" }, base, { ...ZERO_STATE, propertyCount: 5 }).done).toBe(true);
+    expect(evalObjectiveProgress(TaskKind.BUY_LAND, { count: 1, region: "AURORA" }, base, { ...ZERO_STATE, propertyCount: 4 }).done).toBe(false);
+  });
+  it("BUILD_LEVEL3：抽卡時已是 3 級的大樓不算（since-draw）", () => {
+    const base = { ...ZERO_BASE, baseLevel3Count: 1 };
+    expect(evalObjectiveProgress(TaskKind.BUILD_LEVEL3, { count: 1, region: null }, base, { ...ZERO_STATE, level3Count: 2 }).done).toBe(true);
+    expect(evalObjectiveProgress(TaskKind.BUILD_LEVEL3, { count: 1, region: null }, base, { ...ZERO_STATE, level3Count: 1 }).done).toBe(false);
+  });
+  it("MONOPOLY_REGION：需獨佔一個抽卡時尚未獨佔的區", () => {
+    const base = { ...ZERO_BASE, baseMonopolyRegions: ["AURORA" as const] };
+    // 仍只獨佔 AURORA → 未達標
+    expect(evalObjectiveProgress(TaskKind.MONOPOLY_REGION, { count: 1, region: null }, base, { ...ZERO_STATE, monopolyRegions: ["AURORA"] }).done).toBe(false);
+    // 新獨佔 EMBER → 達標
+    expect(evalObjectiveProgress(TaskKind.MONOPOLY_REGION, { count: 1, region: null }, base, { ...ZERO_STATE, monopolyRegions: ["AURORA", "EMBER"] }).done).toBe(true);
+  });
+});
+
+// ── 獨佔判定 findMonopoly（自 snapshot 移入 game，單一事實來源）──────
+describe("findMonopoly", () => {
+  it("需 ≥1 棟三級才可能獨佔", () => {
+    expect(findMonopoly([{ ownerTeamId: 1, level: 2 }, { ownerTeamId: 1, level: 1 }])).toBeNull();
+    expect(findMonopoly([{ ownerTeamId: 1, level: 3 }])).toBe(1);
+  });
+  it("三級數較多者獨佔；平手（三級 + 總數）則無", () => {
+    expect(findMonopoly([
+      { ownerTeamId: 1, level: 3 }, { ownerTeamId: 1, level: 3 },
+      { ownerTeamId: 2, level: 3 },
+    ])).toBe(1);
+    expect(findMonopoly([
+      { ownerTeamId: 1, level: 3 }, { ownerTeamId: 2, level: 3 },
+    ])).toBeNull();
+  });
+  it("空 / 無主回 null", () => {
+    expect(findMonopoly([])).toBeNull();
+    expect(findMonopoly([{ ownerTeamId: null, level: 3 }])).toBeNull();
   });
 });

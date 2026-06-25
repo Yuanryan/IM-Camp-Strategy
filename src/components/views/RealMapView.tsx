@@ -9,6 +9,7 @@ import {
   drawCard,
   useCardSettle,
   InstantCardPanel,
+  TaskObjectivePanel,
   type DrawnCard,
 } from "@/components/views/LuckDraw";
 import {
@@ -39,6 +40,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Dice5,
+  ArrowLeft,
   ArrowRight,
   Eye,
   EyeOff,
@@ -192,6 +194,8 @@ export function RealMapView({
   const [phase, setPhase] = useState<1 | 2 | 3>(1);
   // 階段 3 就地抽到的即時卡。
   const [drawn, setDrawn] = useState<DrawnCard | null>(null);
+  // 階段 3 抽卡結算摘要：套用 / 登記完成後顯示總結算 + 「回到地圖」。null = 尚未結算。
+  const [cardResult, setCardResult] = useState<{ message: string; undo?: UndoRecipe } | null>(null);
   // 階段 2 結算結果（與 toast 同資料）：逐筆金流明細，於面板顯示。
   // result：本回合結算明細。noSettle=true 代表本次移動由卡片觸發、刻意不結算（顯示「本回合不結算」）；
   // rows 為空且非 noSettle → 正常移動但無金錢變動（顯示「本回合無結算項目」）。
@@ -288,24 +292,41 @@ export function RealMapView({
 
   // 換隊時清掉已選的移動道具（避免套用到別隊不存在的道具），關閉落地路由卡（屬上一隊），
   // 並把流程退回階段 1（重新驅動棋子）。
-  useEffect(() => { setSelectedMoveId(null); setLanded(null); setDrawn(null); setResult(null); setActionDone(false); setPhase(1); }, [team]);
+  useEffect(() => { setSelectedMoveId(null); setLanded(null); setDrawn(null); setCardResult(null); setResult(null); setActionDone(false); setPhase(1); }, [team]);
 
-  // 分頁操作完成回傳金流 → 併入階段 2 結算面板（新增一列），刷新餘額並跳到階段 2，最後清掉來源。
+  // 分頁操作完成回傳金流 → 評估任務 → 併入階段 2 結算面板，刷新餘額並跳到階段 2，最後清掉來源。
   useEffect(() => {
     if (!actionResult) return;
     const { label, delta, subRows } = actionResult;
-    // 有金流（delta≠0）或有子列（如輪盤持平：投入/拿回 仍需呈現）就新增一列。
-    if (delta !== 0 || (subRows && subRows.length > 0)) {
+    void (async () => {
+      // 好運卡任務目標：在分頁操作完成後（買地、完成交易等）評估，讓同回合的行動也算數。
+      let objSettled: { cardName: string; reward: number; undo: UndoRecipe }[] = [];
+      if (team !== "") {
+        try {
+          const os = await postJson("/api/map/objective/settle", { teamId: team });
+          objSettled = (os.settled ?? []) as { cardName: string; reward: number; undo: UndoRecipe }[];
+        } catch {
+          /* 任務結算失敗不阻斷 */
+        }
+      }
+      // 有金流（delta≠0）或有子列（如輪盤持平：投入/拿回 仍需呈現）就新增一列。
       setResult((prev) => {
-        const rows = [...(prev?.rows ?? []), { label, amount: delta, subRows }];
-        return { rows, undo: prev?.undo, noSettle: prev?.noSettle };
+        const rows = [...(prev?.rows ?? [])];
+        if (delta !== 0 || (subRows && subRows.length > 0)) rows.push({ label, amount: delta, subRows });
+        for (const o of objSettled) rows.push({ label: `任務完成・${o.cardName}`, amount: o.reward });
+        const extraUndoIds = objSettled.flatMap((o) => o.undo.ledgerIds);
+        const prevUndo = prev?.undo;
+        const undo: UndoRecipe | undefined = extraUndoIds.length
+          ? { label: prevUndo?.label ?? "撤銷結算", ledgerIds: [...(prevUndo?.ledgerIds ?? []), ...extraUndoIds] }
+          : prevUndo;
+        return { rows, undo, noSettle: prev?.noSettle };
       });
-    }
-    mutate();
-    setPhase(2);
-    setActionDone(true); // 已從分頁完成回來 → 階段 2 按鈕改為「結束回合」
-    clearActionResult?.();
-  }, [actionResult, mutate, clearActionResult]);
+      await mutate();
+      setPhase(2);
+      setActionDone(true); // 已從分頁完成回來 → 階段 2 按鈕改為「結束回合」
+      clearActionResult?.();
+    })();
+  }, [actionResult, team, mutate, clearActionResult]);
 
   // 量階段 1 的渲染寬度 → 套到滑動容器 width，讓階段 2/3 維持同寬不縮水。
   useEffect(() => {
@@ -383,10 +404,14 @@ export function RealMapView({
     }
   };
 
-  // 階段 3 抽卡：好運 / 厄運卡皆為即時卡，就地呈現於面板。
+  // 階段 3 抽卡：好運卡含即時獎勵卡與任務目標卡（後者抽到即登記）；厄運卡為即時卡。
+  // 抽好運卡時排除該隊已有進行中的任務種類（避免同種堆疊）。
   const handleDraw = (side: "good" | "bad") => {
     if (team === "") { toast("請先選擇小隊", "err"); return; }
-    setDrawn(drawCard(side));
+    const objs = cur?.objectives ?? [];
+    const openArg = { kinds: new Set(objs.map((o) => o.taskKind)), count: objs.length };
+    setCardResult(null);
+    setDrawn(drawCard(side, openArg));
   };
 
   // move 類即時好運卡（向前躍進 / 時光倒流 / 傳送門）：就地用面板移動控制執行。
@@ -500,10 +525,11 @@ export function RealMapView({
       await mutate();
       setLanded(target);
       setDrawn(null); // 新一次移動 → 清掉上一格抽到的即時卡
+      setCardResult(null); // 清掉上一格抽卡結算摘要
       // 移動成功後清掉已選的移動道具（已消耗一次；下一回合重新選取）。
       if (payload.useItemId != null) setSelectedMoveId(null);
 
-      // 金流明細（過起點 + 過路費 合併 ledger，一鍵還原）：存進 result 供階段 2 面板顯示，並彈簡易 toast。
+      // 金流明細（過起點 + 過路費 + 任務獎勵 合併 ledger，一鍵還原）：存進 result 供階段 2 面板顯示，並彈簡易 toast。
       if (tollErr) {
         setResult(null);
         toast(`${cur.name}・過路費未扣（${tollErr}），請至交易所手動收取`, "err");
@@ -1144,27 +1170,49 @@ export function RealMapView({
               </span>
               {cur && <span className="text-xs text-slate-400">{cur.name}</span>}
             </div>
-            <button
-              type="button"
-              disabled={team === ""}
-              onClick={() => handleDraw(landed?.kind === "FOG" ? "bad" : "good")}
-              className={`h-11 w-full rounded-xl text-sm font-bold transition active:scale-95 disabled:opacity-40 ${
-                landed?.kind === "FOG" ? "btn-rose" : "btn-amber"
-              }`}
-            >
-              {drawn ? "重新抽卡" : landed?.kind === "FOG" ? "抽厄運卡" : "抽好運卡"}
-            </button>
+            {/* 尚未結算才顯示抽卡鈕；已結算（cardResult）則保留卡面、底部換成「回到地圖」。*/}
+            {!cardResult && (
+              <button
+                type="button"
+                disabled={team === ""}
+                onClick={() => handleDraw(landed?.kind === "FOG" ? "bad" : "good")}
+                className={`h-11 w-full rounded-xl text-sm font-bold transition active:scale-95 disabled:opacity-40 ${
+                  landed?.kind === "FOG" ? "btn-rose" : "btn-amber"
+                }`}
+              >
+                {drawn ? "重新抽卡" : landed?.kind === "FOG" ? "抽厄運卡" : "抽好運卡"}
+              </button>
+            )}
             {drawn && (
               <div data-scrollable className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-                <InstantCardPanel
-                  drawn={drawn}
-                  settler={settler}
-                  team={team}
-                  event1={event1}
-                  onMapMove={(_reward, card) => runMapReward(card.rewardText)}
-                  onSettled={() => setDrawn(null)}
-                />
+                {drawn.side === "good" && drawn.task ? (
+                  <TaskObjectivePanel
+                    drawn={drawn}
+                    team={team}
+                    registered={!!cardResult}
+                    onRegistered={() => { void mutate(); setCardResult({ message: `已發放任務・${drawn.card.name}` }); }}
+                  />
+                ) : (
+                  <InstantCardPanel
+                    drawn={drawn}
+                    settler={settler}
+                    team={team}
+                    event1={event1}
+                    settled={!!cardResult}
+                    onMapMove={(_reward, card) => runMapReward(card.rewardText)}
+                    onSettled={(r) => setCardResult(r ?? { message: "已套用" })}
+                  />
+                )}
               </div>
+            )}
+            {cardResult && (
+              <button
+                type="button"
+                onClick={() => { setActionDone(true); setPhase(2); }}
+                className="mt-auto flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-cyan-500 text-sm font-black text-slate-950 transition hover:bg-cyan-400 active:scale-[0.98]"
+              >
+                回到結算畫面 <ArrowLeft className="h-4 w-4" />
+              </button>
             )}
           </section>
         )}
@@ -1315,6 +1363,24 @@ function PhaseResult({
             <span className="font-bold text-slate-300">總資產價值</span>
             <Num className="font-black tabular-nums text-emerald-300">{team.netWorth}</Num>
           </div>
+        </div>
+      )}
+
+      {/* 該隊進行中好運卡任務目標（達標後回合結算自動發獎；與「本次結算」同卡片風格）。*/}
+      {team && team.objectives.length > 0 && (
+        <div className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2">
+          <div className="mb-1 text-[11px] font-bold tracking-wide text-slate-400">進行中任務</div>
+          {team.objectives.map((o) => (
+            <div key={o.id} className="flex items-start justify-between gap-4 border-b border-white/5 py-1 text-sm last:border-0">
+              <span className="min-w-0">
+                <span className="text-slate-200">{o.description}</span>
+                {/* <span className="mt-0.5 block text-xs leading-snug text-slate-500">{o.description}</span> */}
+              </span>
+              <span className={`shrink-0 font-mono font-extrabold tabular-nums ${o.done ? "text-emerald-400" : "text-slate-400"}`}>
+                {o.done ? "已完成任務 ✓" : `${o.current}/${o.target}`}
+              </span>
+            </div>
+          ))}
         </div>
       )}
 

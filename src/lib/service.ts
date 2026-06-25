@@ -31,9 +31,15 @@ import {
   BOARD_SIZE,
   PASS_START_INCOME,
   TOLL_RATE,
+  REGIONS,
+  TASK_GOOD_CARDS,
+  MAX_OPEN_TASKS,
+  findMonopoly,
+  evalObjectiveProgress,
   type EffectType,
   type RegionCode,
   type UndoRecipe,
+  type TaskKind,
 } from "./game";
 
 type Tx = Prisma.TransactionClient;
@@ -392,6 +398,14 @@ async function logAttack(tx: Tx, victimTeamId: number, note: string, byToken?: s
   await logLedger(tx, { teamId: victimTeamId, kind: "attack", delta: 0, note, byToken });
 }
 
+// 出卡紀錄：對「出卡隊」寫一筆 kind:"card_use"、delta:0 的 ledger，供
+// 好運卡任務「對其他隊伍使用一張卡片」(USE_CARD_ON_TEAM) 計數。byTeamId 未知時略過。
+// 不納入 undo（純計數紀錄，撤銷產權不影響）。
+async function logCardUse(tx: Tx, byTeamId: number | undefined, note: string, byToken?: string) {
+  if (byTeamId == null) return;
+  await logLedger(tx, { teamId: byTeamId, kind: "card_use", delta: 0, note, byToken });
+}
+
 // 出卡後把該功能卡回補一張到神秘商店庫存（出完即用、用了就回流，總供給維持不變）。
 // 商店無此卡（市場預警卡等資訊卡）時靜默略過。
 async function restockCard(tx: Tx, cardType: string) {
@@ -418,6 +432,7 @@ export async function cardSeizeLand(params: { propertyId: number; toTeamId: numb
     await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: toTeamId } });
     ledgerIds.push(await logLedger(tx, { teamId: toTeamId, kind: "property", delta: 0, note: `購地卡強制收購 ${prop.name}（來自隊 #${fromTeamId}）`, byToken }));
     await logAttack(tx, fromTeamId, `⚔ ${buyer.name} 用購地卡強制收購你的「${prop.name}」（補償 ${compensation}）`, byToken);
+    await logCardUse(tx, toTeamId, `購地卡 → 隊 #${fromTeamId} 的「${prop.name}」`, byToken);
     await restockCard(tx, "購地卡");
     const undo: UndoRecipe = {
       label: `購地卡 ${prop.name}`,
@@ -444,6 +459,7 @@ export async function cardSwapLand(params: { propertyAId: number; propertyBId: n
     await tx.property.update({ where: { id: b.id }, data: { ownerTeamId: a.ownerTeamId } });
     const lid = await logLedger(tx, { teamId: a.ownerTeamId, kind: "property", delta: 0, note: `換地卡：${a.name} ⇄ ${b.name}`, byToken });
     await logAttack(tx, b.ownerTeamId, `⚔ ${attacker?.name ?? "對手"} 用換地卡把你的「${b.name}」換成了「${a.name}」`, byToken);
+    await logCardUse(tx, a.ownerTeamId, `換地卡：${a.name} ⇄ ${b.name}`, byToken);
     await restockCard(tx, "換地卡");
     const undo: UndoRecipe = {
       label: `換地卡 ${a.name} ⇄ ${b.name}`,
@@ -473,6 +489,7 @@ export async function cardSwapHouse(params: { propertyAId: number; propertyBId: 
     await tx.property.update({ where: { id: b.id }, data: { level: a.level } });
     const lid = await logLedger(tx, { teamId: a.ownerTeamId, kind: "property", delta: 0, note: `換屋卡：${a.name}(${a.level}級) ⇄ ${b.name}(${b.level}級)`, byToken });
     await logAttack(tx, b.ownerTeamId, `⚔ ${attacker?.name ?? "對手"} 用換屋卡把你的「${b.name}」等級換成 ${a.level} 級`, byToken);
+    await logCardUse(tx, a.ownerTeamId, `換屋卡：${a.name} ⇄ ${b.name}`, byToken);
     await restockCard(tx, "換屋卡");
     const undo: UndoRecipe = {
       label: `換屋卡 ${a.name} ⇄ ${b.name}`,
@@ -505,6 +522,7 @@ export async function cardDemolish(params: { propertyId: number; byTeamId?: numb
     const lid = await logLedger(tx, { teamId: prop.ownerTeamId, kind: "property", delta: 0, note: `拆屋卡：${prop.name} ${prop.level}級 → ${prop.level - 1}級`, byToken });
     const atk = await attackerName(tx, byTeamId);
     await logAttack(tx, prop.ownerTeamId, `⚔ ${atk ? `${atk} 用拆屋卡把` : ""}你的「${prop.name}」${atk ? "降為" : "被拆屋卡降為"} ${prop.level - 1} 級`, byToken);
+    await logCardUse(tx, byTeamId, `拆屋卡 → 「${prop.name}」降級`, byToken);
     await restockCard(tx, "拆屋卡");
     const undo: UndoRecipe = {
       label: `拆屋卡 ${prop.name}`,
@@ -527,6 +545,7 @@ export async function cardMonster(params: { propertyId: number; byTeamId?: numbe
     const lid = await logLedger(tx, { teamId: fromTeamId, kind: "property", delta: 0, note: `怪獸卡摧毀 ${prop.name}（降回未購買）`, byToken });
     const atk = await attackerName(tx, byTeamId);
     await logAttack(tx, fromTeamId, `⚔ ${atk ? `${atk} 用怪獸卡摧毀了你的` : "你的"}「${prop.name}」，你失去這塊地了`, byToken);
+    await logCardUse(tx, byTeamId, `怪獸卡 → 摧毀「${prop.name}」`, byToken);
     await restockCard(tx, "怪獸卡");
     const undo: UndoRecipe = {
       label: `怪獸卡 ${prop.name}`,
@@ -1113,46 +1132,53 @@ export async function reverseLedger(params: { ledgerId: number; byToken?: string
 }
 
 // ── 好運卡 / 厄運卡（含動產效果）────────────────────────────────
+// 好運卡發獎核心（在既有 tx 內執行）：套 GOOD_CARD_BONUS 與 WHEEL_ON_GOOD_CARD，
+// 以光幣入帳並記 ledger。抽出供 applyGoodCard 與任務目標結算共用同一筆交易。
+async function _applyGoodCardTx(
+  tx: Tx,
+  params: { teamId: number; baseReward: number; note: string; byToken?: string },
+) {
+  const { teamId, baseReward, note, byToken } = params;
+  const bonusEffect = await loadActiveEffects(tx, teamId, "GOOD_CARD_BONUS");
+  let afterBonus = applyGoodCardReward(baseReward, bonusEffect.delta);
+
+  // WHEEL_ON_GOOD_CARD：好運卡獎勵 × 輪盤結果
+  const wheelItems = await tx.teamItem.findMany({
+    where: { teamId, ...ACTIVE_ITEM },
+    include: { asset: true },
+  });
+  const wheelOnCardItem = wheelItems.find((i) => i.asset.effectType === "WHEEL_ON_GOOD_CARD");
+  let wheelMult: number | null = null;
+  let wheelUsedIds: number[] = [];
+  if (wheelOnCardItem && afterBonus > 0) {
+    wheelMult = spinWheelCustom();
+    afterBonus = Math.round(afterBonus * wheelMult);
+    wheelUsedIds = [wheelOnCardItem.id];
+  }
+
+  const finalReward = Math.max(0, afterBonus);
+  await decrementUses(tx, [...bonusEffect.usedIds, ...wheelUsedIds]);
+  const noteWithWheel = wheelMult !== null ? `${note}（輪盤 ×${wheelMult}）` : note;
+
+  // 好運卡獎勵一律以光幣發放（卡面金額）。獎勵為 0（失敗且卡面 fail=0）時仍記一筆 0 ledger，
+  // 維持「成功/失敗都有紀錄」行為與可撤銷性。
+  const ledgerIds: number[] = [];
+  if (finalReward > 0) {
+    await tx.team.update({ where: { id: teamId }, data: { coins: { increment: finalReward } } });
+  }
+  ledgerIds.push(await logLedger(tx, { teamId, kind: "coins", delta: finalReward, note: noteWithWheel, byToken }));
+
+  const undo: UndoRecipe = { label: noteWithWheel, ledgerIds };
+  return { ok: true as const, baseReward, finalReward, wheelMult, undo };
+}
+
 export async function applyGoodCard(params: {
   teamId: number;
   baseReward: number; // 卡面原始獎勵（正數）
   note: string;
   byToken?: string;
 }) {
-  const { teamId, baseReward, note, byToken } = params;
-  return prisma.$transaction(async (tx) => {
-    const bonusEffect = await loadActiveEffects(tx, teamId, "GOOD_CARD_BONUS");
-    let afterBonus = applyGoodCardReward(baseReward, bonusEffect.delta);
-
-    // WHEEL_ON_GOOD_CARD：好運卡獎勵 × 輪盤結果
-    const wheelItems = await tx.teamItem.findMany({
-      where: { teamId, ...ACTIVE_ITEM },
-      include: { asset: true },
-    });
-    const wheelOnCardItem = wheelItems.find((i) => i.asset.effectType === "WHEEL_ON_GOOD_CARD");
-    let wheelMult: number | null = null;
-    let wheelUsedIds: number[] = [];
-    if (wheelOnCardItem && afterBonus > 0) {
-      wheelMult = spinWheelCustom();
-      afterBonus = Math.round(afterBonus * wheelMult);
-      wheelUsedIds = [wheelOnCardItem.id];
-    }
-
-    const finalReward = Math.max(0, afterBonus);
-    await decrementUses(tx, [...bonusEffect.usedIds, ...wheelUsedIds]);
-    const noteWithWheel = wheelMult !== null ? `${note}（輪盤 ×${wheelMult}）` : note;
-
-    // 好運卡獎勵一律以光幣發放（卡面金額）。獎勵為 0（失敗且卡面 fail=0）時仍記一筆 0 ledger，
-    // 維持「成功/失敗都有紀錄」行為與可撤銷性。
-    const ledgerIds: number[] = [];
-    if (finalReward > 0) {
-      await tx.team.update({ where: { id: teamId }, data: { coins: { increment: finalReward } } });
-    }
-    ledgerIds.push(await logLedger(tx, { teamId, kind: "coins", delta: finalReward, note: noteWithWheel, byToken }));
-
-    const undo: UndoRecipe = { label: noteWithWheel, ledgerIds };
-    return { ok: true, baseReward, finalReward, wheelMult, undo };
-  });
+  return prisma.$transaction((tx) => _applyGoodCardTx(tx, params));
 }
 
 export async function applyBadCard(params: {
@@ -1173,6 +1199,126 @@ export async function applyBadCard(params: {
     const lid = await logLedger(tx, { teamId, kind: "coins", delta: -finalPenalty, note, byToken });
     const undo: UndoRecipe = { label: note, ledgerIds: [lid] };
     return { ok: true, basePenalty, finalPenalty, undo };
+  });
+}
+
+// ── 好運卡「任務目標型」：抽卡登記 → 回合結算自動評估發獎 ──────────────
+
+// 某隊「目前」已獨佔的區碼集合（用 game.findMonopoly 單一事實來源）。
+async function queryTeamMonopolyRegions(tx: Tx, teamId: number): Promise<RegionCode[]> {
+  const props = await tx.property.findMany({ select: { region: true, ownerTeamId: true, level: true } });
+  const out: RegionCode[] = [];
+  for (const r of REGIONS) {
+    const regionProps = props.filter((p) => p.region === r.code);
+    if (findMonopoly(regionProps) === teamId) out.push(r.code);
+  }
+  return out;
+}
+
+// 某隊「目前」的任務各項計數 / 狀態。targetRegion 有給時，propertyCount 僅計該區（供 BUY_LAND 用）。
+async function queryObjectiveState(
+  tx: Tx,
+  teamId: number,
+  targetRegion: string | null,
+): Promise<ObjectiveStateRow> {
+  const [tradeCount, propertyCount, level3Count, cardUseCount, auctionWins, monopolyRegions] =
+    await Promise.all([
+      tx.trade.count({ where: { status: "ACCEPTED", OR: [{ fromTeamId: teamId }, { toTeamId: teamId }] } }),
+      tx.property.count({ where: { ownerTeamId: teamId, ...(targetRegion ? { region: targetRegion } : {}) } }),
+      tx.property.count({ where: { ownerTeamId: teamId, level: 3 } }),
+      tx.ledger.count({ where: { teamId, kind: "card_use" } }),
+      tx.auctionLot.count({ where: { winnerTeamId: teamId, status: "SOLD" } }),
+      queryTeamMonopolyRegions(tx, teamId),
+    ]);
+  return { tradeCount, propertyCount, level3Count, cardUseCount, auctionWins, monopolyRegions };
+}
+type ObjectiveStateRow = {
+  tradeCount: number;
+  propertyCount: number;
+  level3Count: number;
+  cardUseCount: number;
+  auctionWins: number;
+  monopolyRegions: RegionCode[];
+};
+
+// 抽卡登記任務：依 cardName 在 TASK_GOOD_CARDS 找出規格（不信任前端），記下 since-draw 基準。
+// 同 taskKind 已有進行中目標時拒絕（避免同種堆疊；抽卡端本就會排除，這是安全網）。
+export async function createObjective(params: { teamId: number; cardName: string; byToken?: string }) {
+  const { teamId, cardName } = params;
+  const card = TASK_GOOD_CARDS.find((c) => c.name === cardName);
+  if (!card || !card.taskKind) throw new Error("找不到任務卡");
+  const taskKind = card.taskKind;
+  const targetRegion = card.targetRegion ?? null;
+  return prisma.$transaction(async (tx) => {
+    const openCount = await tx.teamObjective.count({ where: { teamId, completedAt: null } });
+    if (openCount >= MAX_OPEN_TASKS) throw new Error(`進行中任務已達上限（${MAX_OPEN_TASKS}）`);
+    const existing = await tx.teamObjective.findFirst({ where: { teamId, taskKind, completedAt: null } });
+    if (existing) throw new Error("已有相同進行中任務");
+    const base = await queryObjectiveState(tx, teamId, targetRegion);
+    const obj = await tx.teamObjective.create({
+      data: {
+        teamId,
+        cardName: card.name,
+        taskKind,
+        targetCount: card.targetCount ?? 1,
+        targetRegion,
+        rewardCoins: card.rewardCoins ?? 0,
+        baseTradeCount: base.tradeCount,
+        basePropertyCount: base.propertyCount,
+        baseLevel3Count: base.level3Count,
+        baseCardUseCount: base.cardUseCount,
+        baseAuctionWins: base.auctionWins,
+        baseMonopolyRegions: base.monopolyRegions.join(","),
+      },
+    });
+    return { ok: true, objectiveId: obj.id, cardName: obj.cardName };
+  });
+}
+
+// 把 DB 列轉成 evalObjectiveProgress 需要的 baseline。
+function baselineOf(o: {
+  baseTradeCount: number; basePropertyCount: number; baseLevel3Count: number;
+  baseCardUseCount: number; baseAuctionWins: number; baseMonopolyRegions: string;
+}) {
+  return {
+    baseTradeCount: o.baseTradeCount,
+    basePropertyCount: o.basePropertyCount,
+    baseLevel3Count: o.baseLevel3Count,
+    baseCardUseCount: o.baseCardUseCount,
+    baseAuctionWins: o.baseAuctionWins,
+    baseMonopolyRegions: (o.baseMonopolyRegions ? o.baseMonopolyRegions.split(",") : []) as RegionCode[],
+  };
+}
+
+// 回合結算（地圖階段 2）評估該隊所有進行中任務：達標者以光幣發獎並 completedAt。
+// 回傳 settled[]（含金額與 undo），供面板列出「任務完成 +N」並併入回合撤銷。
+export async function evaluateAndSettleObjectives(params: { teamId: number; byToken?: string }) {
+  const { teamId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const open = await tx.teamObjective.findMany({ where: { teamId, completedAt: null }, orderBy: { id: "asc" } });
+    const settled: { objectiveId: number; cardName: string; reward: number; undo: UndoRecipe }[] = [];
+    for (const o of open) {
+      const cur = await queryObjectiveState(tx, teamId, o.targetRegion);
+      const progress = evalObjectiveProgress(
+        o.taskKind as TaskKind,
+        { count: o.targetCount, region: (o.targetRegion as RegionCode | null) ?? null },
+        baselineOf(o),
+        cur,
+      );
+      if (!progress.done) continue;
+      const pay = await _applyGoodCardTx(tx, {
+        teamId,
+        baseReward: o.rewardCoins,
+        note: `任務完成・${o.cardName}`,
+        byToken,
+      });
+      await tx.teamObjective.update({
+        where: { id: o.id },
+        data: { completedAt: new Date(), rewardLedgerId: pay.undo.ledgerIds[0] ?? null },
+      });
+      settled.push({ objectiveId: o.id, cardName: o.cardName, reward: pay.finalReward, undo: pay.undo });
+    }
+    return { ok: true, settled };
   });
 }
 
