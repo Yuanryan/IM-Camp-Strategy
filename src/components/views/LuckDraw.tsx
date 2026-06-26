@@ -253,7 +253,6 @@ export function TaskObjectivePanel({
         <span className="font-bold text-violet-100">{good.name}</span>
       </div>
       <p className="mb-3 text-sm text-slate-200">{good.rewardText}</p>
-      <p className="mb-3 text-xs text-violet-200/80">🎯 達成後，該隊下回合在地圖結算時自動發獎。</p>
       <ActionButton
         label={registered ? "已發放任務" : "發放任務"}
         className="w-full btn-purple"

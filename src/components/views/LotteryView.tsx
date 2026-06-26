@@ -90,7 +90,7 @@ export function LotteryView({
       if (turnMode) setTurnDelta((d) => d - (r.fee ?? 0));
       const msg = `已登記 ${number} 號（費用 ${r.fee}）`;
       setResult({ ok: true, msg });
-      toast(msg, "ok");
+      toast(msg, "ok", r.undo);
     } catch (e) {
       const m = e instanceof Error ? e.message : "登記失敗";
       setResult({ ok: false, msg: `${number} 號：${m}` });

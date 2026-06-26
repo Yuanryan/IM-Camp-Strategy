@@ -18,11 +18,15 @@ export const POST = apiRoute(["EXCHANGE", "MAP", "MOBILE", "HOST"], async ({ bod
     ? (body.properties as PropIn[]).map(parseProp).filter((x): x is NonNullable<typeof x> => x != null)
     : undefined;
   const itemIds = Array.isArray(body.itemIds) ? body.itemIds.map(Number) : [];
+  const lotteryNumberId = Number.isInteger(Number(body.lotteryNumberId)) && body.lotteryNumberId != null ? Number(body.lotteryNumberId) : undefined;
+  const lotteryPoolRevert = Number.isInteger(Number(body.lotteryPoolRevert)) && body.lotteryPoolRevert != null ? Number(body.lotteryPoolRevert) : undefined;
   return undoAction({
     ledgerIds,
     property,
     properties,
     itemIds,
+    lotteryNumberId,
+    lotteryPoolRevert,
     byToken: session.label,
     isAdmin: session.role === "ADMIN",
   });

@@ -820,6 +820,9 @@ export type UndoRecipe = {
   properties?: { id: number; ownerTeamId: number | null; level: number }[];
   // 撤銷時需刪除的 TeamItem（如好運卡骰到動產時發出的那張）
   itemIds?: number[];
+  // 撤銷大樂透登記：刪除該 LotteryNumber 列並回補獎金池
+  lotteryNumberId?: number;
+  lotteryPoolRevert?: number; // 需從池中扣回的金額（= poolAdd）
 };
 
 export type RewardTone = "good" | "bad" | "gold" | "spirit";

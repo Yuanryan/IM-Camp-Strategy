@@ -173,6 +173,7 @@ export function RealMapView({
   onLand,
   actionResult,
   clearActionResult,
+  visible = true,
 }: {
   team: number | "";
   setTeam: (id: number | "") => void;
@@ -181,6 +182,7 @@ export function RealMapView({
   // 併入階段 2 後由 clearActionResult 清掉。
   actionResult?: { label: string; delta: number; subRows?: { label: string; amount: number }[] } | null;
   clearActionResult?: () => void;
+  visible?: boolean;
 }) {
   const { snap, mutate } = useSnapshot(2500);
   const [steps, setSteps] = useState(1);
@@ -242,6 +244,9 @@ export function RealMapView({
       if (!el) return;
       // 僅在並排版面（lg：寬度 ≥ 1024）才鎖定高度；縱向堆疊維持 auto 由內容撐開。
       if (window.innerWidth < 1024) { setRowH(null); return; }
+      // Hidden via display:none (e.g. covered by another tab) → getBoundingClientRect returns 0;
+      // skip to avoid locking height to the full viewport on next unhide.
+      if (el.offsetParent === null) return;
       const top = el.getBoundingClientRect().top;
       const vh = window.visualViewport?.height ?? window.innerHeight;
       setRowH(Math.max(320, vh - top - 8)); // 留 8px 底部喘息
@@ -258,7 +263,7 @@ export function RealMapView({
       window.visualViewport?.removeEventListener("resize", measure);
       window.visualViewport?.removeEventListener("scroll", measure);
     };
-  }, [snap]);
+  }, [snap, visible]);
 
   const teamsBySquare = useMemo(() => {
     const m = new Map<number, { id: number; name: string; colorIdx: number }[]>();
@@ -309,32 +314,39 @@ export function RealMapView({
     if (!actionResult) return;
     const { label, delta, subRows } = actionResult;
     void (async () => {
+      // 立即顯示分頁金流並切到階段 2，不等任務結算 API。
+      setResult((prev) => {
+        const rows = [...(prev?.rows ?? [])];
+        if (delta !== 0 || (subRows && subRows.length > 0)) rows.push({ label, amount: delta, subRows });
+        return { rows, undo: prev?.undo, noSettle: prev?.noSettle };
+      });
+      setPhase(2);
+      setActionDone(true);
+      clearActionResultRef.current?.();
+
       // 好運卡任務目標：在分頁操作完成後（買地、完成交易等）評估，讓同回合的行動也算數。
-      let objSettled: { cardName: string; reward: number; undo: UndoRecipe }[] = [];
+      // 在背景執行，完成後把任務獎勵列附加到 result。
       if (team !== "") {
         try {
           const os = await postJson("/api/map/objective/settle", { teamId: team });
-          objSettled = (os.settled ?? []) as { cardName: string; reward: number; undo: UndoRecipe }[];
+          const objSettled = (os.settled ?? []) as { cardName: string; reward: number; undo: UndoRecipe }[];
+          if (objSettled.length > 0) {
+            setResult((prev) => {
+              const rows = [...(prev?.rows ?? [])];
+              for (const o of objSettled) rows.push({ label: `任務完成・${o.cardName}`, amount: o.reward });
+              const extraUndoIds = objSettled.flatMap((o) => o.undo.ledgerIds);
+              const prevUndo = prev?.undo;
+              const undo: UndoRecipe | undefined = extraUndoIds.length
+                ? { label: prevUndo?.label ?? "撤銷結算", ledgerIds: [...(prevUndo?.ledgerIds ?? []), ...extraUndoIds] }
+                : prevUndo;
+              return { rows, undo, noSettle: prev?.noSettle };
+            });
+          }
         } catch {
           /* 任務結算失敗不阻斷 */
         }
       }
-      // 有金流（delta≠0）或有子列（如輪盤持平：投入/拿回 仍需呈現）就新增一列。
-      setResult((prev) => {
-        const rows = [...(prev?.rows ?? [])];
-        if (delta !== 0 || (subRows && subRows.length > 0)) rows.push({ label, amount: delta, subRows });
-        for (const o of objSettled) rows.push({ label: `任務完成・${o.cardName}`, amount: o.reward });
-        const extraUndoIds = objSettled.flatMap((o) => o.undo.ledgerIds);
-        const prevUndo = prev?.undo;
-        const undo: UndoRecipe | undefined = extraUndoIds.length
-          ? { label: prevUndo?.label ?? "撤銷結算", ledgerIds: [...(prevUndo?.ledgerIds ?? []), ...extraUndoIds] }
-          : prevUndo;
-        return { rows, undo, noSettle: prev?.noSettle };
-      });
       await mutateRef.current();
-      setPhase(2);
-      setActionDone(true); // 已從分頁完成回來 → 階段 2 按鈕改為「結束回合」
-      clearActionResultRef.current?.();
     })();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionResult, team]);
@@ -936,7 +948,7 @@ export function RealMapView({
       <aside
         ref={phase1Ref}
         style={{ width: phaseBoxW ?? undefined }}
-        className="flex w-[300px] shrink-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-2.5 backdrop-blur-xl xl:w-[360px] max-lg:!w-full max-lg:h-auto max-lg:overflow-visible"
+        className="flex w-[330px] shrink-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-2.5 backdrop-blur-xl xl:w-[360px] max-lg:!w-full max-lg:h-auto max-lg:overflow-visible"
       >
         {/* 流程分頁點：指示目前階段 + 可點切換（階段 2/3 需有落地結果才可達）*/}
         <PhaseDots phase={phase} reachable={reachablePhase} color={teamColor} onJump={goPhase} />
@@ -1168,7 +1180,10 @@ export function RealMapView({
             landed={landed}
             result={result}
             team={cur}
-            objectives={frozenObjectives.map((o) => ({
+            objectives={[
+              ...frozenObjectives,
+              ...(cur?.objectives ?? []).filter((o) => !frozenObjectives.some((f) => f.id === o.id)),
+            ].map((o) => ({
               ...o,
               done: o.done || (result?.rows ?? []).some((r) => r.label.includes(o.cardName)),
             }))}

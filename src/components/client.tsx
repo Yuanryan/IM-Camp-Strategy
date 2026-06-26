@@ -137,7 +137,7 @@ export function toast(message: string, kind: "ok" | "err" = "ok", undo?: UndoRec
       btn.disabled = true;
       btn.style.opacity = "0.5";
       try {
-        await postJson("/api/undo", { ledgerIds: undo.ledgerIds, property: undo.property, properties: undo.properties, itemIds: undo.itemIds });
+        await postJson("/api/undo", { ledgerIds: undo.ledgerIds, property: undo.property, properties: undo.properties, itemIds: undo.itemIds, lotteryNumberId: undo.lotteryNumberId, lotteryPoolRevert: undo.lotteryPoolRevert });
         await globalMutate(() => true); // 重新抓所有輪詢資料，畫面馬上回到撤銷後狀態
         span.textContent = "已撤銷";
         el!.style.background = "#0891b2";

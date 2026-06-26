@@ -156,157 +156,161 @@ export function WheelView({
       </StickyTeam>
 
       <Card title="命運投資輪盤">
-        <div className="relative mx-auto aspect-square w-full max-w-xs">
-          {/* 指針（固定在正上方，指向輪盤）*/}
-          <div className="absolute left-1/2 top-0 z-10 -translate-x-1/2">
-            <div
-              style={{
-                width: 0,
-                height: 0,
-                borderLeft: "13px solid transparent",
-                borderRight: "13px solid transparent",
-                borderTop: "22px solid #facc15",
-                filter: "drop-shadow(0 0 6px rgba(250,204,21,0.6))",
-              }}
-            />
-          </div>
-
-          <svg
-            viewBox="0 0 200 200"
-            className="h-full w-full drop-shadow-[0_0_22px_rgba(34,211,238,0.25)]"
-            style={{
-              transform: `rotate(${rotation}deg)`,
-              transition: spinning ? "transform 4s cubic-bezier(0.17,0.67,0.21,1)" : "none",
-            }}
-          >
-            <circle cx={100} cy={100} r={99} fill="#020617" stroke="rgba(255,255,255,0.18)" strokeWidth={2} />
-            {SEGMENTS.map((s, i) => {
-              const [lx, ly] = polar(100, 100, 66, s.center);
-              // WHEEL_NO_ZERO：×0 區段被保底道具移除 → 變灰、降透明、打叉提示
-              const removed = hasNoZero && s.mult === 0;
-              return (
-                <g key={i} opacity={removed ? 0.28 : 1}>
-                  <path
-                    d={arcPath(100, 100, 96, s.start, s.sweep)}
-                    fill={removed ? "#1e293b" : COLORS[i]}
-                    stroke={removed ? "rgba(248,113,113,0.5)" : "rgba(2,6,23,0.55)"}
-                    strokeWidth={removed ? 1.5 : 1}
-                    strokeDasharray={removed ? "3 2" : undefined}
-                  />
-                  <text
-                    x={lx}
-                    y={ly}
-                    fill={removed ? "#94a3b8" : s.mult === 10 ? "#020617" : "#e2e8f0"}
-                    fontSize={s.sweep < 16 ? (s.mult === 10 ? 4 : 9) : 13}
-                    fontWeight="bold"
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    textDecoration={removed ? "line-through" : undefined}
-                    transform={`rotate(${s.center} ${lx} ${ly})`}
-                  >
-                    ×{s.mult}
-                  </text>
-                </g>
-              );
-            })}
-            <circle cx={100} cy={100} r={15} fill="#0f172a" stroke="#facc15" strokeWidth={2} />
-          </svg>
-        </div>
-
-
-        {last && (
-          <div
-            className={`mt-4 flex items-center gap-4 rounded-xl p-4 ring-1 ${
-              last.delta >= 0
-                ? "bg-emerald-500/10 ring-emerald-400/30"
-                : "bg-rose-500/10 ring-rose-400/30"
-            }`}
-          >
-            {/* Multiplier */}
-            <div className="shrink-0 text-center">
-              <div className="text-[10px] uppercase tracking-widest text-slate-500">倍率</div>
-              <Num
-                className={`text-4xl font-black leading-none ${
-                  last.delta >= 0 ? "text-emerald-300" : "text-rose-300"
-                }`}
-              >
-                ×{last.mult}
-              </Num>
-            </div>
-
-            {/* Transaction breakdown */}
-            <div className="flex-1 min-w-0">
-              <div className="text-xs text-slate-400">
-                投入 <Num className="font-bold text-slate-200">{last.stake}</Num>
-                {"  →  "}
-                拿回 <Num className="font-bold text-slate-200">{last.stake + last.delta}</Num>
-              </div>
-              {/* WHEEL_BONUS：顯示加成計算（淨利 ×(1+加成)）*/}
-              {last.baseDelta > 0 && last.delta !== last.baseDelta && (
-                <div className="mt-0.5 text-xs text-emerald-300/90">
-                  <Num className="font-bold">{last.baseDelta}</Num>
-                  {" × "}
-                  <Num className="font-bold">{(last.delta / last.baseDelta).toFixed(2)}</Num>
-                </div>
-              )}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch">
+          {/* 左側：輪盤 + 結果；flex-1 給 col 寬度，讓 w-full 的輪盤能正確展開 */}
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <div className="relative mx-auto w-full max-w-xs aspect-square sm:max-w-sm">
+            {/* 指針（固定在正上方，指向輪盤）*/}
+            <div className="absolute left-1/2 top-0 z-10 -translate-x-1/2">
               <div
-                className={`num mt-0.5 text-2xl font-black ${
-                  last.delta > 0
-                    ? "text-emerald-300"
-                    : last.delta < 0
-                      ? "text-rose-300"
-                      : "text-slate-400"
+                style={{
+                  width: 0,
+                  height: 0,
+                  borderLeft: "13px solid transparent",
+                  borderRight: "13px solid transparent",
+                  borderTop: "22px solid #facc15",
+                  filter: "drop-shadow(0 0 6px rgba(250,204,21,0.6))",
+                }}
+              />
+            </div>
+
+            <svg
+              viewBox="0 0 200 200"
+              className="absolute inset-0 h-full w-full drop-shadow-[0_0_22px_rgba(34,211,238,0.25)]"
+              style={{
+                transform: `rotate(${rotation}deg)`,
+                transition: spinning ? "transform 4s cubic-bezier(0.17,0.67,0.21,1)" : "none",
+              }}
+            >
+              <circle cx={100} cy={100} r={99} fill="#020617" stroke="rgba(255,255,255,0.18)" strokeWidth={2} />
+              {SEGMENTS.map((s, i) => {
+                const [lx, ly] = polar(100, 100, 66, s.center);
+                // WHEEL_NO_ZERO：×0 區段被保底道具移除 → 變灰、降透明、打叉提示
+                const removed = hasNoZero && s.mult === 0;
+                return (
+                  <g key={i} opacity={removed ? 0.28 : 1}>
+                    <path
+                      d={arcPath(100, 100, 96, s.start, s.sweep)}
+                      fill={removed ? "#1e293b" : COLORS[i]}
+                      stroke={removed ? "rgba(248,113,113,0.5)" : "rgba(2,6,23,0.55)"}
+                      strokeWidth={removed ? 1.5 : 1}
+                      strokeDasharray={removed ? "3 2" : undefined}
+                    />
+                    <text
+                      x={lx}
+                      y={ly}
+                      fill={removed ? "#94a3b8" : s.mult === 10 ? "#020617" : "#e2e8f0"}
+                      fontSize={s.sweep < 16 ? (s.mult === 10 ? 4 : 9) : 13}
+                      fontWeight="bold"
+                      textAnchor="middle"
+                      dominantBaseline="middle"
+                      textDecoration={removed ? "line-through" : undefined}
+                      transform={`rotate(${s.center} ${lx} ${ly})`}
+                    >
+                      ×{s.mult}
+                    </text>
+                  </g>
+                );
+              })}
+              <circle cx={100} cy={100} r={15} fill="#0f172a" stroke="#facc15" strokeWidth={2} />
+            </svg>
+          </div>
+
+          </div>{/* end 左側 */}
+
+          {/* 右側：結果 + 控制項 */}
+          <div className="flex w-full shrink-0 flex-col sm:w-[330px]">
+            {last && (
+              <div
+                className={`flex shrink-0 items-center gap-4 rounded-xl p-4 ring-1 ${
+                  last.delta >= 0
+                    ? "bg-emerald-500/10 ring-emerald-400/30"
+                    : "bg-rose-500/10 ring-rose-400/30"
                 }`}
               >
-                {last.delta > 0 ? `+${last.delta}` : last.delta === 0 ? "持平" : last.delta}{" "}
-                <span className="text-sm font-semibold">光幣</span>
+                <div className="shrink-0 text-center">
+                  <div className="text-[10px] uppercase tracking-widest text-slate-500">倍率</div>
+                  <Num
+                    className={`text-4xl font-black leading-none ${
+                      last.delta >= 0 ? "text-emerald-300" : "text-rose-300"
+                    }`}
+                  >
+                    ×{last.mult}
+                  </Num>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-slate-400">
+                    投入 <Num className="font-bold text-slate-200">{last.stake}</Num>
+                    {"  →  "}
+                    拿回 <Num className="font-bold text-slate-200">{last.stake + last.delta}</Num>
+                  </div>
+                  {last.baseDelta > 0 && last.delta !== last.baseDelta && (
+                    <div className="mt-0.5 text-xs text-emerald-300/90">
+                      <Num className="font-bold">{last.baseDelta}</Num>
+                      {" × "}
+                      <Num className="font-bold">{(last.delta / last.baseDelta).toFixed(2)}</Num>
+                    </div>
+                  )}
+                  <div
+                    className={`num mt-0.5 text-2xl font-black ${
+                      last.delta > 0
+                        ? "text-emerald-300"
+                        : last.delta < 0
+                          ? "text-rose-300"
+                          : "text-slate-400"
+                    }`}
+                  >
+                    {last.delta > 0 ? `+${last.delta}` : last.delta === 0 ? "持平" : last.delta}{" "}
+                    <span className="text-sm font-semibold">光幣</span>
+                  </div>
+                </div>
               </div>
+            )}
+
+            <div className="mt-auto shrink-0 flex flex-col gap-3 pt-3">
+              {/* Quick-stake chips */}
+              <div>
+                <div className="mb-1.5 text-xs text-slate-400">
+                  投入光幣（上限 <span className="neon-gold font-bold">{maxStake}</span>）
+                </div>
+                <div className="flex gap-2">
+                  {[...new Set([100, 200, 300, 500, maxStake])].sort((a, b) => a - b).map((v) => (
+                    <button
+                      key={v}
+                      disabled={spinning}
+                      onClick={() => setStake(v)}
+                      className={`flex-1 rounded-lg py-2.5 text-sm font-bold transition active:scale-95 disabled:opacity-40 ${
+                        stake === v ? "btn-purple ring-1 ring-purple-400/40" : "chip"
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom stake input */}
+              <input
+                type="number"
+                inputMode="numeric"
+                value={stake}
+                min={1}
+                max={maxStake}
+                disabled={spinning}
+                onChange={(e) => setStake(Number(e.target.value) || 0)}
+                className="fld w-full text-center text-lg font-bold"
+              />
+
+              {/* Spin button */}
+              <button
+                onClick={spin}
+                disabled={team === "" || spinning}
+                className="btn-purple w-full rounded-xl py-4 text-lg font-black tracking-widest transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {spinning ? "轉動中…" : "轉輪盤"}
+              </button>
             </div>
           </div>
-        )}
-
-        <div className="mt-4 space-y-3">
-          {/* Quick-stake chips */}
-          <div>
-            <div className="mb-1.5 text-xs text-slate-400">
-              投入光幣（上限 <span className="neon-gold font-bold">{maxStake}</span>）
-            </div>
-            <div className="flex gap-2">
-              {[...new Set([100, 200, 300, 500, maxStake])].sort((a, b) => a - b).map((v) => (
-                <button
-                  key={v}
-                  disabled={spinning}
-                  onClick={() => setStake(v)}
-                  className={`flex-1 rounded-lg py-2.5 text-sm font-bold transition active:scale-95 disabled:opacity-40 ${
-                    stake === v ? "btn-purple ring-1 ring-purple-400/40" : "chip"
-                  }`}
-                >
-                  {v}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Custom stake input */}
-          <input
-            type="number"
-            inputMode="numeric"
-            value={stake}
-            min={1}
-            max={maxStake}
-            disabled={spinning}
-            onChange={(e) => setStake(Number(e.target.value) || 0)}
-            className="fld w-full text-center text-lg font-bold"
-          />
-
-          {/* Spin button */}
-          <button
-            onClick={spin}
-            disabled={team === "" || spinning}
-            className="btn-purple w-full rounded-xl py-4 text-lg font-black tracking-widest transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            {spinning ? "轉動中…" : "轉輪盤"}
-          </button>
         </div>
       </Card>
 

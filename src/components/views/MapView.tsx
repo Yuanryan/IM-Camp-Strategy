@@ -119,6 +119,7 @@ export function MapView() {
         <RealMapView
           team={team}
           setTeam={setTeam}
+          visible={tab === "realmap"}
           onLand={({ tab: nextTab, region: nextRegion }) => {
             if (nextRegion) setRegion(nextRegion);
             // 由地圖落地導向操作分頁＝開啟一段「回合操作」，該分頁顯示完成鈕並累計金流。

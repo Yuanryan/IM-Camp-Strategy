@@ -119,14 +119,15 @@ export function ExchangeView({
         <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 py-1.5">
           {REGIONS.map((r) => (
             <button key={r.code} onClick={() => setRegion(r.code)}
+              disabled={turnMode && r.code !== region}
               className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition ${
                 region === r.code ? `bg-white/10 ${REGION_UI[r.code].text} ring-1 ${REGION_UI[r.code].border}` : "chip"
-              }`}>
+              } disabled:opacity-30 disabled:cursor-not-allowed`}>
               {r.name}
             </button>
           ))}
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {props.map((p) => {
             // 採用受事件影響的現價（currentValue），與後端 buyProperty / upgradeProperty 一致
             const fee = upgradeFee(p.currentValue, p.level);

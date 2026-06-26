@@ -911,15 +911,19 @@ export async function registerLottery(params: { teamId: number; number: number; 
     const team = await tx.team.findUnique({ where: { id: teamId } });
     if (!team) throw new Error("找不到小隊");
     if (team.coins < fee) throw new Error(`光幣不足（加購費 ${fee}）`);
+    let ledgerId: number | null = null;
     if (fee > 0) {
       await tx.team.update({ where: { id: teamId }, data: { coins: { decrement: fee } } });
-      await logLedger(tx, { teamId, kind: "lottery", delta: -fee, note: `大樂透加購 ${number} 號${fee < baseFee ? `（原 ${baseFee}，折扣後 ${fee}）` : ""}`, byToken });
+      ledgerId = await logLedger(tx, { teamId, kind: "lottery", delta: -fee, note: `大樂透加購 ${number} 號${fee < baseFee ? `（原 ${baseFee}，折扣後 ${fee}）` : ""}`, byToken });
     }
     if (baseFee > 0) await decrementUses(tx, discountEffect.usedIds);
-    await tx.lotteryNumber.create({ data: { period: state.lotteryPeriod, number, teamId } });
+    const lotteryRow = await tx.lotteryNumber.create({ data: { period: state.lotteryPeriod, number, teamId } });
     const poolAdd = fee * 2; // 加購費 *2 入池
     await tx.gameState.update({ where: { id: 1 }, data: { lotteryPool: { increment: poolAdd } } });
-    return { ok: true, fee, poolAdd };
+    const undo = ledgerId != null
+      ? { label: `撤銷樂透登記 ${number} 號`, ledgerIds: [ledgerId], lotteryNumberId: lotteryRow.id, lotteryPoolRevert: poolAdd }
+      : undefined;
+    return { ok: true, fee, poolAdd, undo };
   });
 }
 
@@ -1558,10 +1562,12 @@ export async function undoAction(params: {
   property?: { id: number; ownerTeamId: number | null; level: number };
   properties?: { id: number; ownerTeamId: number | null; level: number }[];
   itemIds?: number[];
+  lotteryNumberId?: number;
+  lotteryPoolRevert?: number;
   byToken?: string;
   isAdmin?: boolean;
 }) {
-  const { ledgerIds, property, properties, itemIds, byToken, isAdmin } = params;
+  const { ledgerIds, property, properties, itemIds, lotteryNumberId, lotteryPoolRevert, byToken, isAdmin } = params;
   const ids = [...new Set((ledgerIds ?? []).filter((n) => Number.isInteger(n)))];
   if (!ids.length) throw new Error("沒有可撤銷的項目");
 
@@ -1609,6 +1615,14 @@ export async function undoAction(params: {
     const itemsToDelete = [...new Set((itemIds ?? []).filter((n) => Number.isInteger(n)))];
     if (itemsToDelete.length) {
       await tx.teamItem.deleteMany({ where: { id: { in: itemsToDelete } } });
+    }
+
+    // 大樂透登記：刪除號碼列並扣回獎金池
+    if (lotteryNumberId && Number.isInteger(lotteryNumberId)) {
+      await tx.lotteryNumber.delete({ where: { id: lotteryNumberId } });
+      if (lotteryPoolRevert && lotteryPoolRevert > 0) {
+        await tx.gameState.update({ where: { id: 1 }, data: { lotteryPool: { decrement: lotteryPoolRevert } } });
+      }
     }
 
     return { ok: true, undone: ids.length };
