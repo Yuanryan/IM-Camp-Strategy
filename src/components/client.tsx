@@ -249,7 +249,7 @@ export function TeamSelect({
   onChange,
   placeholder = "選擇小隊",
 }: {
-  teams: { id: number; name: string }[];
+  teams: { id: number; name: string; color?: string; colorName?: string; colorText?: string; colorRing?: string }[];
   value: number | "";
   onChange: (id: number | "") => void;
   placeholder?: string;
@@ -274,8 +274,20 @@ export function TeamSelect({
         onClick={() => setOpen((v) => !v)}
         className="fld flex w-full items-center justify-between gap-2 font-medium"
       >
-        <span className="truncate">
-          {selected ? `${teams.indexOf(selected) + 1}. ${selected.name}` : placeholder}
+        <span className="flex min-w-0 items-center gap-2">
+          {selected?.color && (
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/60"
+              style={{
+                background: selected.color,
+                boxShadow: selected.colorRing ? `0 0 7px ${selected.colorRing}` : undefined,
+              }}
+              title={selected.colorName}
+            />
+          )}
+          <span className="truncate">
+            {selected ? `${teams.indexOf(selected) + 1}. ${selected.name}` : placeholder}
+          </span>
         </span>
         <span className="text-slate-400">▾</span>
       </button>
@@ -295,9 +307,24 @@ export function TeamSelect({
               <button
                 type="button"
                 onMouseDown={(e) => { e.preventDefault(); onChange(t.id); setOpen(false); }}
-                className={`w-full px-3 py-2 text-left text-sm font-medium hover:bg-white/8 ${value === t.id ? "text-cyan-300" : "text-slate-100"}`}
+                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium hover:bg-white/8 ${value === t.id ? "text-cyan-300" : "text-slate-100"}`}
               >
-                {i + 1}. {t.name}
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/60 bg-slate-500"
+                  style={t.color ? {
+                    background: t.color,
+                    boxShadow: t.colorRing ? `0 0 7px ${t.colorRing}` : undefined,
+                  } : undefined}
+                  title={t.colorName}
+                />
+                <span className="truncate">
+                  {i + 1}. {t.name}
+                </span>
+                {t.colorName && (
+                  <span className="ml-auto shrink-0 text-[10px] font-bold text-slate-500">
+                    {t.colorName}
+                  </span>
+                )}
               </button>
             </li>
           ))}

@@ -429,6 +429,31 @@ input[type="number"] {
   padding-inline: clamp(0.5rem, 10cqh, 0.85rem);
 }
 
+.projection-rank-row::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0.42rem;
+  pointer-events: none;
+  content: "";
+  border-radius: inherit;
+  border-bottom-right-radius: 0;
+  border-top-right-radius: 0;
+  background: var(--team-color, #22d3ee);
+  box-shadow: 0 0 18px var(--team-ring-color, var(--team-color, #22d3ee));
+}
+
+.projection-rank-team-color {
+  width: clamp(0.85rem, 26cqh, 1.25rem);
+  height: clamp(0.85rem, 26cqh, 1.25rem);
+  flex-shrink: 0;
+  border: 2px solid rgba(255, 255, 255, 0.78);
+  border-radius: 9999px;
+  background: var(--team-color, #22d3ee);
+  box-shadow:
+    0 0 13px var(--team-ring-color, var(--team-color, #22d3ee)),
+    inset 0 0 8px rgba(255, 255, 255, 0.14);
+}
+
 .projection-rank-insert-slot {
   position: absolute;
   z-index: 1;
@@ -497,7 +522,7 @@ input[type="number"] {
   background: rgba(148, 163, 184, 0.08);
 }
 
-/* 冠軍（金）：呼吸光暈 + 橫掃金色高光，最強調 */
+/* 冠軍（金）：靜態金色高光，最強調 */
 .projection-rank-gold {
   color: #fff7c2;
   border-color: rgba(250, 204, 21, 0.72);
@@ -507,10 +532,9 @@ input[type="number"] {
   box-shadow:
     inset 0 0 20px rgba(250, 204, 21, 0.1),
     0 0 18px rgba(250, 204, 21, 0.2);
-  animation: rankGoldAura 2.6s ease-in-out infinite;
 }
 
-/* 橫向掃過的金色高光帶 */
+/* 固定的金色高光帶 */
 .projection-rank-gold::after {
   position: absolute;
   z-index: 1;
@@ -518,8 +542,8 @@ input[type="number"] {
   width: 55%;
   pointer-events: none;
   content: "";
-  opacity: 0.55;
-  transform: translateX(-130%) skewX(-18deg);
+  opacity: 0.24;
+  transform: translateX(42%) skewX(-18deg);
   background: linear-gradient(
     100deg,
     transparent 30%,
@@ -528,55 +552,15 @@ input[type="number"] {
     transparent 72%
   );
   mix-blend-mode: screen;
-  animation: rankGoldSweep 3.4s ease-in-out infinite;
 }
 
 .projection-rank-gold .projection-rank-badge {
   color: #422006;
   background: linear-gradient(145deg, #fef08a, #f59e0b);
   box-shadow: 0 0 12px rgba(250, 204, 21, 0.65);
-  animation: rankGoldBadge 2.6s ease-in-out infinite;
 }
 
-@keyframes rankGoldAura {
-  0%,
-  100% {
-    border-color: rgba(250, 204, 21, 0.72);
-    box-shadow:
-      inset 0 0 20px rgba(250, 204, 21, 0.1),
-      0 0 18px rgba(250, 204, 21, 0.2);
-  }
-  50% {
-    border-color: rgba(253, 224, 71, 0.98);
-    box-shadow:
-      inset 0 0 30px rgba(250, 204, 21, 0.24),
-      0 0 38px rgba(250, 204, 21, 0.55);
-  }
-}
-
-@keyframes rankGoldSweep {
-  0% {
-    transform: translateX(-130%) skewX(-18deg);
-  }
-  55%,
-  100% {
-    transform: translateX(320%) skewX(-18deg);
-  }
-}
-
-@keyframes rankGoldBadge {
-  0%,
-  100% {
-    box-shadow: 0 0 12px rgba(250, 204, 21, 0.65);
-    transform: scale(1);
-  }
-  50% {
-    box-shadow: 0 0 22px rgba(250, 204, 21, 0.95);
-    transform: scale(1.08);
-  }
-}
-
-/* 亞軍（銀）：流動金屬光澤，質感持續橫向流動 */
+/* 亞軍（銀）：靜態金屬光澤 */
 .projection-rank-silver {
   color: #f8fafc;
   border-color: rgba(226, 232, 240, 0.58);
@@ -589,36 +573,15 @@ input[type="number"] {
       rgba(71, 85, 105, 0.32)
     );
   background-size: 220% 100%;
-  animation: rankSilverFlow 3.8s linear infinite;
 }
 
 .projection-rank-silver .projection-rank-badge {
   color: #0f172a;
   background: linear-gradient(145deg, #f8fafc, #94a3b8);
   box-shadow: 0 0 12px rgba(226, 232, 240, 0.45);
-  animation: rankSilverBadge 3.8s ease-in-out infinite;
 }
 
-@keyframes rankSilverFlow {
-  0% {
-    background-position: 0% 0;
-  }
-  100% {
-    background-position: 220% 0;
-  }
-}
-
-@keyframes rankSilverBadge {
-  0%,
-  100% {
-    box-shadow: 0 0 12px rgba(226, 232, 240, 0.45);
-  }
-  50% {
-    box-shadow: 0 0 20px rgba(226, 232, 240, 0.8);
-  }
-}
-
-/* 季軍（銅）：緩慢飄移的暖色斜向光澤，最沉穩 */
+/* 季軍（銅）：靜態暖色斜向光澤，最沉穩 */
 .projection-rank-bronze {
   color: #ffe1c4;
   border-color: rgba(251, 146, 60, 0.62);
@@ -647,25 +610,12 @@ input[type="number"] {
     transparent 82%
   );
   mix-blend-mode: screen;
-  animation: rankBronzeSheen 5.2s ease-in-out infinite;
 }
 
 .projection-rank-bronze .projection-rank-badge {
   color: #431407;
   background: linear-gradient(145deg, #fed7aa, #c2410c);
   box-shadow: 0 0 12px rgba(251, 146, 60, 0.5);
-}
-
-@keyframes rankBronzeSheen {
-  0%,
-  100% {
-    opacity: 0.14;
-    transform: translate3d(-26%, 4%, 0) scale(0.92);
-  }
-  50% {
-    opacity: 0.34;
-    transform: translate3d(26%, 4%, 0) scale(0.92);
-  }
 }
 
 .projection-jackpot {

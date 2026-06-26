@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useSnapshot, postJson, TeamSelect, toast, type MoneyRow } from "@/components/client";
 import { PhaseDots, Num } from "@/components/ui";
 import type { TeamView, ActiveItemView } from "@/lib/snapshot";
+import { getTeamColorByIndex } from "@/lib/team-colors";
 import {
   drawCard,
   useCardSettle,
@@ -52,13 +53,15 @@ import {
   Check,
 } from "lucide-react";
 
-// ── 棋子配色（依小隊清單順序循環）──────────────────────────────
-const PIECE_COLORS = [
-  "#fbbf24", "#22d3ee", "#f43f5e", "#34d399", "#a78bfa",
-  "#f97316", "#38bdf8", "#e879f9", "#a3e635", "#fb7185",
-];
-function pieceColor(idx: number): string {
-  return PIECE_COLORS[idx % PIECE_COLORS.length];
+// ── 棋子配色（依小隊清單順序循環；色盤見 lib/team-colors.ts）────────
+function pieceColor(team: Pick<TeamView, "color"> | undefined, idx: number): string {
+  return team?.color ?? getTeamColorByIndex(idx).hex;
+}
+function pieceTextColor(team: Pick<TeamView, "colorText"> | undefined, idx: number): string {
+  return team?.colorText ?? getTeamColorByIndex(idx).text;
+}
+function pieceRingColor(team: Pick<TeamView, "colorRing"> | undefined, idx: number): string {
+  return team?.colorRing ?? getTeamColorByIndex(idx).ring;
 }
 const ACCENT = "#22d3ee"; // 未選小隊時的中性主色
 
@@ -268,12 +271,18 @@ export function RealMapView({
   }, [snap, visible]);
 
   const teamsBySquare = useMemo(() => {
-    const m = new Map<number, { id: number; name: string; colorIdx: number }[]>();
+    const m = new Map<number, { id: number; name: string; color: string; colorText: string; colorRing: string }[]>();
     (snap?.teams ?? []).forEach((t, idx) => {
       // 動畫進行中：以動畫位置覆蓋該隊
       const pos = anim && anim.teamId === t.id ? anim.path[anim.i] : t.boardPos;
       const list = m.get(pos) ?? [];
-      list.push({ id: t.id, name: t.name, colorIdx: idx });
+      list.push({
+        id: t.id,
+        name: t.name,
+        color: pieceColor(t, idx),
+        colorText: pieceTextColor(t, idx),
+        colorRing: pieceRingColor(t, idx),
+      });
       m.set(pos, list);
     });
     return m;
@@ -392,7 +401,7 @@ export function RealMapView({
   const teams = snap.teams;
   const curIdx = teams.findIndex((t) => t.id === team);
   const cur = curIdx >= 0 ? teams[curIdx] : undefined;
-  const teamColor = cur ? pieceColor(curIdx) : ACCENT;
+  const teamColor = cur ? pieceColor(cur, curIdx) : ACCENT;
   // 該隊的「提醒」道具：擲骰前進前先讓關主看到（前進時會自動消耗一次）。
   const reminders = (cur?.items ?? []).filter((i) => i.effectType === EffectType.REMINDER);
   // 該隊的「主動移動」道具：可在擲骰後以徽章選取，效果直接套到步數與前進按鈕，前進時消耗一次。
@@ -818,7 +827,10 @@ export function RealMapView({
             const tollAmt = monopolyByOther ? tollFor(sq.region!, ri!.toll, ri!.monopolyTeamId!) : 0;
             const tollable = monopolyByOther && tollAmt > 0;
             const monoIdx = tollable ? teams.findIndex((t) => t.id === ri!.monopolyTeamId) : -1;
-            const monoColor = monoIdx >= 0 ? pieceColor(monoIdx) : "#f43f5e";
+            const monoTeam = monoIdx >= 0 ? teams[monoIdx] : undefined;
+            const monoColor = monoIdx >= 0 ? pieceColor(monoTeam, monoIdx) : "#f43f5e";
+            const monoTextColor = monoIdx >= 0 ? pieceTextColor(monoTeam, monoIdx) : "#0b1221";
+            const monoRingColor = monoIdx >= 0 ? pieceRingColor(monoTeam, monoIdx) : "#f43f5e";
             return (
               <button
                 key={sq.index}
@@ -845,13 +857,13 @@ export function RealMapView({
                 {!showOriginal && tollable && (
                   <span
                     className="pointer-events-none absolute inset-0 rounded-md"
-                    style={{ boxShadow: `inset 0 0 0 0.4cqmin ${monoColor}cc, 0 0 1.2cqmin ${monoColor}55` }}
+                    style={{ boxShadow: `inset 0 0 0 0.4cqmin ${monoRingColor}cc, 0 0 1.2cqmin ${monoRingColor}55` }}
                   />
                 )}
                 {!showOriginal && tollable && (
                   <span
                     className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 whitespace-nowrap font-black leading-none shadow"
-                    style={{ background: monoColor, color: "#0b1221", fontSize: "1.7cqmin", padding: "0.3cqmin 0.7cqmin", borderRadius: "1cqmin" }}
+                    style={{ background: monoColor, color: monoTextColor, fontSize: "1.7cqmin", padding: "0.3cqmin 0.7cqmin", borderRadius: "1cqmin" }}
                   >
                     過路{tollAmt}
                   </span>
@@ -893,10 +905,11 @@ export function RealMapView({
                               width: isActive ? "4.5cqmin" : "3cqmin",
                               height: isActive ? "4.5cqmin" : "3cqmin",
                               fontSize: "1.8cqmin",
-                              background: pieceColor(o.colorIdx),
-                              boxShadow: `0 0 ${isActive ? "1.6cqmin" : "0.9cqmin"} ${pieceColor(o.colorIdx)}`,
+                              background: o.color,
+                              boxShadow: `0 0 ${isActive ? "1.8cqmin" : "1.05cqmin"} ${o.colorRing}`,
+                              color: o.colorText,
                             }}
-                            className={`inline-flex items-center justify-center rounded-full border font-black text-slate-900 ${
+                            className={`inline-flex items-center justify-center rounded-full border-2 font-black text-slate-900 ${
                               isActive ? "cur-piece border-white" : "border-white/80 transition-all"
                             }`}
                           >
@@ -1104,7 +1117,9 @@ export function RealMapView({
           >
             {teams.map((t, idx) => {
               const active = t.id === team;
-              const c = pieceColor(idx);
+              const c = pieceColor(t, idx);
+              const textColor = pieceTextColor(t, idx);
+              const ringColor = pieceRingColor(t, idx);
               return (
                 <li key={t.id}>
                   <button
@@ -1116,8 +1131,8 @@ export function RealMapView({
                     }`}
                   >
                     <span
-                      style={{ background: c, boxShadow: `0 0 6px ${c}` }}
-                      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-white/70 text-[10px] font-black text-slate-900"
+                      style={{ background: c, boxShadow: `0 0 8px ${ringColor}`, color: textColor }}
+                      className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-white/80 text-[10px] font-black text-slate-900"
                     >
                       {t.id}
                     </span>

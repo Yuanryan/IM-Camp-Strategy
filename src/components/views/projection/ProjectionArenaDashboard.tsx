@@ -220,6 +220,12 @@ function ArenaLeaderboard({ ranking }: { ranking: TeamView[] }) {
                 layout={reduceMotion ? false : "position"}
                 data-rank-tier={tier}
                 className={`projection-rank-row relative min-h-0 overflow-hidden rounded-xl border ${RANK_TIER_CLASS[tier]}`}
+                style={
+                  {
+                    "--team-color": team.color,
+                    "--team-ring-color": team.colorRing,
+                  } as CSSProperties
+                }
                 transition={{
                   layout: {
                     type: "tween",
@@ -251,6 +257,7 @@ function ArenaLeaderboard({ ranking }: { ranking: TeamView[] }) {
                   </AnimatePresence>
                 )}
                 <div className="projection-rank-content relative flex h-full min-h-[1.8rem] items-center">
+                  <span className="projection-rank-team-color" aria-hidden="true" />
                   <RankBadge index={index} tier={tier} />
                   {reduceMotion ? (
                     <span className="projection-rank-name min-w-0 flex-1 truncate font-black">
@@ -412,7 +419,20 @@ function RegionArena({ snap }: { snap: Snapshot }) {
                 gridTemplateRows: `repeat(${Math.max(properties.length, 1)}, minmax(0, 1fr))`,
               }}
             >
-              {properties.map((property) => (
+              {properties.map((property) => {
+                const isWhiteOwner = property.ownerColorName === "白";
+                const ownerTagStyle: CSSProperties = {
+                  borderColor: `${property.ownerColorRing ?? property.ownerColor ?? "#7dd3fc"}${isWhiteOwner ? "" : "99"}`,
+                  background: isWhiteOwner
+                    ? (property.ownerColor ?? "#f8fafc")
+                    : `${property.ownerColor ?? "#38bdf8"}26`,
+                  color: isWhiteOwner
+                    ? (property.ownerColorText ?? "#0f172a")
+                    : (property.ownerColorRing ?? property.ownerColor ?? "#bae6fd"),
+                  boxShadow: `0 0 8px ${property.ownerColorRing ?? property.ownerColor ?? "#38bdf8"}55`,
+                };
+
+                return (
                 <li
                   key={property.id}
                   className={`grid min-h-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-2.5 ${
@@ -421,18 +441,26 @@ function RegionArena({ snap }: { snap: Snapshot }) {
                       : "border-white/[0.04] bg-black/15 text-slate-400"
                   }`}
                 >
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="truncate text-[0.92rem] font-bold leading-none">
+                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.35rem_10rem] items-center gap-1.5">
+                    <span className="min-w-0 truncate text-[0.92rem] font-bold leading-none">
                       {property.name}
                     </span>
-                    {property.ownerTeamId != null && (
-                      <ProjectionLevelLights level={property.level} />
-                    )}
-                    {property.ownerName && (
-                      <span className="max-w-[4.7rem] shrink-0 truncate rounded-md border border-sky-300/15 bg-sky-400/10 px-1.5 py-0.5 text-[0.62rem] font-black leading-none text-sky-200">
-                        {property.ownerName}
-                      </span>
-                    )}
+                    <span className="flex justify-center">
+                      {property.ownerTeamId != null && (
+                        <ProjectionLevelLights level={property.level} />
+                      )}
+                    </span>
+                    <span className="flex min-w-0 justify-start">
+                      {property.ownerName ? (
+                        <span
+                          className="min-w-0 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[0.62rem] font-black leading-none"
+                          title={`${property.ownerName}（${property.ownerColorName ?? "小隊色"}）`}
+                          style={ownerTagStyle}
+                        >
+                          {property.ownerName}
+                        </span>
+                      ) : null}
+                    </span>
                   </div>
                   <PriceTag
                     current={property.currentValue}
@@ -440,7 +468,8 @@ function RegionArena({ snap }: { snap: Snapshot }) {
                     className="text-base font-black leading-none"
                   />
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </article>
         );

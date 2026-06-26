@@ -22,6 +22,7 @@ import {
   filterLotteryNumbersByPeriod,
   toLotteryNumberViews,
 } from "./snapshot-helpers";
+import { getTeamColorByIndex } from "./team-colors";
 
 export type PropertyView = {
   id: number;
@@ -33,6 +34,10 @@ export type PropertyView = {
   level: number;
   ownerTeamId: number | null;
   ownerName: string | null;
+  ownerColor: string | null;
+  ownerColorName: string | null;
+  ownerColorText: string | null;
+  ownerColorRing: string | null;
   currentValue: number;   // 市場現值（未含升級）＝購買 / 升級價的基準
   investedValue: number;  // 投入本金市值（買價+升級費，隨事件浮動）＝計入結算淨值
   leveledValue: number;   // 升級加成市值（×(1+0.5×level)）＝過路費計價基準
@@ -66,6 +71,10 @@ export type ObjectiveView = {
 export type TeamView = {
   id: number;
   name: string;
+  color: string;
+  colorName: string;
+  colorText: string;
+  colorRing: string;
   coins: number;
   cardPoints: number;
   boardPos: number; // 棋子目前格 index（真實地圖中控用）
@@ -173,6 +182,9 @@ export async function getSnapshot(): Promise<Snapshot> {
   const activeEvents = parseActiveEvents(state?.activeEvents ?? "");
   const event4Penalty = state?.event4Penalty ?? null;
   const teamName = new Map(teams.map((t) => [t.id, t.name]));
+  const teamColor = new Map(
+    teams.map((team, index) => [team.id, getTeamColorByIndex(index)]),
+  );
   const eventLots = auctionEvent?.lots ?? [];
   const liveLot = eventLots.find((lot) => lot.status === "LIVE") ?? null;
   const soldLots = eventLots
@@ -192,6 +204,10 @@ export async function getSnapshot(): Promise<Snapshot> {
     level: p.level,
     ownerTeamId: p.ownerTeamId,
     ownerName: p.ownerTeamId ? (teamName.get(p.ownerTeamId) ?? null) : null,
+    ownerColor: p.ownerTeamId ? (teamColor.get(p.ownerTeamId)?.hex ?? null) : null,
+    ownerColorName: p.ownerTeamId ? (teamColor.get(p.ownerTeamId)?.name ?? null) : null,
+    ownerColorText: p.ownerTeamId ? (teamColor.get(p.ownerTeamId)?.text ?? null) : null,
+    ownerColorRing: p.ownerTeamId ? (teamColor.get(p.ownerTeamId)?.ring ?? null) : null,
     currentValue: currentValue(p, activeEvents, event4Penalty),
     investedValue: investedValue(p, activeEvents, event4Penalty),
     leveledValue: leveledValue(p, activeEvents, event4Penalty),
@@ -302,9 +318,10 @@ export async function getSnapshot(): Promise<Snapshot> {
     });
   };
 
-  const teamViews: TeamView[] = teams.map((t) => {
+  const teamViews: TeamView[] = teams.map((t, index) => {
     const pv = teamPropValue.get(t.id) ?? { count: 0, value: 0 };
     const items = teamItemsMap.get(t.id) ?? [];
+    const teamColor = getTeamColorByIndex(index);
     // PROPERTY_VALUE 效果：調整不動產顯示淨值（疊加遞減）
     const propDelta = stackEffects(
       items.filter((i) => i.effectType === "PROPERTY_VALUE").map((i) => i.effectValue),
@@ -313,6 +330,10 @@ export async function getSnapshot(): Promise<Snapshot> {
     return {
       id: t.id,
       name: t.name,
+      color: teamColor.hex,
+      colorName: teamColor.name,
+      colorText: teamColor.text,
+      colorRing: teamColor.ring,
       coins: t.coins,
       cardPoints: t.cardPoints,
       boardPos: t.boardPos,
