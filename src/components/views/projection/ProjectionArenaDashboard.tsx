@@ -433,41 +433,41 @@ function RegionArena({ snap }: { snap: Snapshot }) {
                 };
 
                 return (
-                <li
-                  key={property.id}
-                  className={`grid min-h-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-2.5 ${
-                    property.ownerTeamId
-                      ? "border-white/10 bg-black/35"
-                      : "border-white/[0.04] bg-black/15 text-slate-400"
-                  }`}
-                >
-                  <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.35rem_10rem] items-center gap-1.5">
-                    <span className="min-w-0 truncate text-[0.92rem] font-bold leading-none">
-                      {property.name}
-                    </span>
-                    <span className="flex justify-center">
-                      {property.ownerTeamId != null && (
-                        <ProjectionLevelLights level={property.level} />
-                      )}
-                    </span>
-                    <span className="flex min-w-0 justify-start">
-                      {property.ownerName ? (
-                        <span
-                          className="min-w-0 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[0.62rem] font-black leading-none"
-                          title={`${property.ownerName}（${property.ownerColorName ?? "小隊色"}）`}
-                          style={ownerTagStyle}
-                        >
-                          {property.ownerName}
-                        </span>
-                      ) : null}
-                    </span>
-                  </div>
-                  <PriceTag
-                    current={property.currentValue}
-                    base={property.basePrice}
-                    className="text-base font-black leading-none"
-                  />
-                </li>
+                  <li
+                    key={property.id}
+                    className={`grid min-h-0 grid-cols-[minmax(0,1fr)_5rem] items-center gap-2 rounded-lg border px-2.5 ${
+                      property.ownerTeamId
+                        ? "border-white/10 bg-black/35"
+                        : "border-white/[0.04] bg-black/15 text-slate-400"
+                    }`}
+                  >
+                    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.35rem_11.5rem] items-center gap-1.5">
+                      <span className="min-w-0 truncate text-[0.92rem] font-bold leading-none">
+                        {property.name}
+                      </span>
+                      <span className="flex justify-center">
+                        {property.ownerTeamId != null && (
+                          <ProjectionLevelLights level={property.level} />
+                        )}
+                      </span>
+                      <span className="flex min-w-0 justify-start">
+                        {property.ownerName ? (
+                          <span
+                            className="min-w-0 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[0.62rem] font-black leading-none"
+                            title={`${property.ownerName}（${property.ownerColorName ?? "小隊色"}）`}
+                            style={ownerTagStyle}
+                          >
+                            {property.ownerName}
+                          </span>
+                        ) : null}
+                      </span>
+                    </div>
+                    <PriceTag
+                      current={property.currentValue}
+                      base={property.basePrice}
+                      className="block w-full text-right text-base font-black leading-none tabular-nums"
+                    />
+                  </li>
                 );
               })}
             </ul>
