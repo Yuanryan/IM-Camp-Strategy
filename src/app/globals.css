@@ -1012,6 +1012,7 @@ input[type="number"] {
   filter: var(--region-motion-filter, none);
   mix-blend-mode: screen;
   animation-duration: var(--region-motion-duration, 18s);
+  animation-direction: var(--region-motion-direction, alternate);
   animation-iteration-count: infinite;
   animation-name: var(--region-motion-animation, projectionRegionAmbientDrift);
   animation-timing-function: var(--region-motion-timing, linear);
@@ -1019,112 +1020,136 @@ input[type="number"] {
 }
 
 .projection-region-card[data-controlled="true"]::before {
-  --region-motion-opacity: 0.42;
-  --region-motion-filter: saturate(1.45) contrast(1.22) brightness(1.18);
+  --region-motion-opacity: 0.30;
+  --region-motion-filter: saturate(1.14) contrast(1.06) brightness(1.05);
 }
 
-/* 極光金域：金色極光簾幕，柔光帶緩緩擺動 */
+/* 極光金域：高級金色極光、柔和幣環、少量金粉 */
 .projection-region-card[data-region="AURORA"]::before {
-  --region-motion-animation: projectionAuroraVeil;
-  --region-motion-duration: 19s;
-  --region-motion-opacity: 0.66;
+  --region-motion-animation: projectionAuroraCapitalFlow;
+  --region-motion-duration: 32s;
+  --region-motion-opacity: 0.24;
+  --region-motion-filter: saturate(1.08) contrast(1.04);
   --region-motion-bg:
-    linear-gradient(115deg, transparent 20%, rgba(253, 224, 71, 0.14) 40%, transparent 58%),
-    linear-gradient(82deg, transparent 44%, rgba(251, 191, 36, 0.10) 64%, transparent 80%),
-    radial-gradient(130% 90% at 50% -20%, rgba(250, 204, 21, 0.10), transparent 62%);
-  --region-motion-size: 220% 100%, 260% 100%, 100% 100%;
+    linear-gradient(112deg, transparent 12%, rgba(253, 224, 71, 0.13) 34%, transparent 58%),
+    linear-gradient(76deg, transparent 30%, rgba(251, 191, 36, 0.08) 54%, transparent 78%),
+    radial-gradient(ellipse at 78% 18%, rgba(254, 240, 138, 0.18), transparent 46%),
+    radial-gradient(circle at 18% 72%, transparent 0 18px, rgba(250, 204, 21, 0.12) 20px, transparent 25px),
+    radial-gradient(circle at 69% 76%, rgba(255, 247, 178, 0.24) 0 1px, transparent 2.8px),
+    linear-gradient(135deg, rgba(251, 191, 36, 0.10), transparent 58%);
+  --region-motion-size: 230% 100%, 270% 100%, 100% 100%, 260px 190px, 180px 140px, 100% 100%;
 }
 
 .projection-region-card[data-region="AURORA"][data-controlled="true"]::before {
-  --region-motion-animation: projectionAuroraVeilSurge;
-  --region-motion-duration: 8.5s;
-  --region-motion-timing: ease-in-out;
-  --region-motion-opacity: 0.8;
+  --region-motion-animation: projectionAuroraGoldRush;
+  --region-motion-duration: 18s;
+  --region-motion-opacity: 0.34;
+  --region-motion-timing: linear;
   --region-motion-bg:
-    linear-gradient(115deg, transparent 16%, rgba(254, 240, 138, 0.22) 38%, transparent 60%),
-    linear-gradient(82deg, transparent 40%, rgba(251, 191, 36, 0.16) 62%, transparent 82%),
-    radial-gradient(120% 90% at 50% 60%, rgba(253, 224, 71, 0.16), transparent 60%),
-    radial-gradient(150% 100% at 50% -20%, rgba(250, 204, 21, 0.14), transparent 64%);
-  --region-motion-size: 240% 100%, 280% 100%, 100% 100%, 100% 100%;
+    linear-gradient(112deg, transparent 10%, rgba(254, 240, 138, 0.16) 34%, transparent 60%),
+    linear-gradient(76deg, transparent 26%, rgba(251, 191, 36, 0.11) 55%, transparent 80%),
+    radial-gradient(ellipse at 78% 18%, rgba(254, 240, 138, 0.22), transparent 48%),
+    radial-gradient(circle at 18% 72%, transparent 0 16px, rgba(250, 204, 21, 0.16) 18px, transparent 26px),
+    radial-gradient(circle at 69% 76%, rgba(255, 247, 178, 0.28) 0 1.2px, transparent 3px),
+    radial-gradient(circle at 50% 50%, rgba(253, 224, 71, 0.12), transparent 62%),
+    linear-gradient(135deg, rgba(251, 191, 36, 0.13), transparent 62%);
+  --region-motion-size: 250% 100%, 290% 100%, 100% 100%, 240px 174px, 150px 116px, 100% 100%, 100% 100%;
 }
 
-/* 靈序研究：青藍靜謐星雲，冷色光暈緩慢游移 */
+/* 靈序研究：玻璃感資料場、低對比網格、冷色掃描光 */
 .projection-region-card[data-region="SPECTRA"]::before {
-  --region-motion-animation: projectionSpectraDrift;
-  --region-motion-duration: 24s;
-  --region-motion-opacity: 0.6;
+  --region-motion-animation: projectionSpectraDataGrid;
+  --region-motion-duration: 32s;
+  --region-motion-opacity: 0.24;
+  --region-motion-filter: saturate(1.08) contrast(1.05);
   --region-motion-bg:
-    radial-gradient(45% 55% at 30% 38%, rgba(34, 211, 238, 0.16), transparent 70%),
-    radial-gradient(40% 50% at 72% 66%, rgba(59, 130, 246, 0.14), transparent 72%),
-    radial-gradient(60% 70% at 50% 50%, rgba(34, 211, 238, 0.06), transparent 70%),
-    linear-gradient(135deg, rgba(34, 211, 238, 0.07), transparent 56%);
-  --region-motion-size: 170% 170%, 170% 170%, 100% 100%, 100% 100%;
+    linear-gradient(90deg, rgba(125, 211, 252, 0.055) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(34, 211, 238, 0.045) 1px, transparent 1px),
+    linear-gradient(112deg, transparent 18%, rgba(103, 232, 249, 0.12) 48%, transparent 66%),
+    radial-gradient(ellipse at 28% 34%, rgba(103, 232, 249, 0.18), transparent 58%),
+    radial-gradient(ellipse at 74% 68%, rgba(96, 165, 250, 0.14), transparent 58%),
+    radial-gradient(circle at 64% 36%, rgba(165, 243, 252, 0.22) 0 1px, transparent 3px),
+    linear-gradient(135deg, rgba(34, 211, 238, 0.09), transparent 58%);
+  --region-motion-size: 42px 42px, 42px 42px, 220% 100%, 100% 100%, 100% 100%, 210px 170px, 100% 100%;
 }
 
 .projection-region-card[data-region="SPECTRA"][data-controlled="true"]::before {
-  --region-motion-animation: projectionSpectraPulse;
-  --region-motion-duration: 9s;
-  --region-motion-timing: ease-in-out;
-  --region-motion-opacity: 0.78;
+  --region-motion-animation: projectionSpectraDataFrenzy;
+  --region-motion-duration: 18s;
+  --region-motion-opacity: 0.32;
+  --region-motion-timing: linear;
   --region-motion-bg:
-    radial-gradient(45% 55% at 30% 38%, rgba(103, 232, 249, 0.24), transparent 68%),
-    radial-gradient(40% 50% at 72% 66%, rgba(96, 165, 250, 0.20), transparent 70%),
-    radial-gradient(70% 80% at 50% 50%, rgba(34, 211, 238, 0.12), transparent 68%),
-    linear-gradient(135deg, rgba(34, 211, 238, 0.12), transparent 60%);
-  --region-motion-size: 180% 180%, 180% 180%, 100% 100%, 100% 100%;
+    linear-gradient(90deg, rgba(165, 243, 252, 0.07) 1px, transparent 1px),
+    linear-gradient(0deg, rgba(103, 232, 249, 0.055) 1px, transparent 1px),
+    linear-gradient(112deg, transparent 14%, rgba(165, 243, 252, 0.16) 48%, transparent 68%),
+    radial-gradient(ellipse at 28% 34%, rgba(103, 232, 249, 0.22), transparent 56%),
+    radial-gradient(ellipse at 74% 68%, rgba(96, 165, 250, 0.18), transparent 56%),
+    radial-gradient(circle at 64% 36%, rgba(165, 243, 252, 0.28) 0 1.2px, transparent 3.4px),
+    repeating-linear-gradient(0deg, rgba(103, 232, 249, 0.08) 0, rgba(103, 232, 249, 0.08) 1px, transparent 1px, transparent 12px),
+    linear-gradient(135deg, rgba(34, 211, 238, 0.11), transparent 60%);
+  --region-motion-size: 34px 34px, 34px 34px, 235% 100%, 100% 100%, 100% 100%, 180px 146px, 100% 12px, 100% 100%;
 }
 
-/* 影焰工域：暖橘餘燼輝光，底部熱光 + 小光團緩升明滅 */
+/* 影焰工域：電影感底部熱光、慢速熱霧、少量餘燼 */
 .projection-region-card[data-region="EMBER"]::before {
-  --region-motion-animation: projectionEmberGlow;
-  --region-motion-duration: 16s;
-  --region-motion-opacity: 0.6;
+  --region-motion-animation: projectionEmberHeatRise;
+  --region-motion-duration: 32s;
+  --region-motion-opacity: 0.26;
+  --region-motion-filter: saturate(1.10) contrast(1.06);
   --region-motion-bg:
-    radial-gradient(70% 55% at 50% 120%, rgba(249, 115, 22, 0.22), transparent 64%),
-    radial-gradient(30% 40% at 32% 78%, rgba(251, 113, 133, 0.14), transparent 68%),
-    radial-gradient(30% 40% at 70% 82%, rgba(244, 63, 94, 0.13), transparent 68%),
-    linear-gradient(0deg, rgba(190, 18, 60, 0.12), transparent 56%);
-  --region-motion-size: 100% 100%, 150% 160%, 150% 160%, 100% 100%;
+    radial-gradient(ellipse 84% 44% at 50% 118%, rgba(249, 115, 22, 0.30), transparent 66%),
+    radial-gradient(ellipse 26% 60% at 24% 112%, rgba(251, 113, 133, 0.20), transparent 68%),
+    radial-gradient(ellipse 30% 68% at 66% 114%, rgba(251, 146, 60, 0.18), transparent 70%),
+    linear-gradient(104deg, transparent 18%, rgba(251, 113, 133, 0.10) 44%, transparent 66%),
+    radial-gradient(circle at 72% 42%, rgba(254, 215, 170, 0.22) 0 1px, transparent 3px),
+    linear-gradient(0deg, rgba(190, 18, 60, 0.13), transparent 58%);
+  --region-motion-size: 100% 100%, 210px 210px, 260px 230px, 230% 100%, 210px 160px, 100% 100%;
 }
 
 .projection-region-card[data-region="EMBER"][data-controlled="true"]::before {
-  --region-motion-animation: projectionEmberSurge;
-  --region-motion-duration: 7s;
-  --region-motion-timing: ease-in-out;
-  --region-motion-opacity: 0.82;
+  --region-motion-animation: projectionEmberBlaze;
+  --region-motion-duration: 18s;
+  --region-motion-timing: linear;
+  --region-motion-opacity: 0.34;
   --region-motion-bg:
-    radial-gradient(80% 62% at 50% 122%, rgba(251, 146, 60, 0.34), transparent 64%),
-    radial-gradient(34% 44% at 32% 78%, rgba(251, 113, 133, 0.22), transparent 66%),
-    radial-gradient(34% 44% at 70% 82%, rgba(244, 63, 94, 0.20), transparent 66%),
-    linear-gradient(0deg, rgba(220, 38, 38, 0.20), transparent 60%);
-  --region-motion-size: 100% 100%, 160% 175%, 160% 175%, 100% 100%;
+    radial-gradient(ellipse 88% 52% at 50% 120%, rgba(251, 146, 60, 0.32), transparent 66%),
+    radial-gradient(ellipse 28% 64% at 24% 112%, rgba(251, 113, 133, 0.24), transparent 66%),
+    radial-gradient(ellipse 32% 72% at 66% 114%, rgba(251, 146, 60, 0.22), transparent 68%),
+    linear-gradient(104deg, transparent 14%, rgba(251, 113, 133, 0.12) 44%, transparent 68%),
+    radial-gradient(circle at 72% 42%, rgba(254, 215, 170, 0.28) 0 1.2px, transparent 3.4px),
+    linear-gradient(0deg, rgba(220, 38, 38, 0.15), transparent 60%);
+  --region-motion-size: 100% 100%, 190px 200px, 240px 220px, 240% 100%, 180px 138px, 100% 100%;
 }
 
-/* 晨霧棲城：翡翠晨霧，模糊霧光橫向漂移 */
+/* 晨霧棲城：絲綢感霧層、柔霧團、少量晨露光 */
 .projection-region-card[data-region="HAVEN"]::before {
   --region-motion-animation: projectionHavenDrift;
-  --region-motion-duration: 26s;
-  --region-motion-opacity: 0.7;
-  --region-motion-filter: blur(6px);
+  --region-motion-duration: 32s;
+  --region-motion-opacity: 0.36;
+  --region-motion-filter: blur(3px) saturate(1.04);
   --region-motion-bg:
+    linear-gradient(18deg, transparent 18%, rgba(209, 250, 229, 0.09) 44%, transparent 70%),
     radial-gradient(50% 55% at 25% 45%, rgba(110, 231, 183, 0.20), transparent 70%),
     radial-gradient(48% 52% at 70% 60%, rgba(52, 211, 153, 0.18), transparent 72%),
     radial-gradient(45% 50% at 50% 28%, rgba(167, 243, 208, 0.14), transparent 70%),
+    radial-gradient(circle at 82% 36%, rgba(209, 250, 229, 0.18) 0 1px, transparent 3px),
     linear-gradient(135deg, rgba(52, 211, 153, 0.08), transparent 58%);
-  --region-motion-size: 175% 175%, 175% 175%, 160% 160%, 100% 100%;
+  --region-motion-size: 230% 100%, 175% 175%, 175% 175%, 160% 160%, 210px 160px, 100% 100%;
 }
 
 .projection-region-card[data-region="HAVEN"][data-controlled="true"]::before {
   --region-motion-animation: projectionHavenSwell;
-  --region-motion-duration: 8s;
-  --region-motion-timing: ease-in-out;
-  --region-motion-opacity: 0.82;
+  --region-motion-duration: 18s;
+  --region-motion-timing: linear;
+  --region-motion-opacity: 0.36;
   --region-motion-bg:
-    radial-gradient(52% 58% at 25% 45%, rgba(167, 243, 208, 0.30), transparent 68%),
-    radial-gradient(50% 54% at 70% 60%, rgba(45, 212, 191, 0.26), transparent 70%),
-    radial-gradient(48% 52% at 50% 28%, rgba(110, 231, 183, 0.22), transparent 68%),
-    linear-gradient(135deg, rgba(16, 185, 129, 0.14), transparent 60%);
-  --region-motion-size: 185% 185%, 185% 185%, 170% 170%, 100% 100%;
+    linear-gradient(18deg, transparent 14%, rgba(209, 250, 229, 0.12) 44%, transparent 72%),
+    radial-gradient(52% 58% at 25% 45%, rgba(167, 243, 208, 0.22), transparent 68%),
+    radial-gradient(50% 54% at 70% 60%, rgba(45, 212, 191, 0.20), transparent 70%),
+    radial-gradient(48% 52% at 50% 28%, rgba(110, 231, 183, 0.16), transparent 68%),
+    radial-gradient(circle at 82% 36%, rgba(209, 250, 229, 0.22) 0 1.2px, transparent 3.4px),
+    linear-gradient(135deg, rgba(16, 185, 129, 0.10), transparent 60%);
+  --region-motion-size: 240% 100%, 185% 185%, 185% 185%, 170% 170%, 180px 138px, 100% 100%;
 }
 
 @keyframes projectionRegionAmbientDrift {
@@ -1136,115 +1161,99 @@ input[type="number"] {
   }
 }
 
-/* 極光金域：極光簾幕左右擺動 */
-@keyframes projectionAuroraVeil {
+/* 極光金域：柔和極光帶慢速流動 */
+@keyframes projectionAuroraCapitalFlow {
   0% {
-    background-position: 0% 0, 100% 0, 50% 0;
-  }
-  50% {
-    background-position: 100% 0, 0% 0, 50% 0;
+    background-position: 0% 0, 100% 0, 0 0, 30px 8px, 12px 18px, 0 0;
   }
   100% {
-    background-position: 0% 0, 100% 0, 50% 0;
+    background-position: 96% 0, -84% 0, 0 0, 290px 198px, -168px 158px, 0 0;
   }
 }
 
-/* 極光金域 獨佔：簾幕擺動加大 + 柔和呼吸增亮 */
-@keyframes projectionAuroraVeilSurge {
-  0%,
-  100% {
-    background-position: 0% 0, 100% 0, 50% 50%, 50% 0;
-    filter: brightness(1.08) saturate(1.15);
-    opacity: 0.66;
-  }
-  50% {
-    background-position: 100% 0, 0% 0, 50% 50%, 50% 0;
-    filter: brightness(1.22) saturate(1.3);
-    opacity: 0.84;
-  }
-}
-
-/* 靈序研究：星雲光暈緩慢游移 */
-@keyframes projectionSpectraDrift {
+/* 極光金域 獨佔：更亮但克制的金色流光 */
+@keyframes projectionAuroraGoldRush {
   0% {
-    background-position: 20% 30%, 80% 70%, 50% 50%, 0 0;
-  }
-  50% {
-    background-position: 40% 60%, 60% 40%, 50% 50%, 0 0;
+    background-position: 0% 0, 100% 0, 0 0, 20px 8px, 8px 12px, 0 0, 0 0;
+    filter: saturate(1.12) contrast(1.04) brightness(1.04);
+    opacity: 0.28;
   }
   100% {
-    background-position: 20% 30%, 80% 70%, 50% 50%, 0 0;
+    background-position: 92% 0, -78% 0, 0 0, 260px 182px, -142px 128px, 0 0, 0 0;
+    filter: saturate(1.22) contrast(1.08) brightness(1.08);
+    opacity: 0.36;
   }
 }
 
-/* 靈序研究 獨佔：游移加大 + 柔和脈動 */
-@keyframes projectionSpectraPulse {
-  0%,
-  100% {
-    background-position: 22% 32%, 78% 68%, 50% 50%, 0 0;
-    filter: brightness(1.08) saturate(1.18);
-    opacity: 0.6;
-  }
-  50% {
-    background-position: 38% 58%, 62% 42%, 50% 50%, 0 0;
-    filter: brightness(1.22) saturate(1.32);
-    opacity: 0.82;
-  }
-}
-
-/* 影焰工域：餘燼光團緩緩對流上浮 */
-@keyframes projectionEmberGlow {
+/* 靈序研究：低調資料場與掃描光錯位滑動 */
+@keyframes projectionSpectraDataGrid {
   0% {
-    background-position: 50% 100%, 40% 80%, 60% 90%, 0 0;
-  }
-  50% {
-    background-position: 50% 100%, 35% 30%, 65% 40%, 0 0;
+    background-position: 0 0, 0 0, -80% 0, 0 0, 0 0, 18px 24px, 0 0;
   }
   100% {
-    background-position: 50% 100%, 40% 80%, 60% 90%, 0 0;
+    background-position: 42px 42px, 42px 42px, 140% 0, 0 0, 0 0, 210px 170px, 0 0;
   }
 }
 
-/* 影焰工域 獨佔：上浮加大 + 暖光呼吸 */
-@keyframes projectionEmberSurge {
-  0%,
-  100% {
-    background-position: 50% 100%, 40% 80%, 60% 90%, 0 0;
-    filter: brightness(1.1) saturate(1.2);
-    opacity: 0.6;
+/* 靈序研究 獨佔：掃描層加亮，避免 glitch 廉價感 */
+@keyframes projectionSpectraDataFrenzy {
+  0% {
+    background-position: 0 0, 0 0, -84% 0, 0 0, 0 0, 14px 18px, 0 0, 0 0;
+    filter: saturate(1.10) contrast(1.04) brightness(1.04);
+    opacity: 0.26;
   }
-  50% {
-    background-position: 50% 100%, 34% 24%, 66% 34%, 0 0;
-    filter: brightness(1.26) saturate(1.35);
-    opacity: 0.84;
+  100% {
+    background-position: 34px 34px, 34px 34px, 142% 0, 0 0, 0 0, 180px 146px, 0 -108px, 0 0;
+    filter: saturate(1.22) contrast(1.08) brightness(1.08);
+    opacity: 0.34;
   }
 }
 
-/* 晨霧棲城：霧光橫向漂移 */
+/* 影焰工域：熱霧慢慢偏移，主視覺留在底部 */
+@keyframes projectionEmberHeatRise {
+  0% {
+    background-position: 0 0, 0 44px, 32px 58px, -70% 0, 24px 18px, 0 0;
+  }
+  100% {
+    background-position: 0 0, 0 -210px, 0 -230px, 140% 0, 210px 160px, 0 0;
+  }
+}
+
+/* 影焰工域 獨佔：熱光加強但不做廉價爆閃 */
+@keyframes projectionEmberBlaze {
+  0% {
+    background-position: 0 0, 0 38px, 28px 52px, -76% 0, 18px 14px, 0 0;
+    filter: saturate(1.12) contrast(1.04) brightness(1.04);
+    opacity: 0.28;
+  }
+  100% {
+    background-position: 0 0, 0 -200px, 0 -220px, 142% 0, 180px 138px, 0 0;
+    filter: saturate(1.24) contrast(1.09) brightness(1.08);
+    opacity: 0.36;
+  }
+}
+
+/* 晨霧棲城：絲綢霧層緩慢漂移 */
 @keyframes projectionHavenDrift {
   0% {
-    background-position: 18% 45%, 75% 58%, 48% 28%, 0 0;
-  }
-  50% {
-    background-position: 40% 52%, 55% 50%, 60% 34%, 0 0;
+    background-position: -60% 0, 18% 45%, 75% 58%, 48% 28%, 12px 16px, 0 0;
   }
   100% {
-    background-position: 18% 45%, 75% 58%, 48% 28%, 0 0;
+    background-position: 140% 0, 18% 45%, 75% 58%, 48% 28%, 210px 160px, 0 0;
   }
 }
 
-/* 晨霧棲城 獨佔：霧團聚散 + blur 濃淡呼吸 */
+/* 晨霧棲城 獨佔：霧層加亮加速，保持柔和 */
 @keyframes projectionHavenSwell {
-  0%,
-  100% {
-    background-position: 18% 45%, 75% 58%, 48% 28%, 0 0;
-    filter: blur(5px) brightness(1.08) saturate(1.18);
-    opacity: 0.64;
+  0% {
+    background-position: -62% 0, 18% 45%, 75% 58%, 48% 28%, 10px 14px, 0 0;
+    filter: blur(2.4px) brightness(1.04) saturate(1.06);
+    opacity: 0.28;
   }
-  50% {
-    background-position: 42% 54%, 54% 48%, 62% 36%, 0 0;
-    filter: blur(10px) brightness(1.2) saturate(1.3);
-    opacity: 0.84;
+  100% {
+    background-position: 140% 0, 18% 45%, 75% 58%, 48% 28%, 180px 138px, 0 0;
+    filter: blur(3.2px) brightness(1.08) saturate(1.12);
+    opacity: 0.36;
   }
 }
 
