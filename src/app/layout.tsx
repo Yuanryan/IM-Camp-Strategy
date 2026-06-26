@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import MistBackground from "@/components/ui/realistic-fog-background";
-import { FogProvider } from "@/components/ui/fog-context";
+import { SelectZeroNumberInput } from "@/components/SelectZeroNumberInput";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,10 +29,8 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col text-slate-100">
-        <FogProvider>
-          <MistBackground />
-          {children}
-        </FogProvider>
+        <SelectZeroNumberInput />
+        {children}
       </body>
     </html>
   );

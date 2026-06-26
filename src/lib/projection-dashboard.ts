@@ -1,7 +1,7 @@
-export type ProjectionRankTier = "gold" | "silver" | "rgb" | "standard";
+export type ProjectionRankTier = "gold" | "silver" | "bronze" | "standard";
 export type ProjectionLevelTier = "none" | "lit" | "boosted" | "max";
 
-const PODIUM_TIERS: ProjectionRankTier[] = ["rgb", "gold", "silver"];
+const PODIUM_TIERS: ProjectionRankTier[] = ["gold", "silver", "bronze"];
 
 export function getProjectionRankTier(index: number): ProjectionRankTier {
   return PODIUM_TIERS[index] ?? "standard";

@@ -5,11 +5,10 @@ import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   Crown,
   Gem,
+  Medal,
   RadioTower,
-  Sparkles,
   Ticket,
   Trophy,
-  Zap,
 } from "lucide-react";
 
 import { AnimatedNum, PriceTag } from "@/components/ui";
@@ -33,16 +32,17 @@ const REGION_GLOW: Record<RegionCode, string> = {
 const RANK_TIER_CLASS: Record<ProjectionRankTier, string> = {
   gold: "projection-rank-gold",
   silver: "projection-rank-silver",
-  rgb: "projection-rank-rgb",
+  bronze: "projection-rank-bronze",
   standard: "projection-rank-standard",
 };
 
-const JACKPOT_BALLS = [7, 12, 18, 23, 31, 36, 42, 49];
+const JACKPOT_BALLS = [
+  3, 7, 9, 12, 14, 18, 21, 23, 27, 31, 33, 36, 39, 42, 45, 49, 52, 56, 61,
+  66,
+];
 
 export function ProjectionArenaDashboard({ snap }: { snap: Snapshot }) {
   const ranking = [...snap.teams].sort((a, b) => b.netWorth - a.netWorth);
-  const maxWorth = Math.max(1, ...ranking.map((team) => team.netWorth));
-
   return (
     <div
       data-testid="projection-dashboard"
@@ -54,7 +54,7 @@ export function ProjectionArenaDashboard({ snap }: { snap: Snapshot }) {
         <main className="grid min-h-0 grid-cols-[23.5rem_minmax(0,1fr)] gap-3">
           <aside className="grid min-h-0 grid-rows-[8.75rem_minmax(0,1fr)] gap-3">
             <JackpotCard pool={snap.lottery.pool} />
-            <ArenaLeaderboard ranking={ranking} maxWorth={maxWorth} />
+            <ArenaLeaderboard ranking={ranking} />
           </aside>
 
           <RegionArena snap={snap} />
@@ -198,13 +198,9 @@ function MarketEventTicker({
   );
 }
 
-function ArenaLeaderboard({
-  ranking,
-  maxWorth,
-}: {
-  ranking: TeamView[];
-  maxWorth: number;
-}) {
+function ArenaLeaderboard({ ranking }: { ranking: TeamView[] }) {
+  const reduceMotion = useReducedMotion();
+
   return (
     <section className="projection-panel flex min-h-0 flex-col overflow-hidden rounded-[1.35rem] p-3">
       <PanelTitle icon={<Trophy className="h-4 w-4" />}>資產排行</PanelTitle>
@@ -218,25 +214,62 @@ function ArenaLeaderboard({
         <AnimatePresence initial={false}>
           {ranking.map((team, index) => {
             const tier = getProjectionRankTier(index);
-            const progress = Math.max(4, (team.netWorth / maxWorth) * 100);
             return (
               <motion.li
                 key={team.id}
-                layout
+                layout={reduceMotion ? false : "position"}
                 data-rank-tier={tier}
                 className={`projection-rank-row relative min-h-0 overflow-hidden rounded-xl border ${RANK_TIER_CLASS[tier]}`}
+                transition={{
+                  layout: {
+                    type: "tween",
+                    duration: 1.3,
+                    ease: [0.16, 1, 0.3, 1],
+                  },
+                }}
               >
-                <motion.div
-                  className="absolute inset-y-0 left-0 bg-current opacity-[0.08]"
-                  initial={false}
-                  animate={{ width: `${progress}%` }}
-                  transition={{ type: "spring", stiffness: 120, damping: 24 }}
-                />
+                {!reduceMotion && (
+                  <AnimatePresence initial={false}>
+                    <motion.span
+                      key={`rank-slot-${index}`}
+                      aria-hidden="true"
+                      className="projection-rank-insert-slot"
+                      initial={{ opacity: 0, scaleX: 0.18 }}
+                      animate={{ opacity: [0, 0.82, 0.32, 0], scaleX: [0.18, 0.78, 1, 1.15] }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 1.3, times: [0, 0.22, 0.62, 1], ease: [0.16, 1, 0.3, 1] }}
+                    />
+                    <motion.span
+                      key={`rank-cursor-${index}`}
+                      aria-hidden="true"
+                      className="projection-rank-insert-cursor"
+                      initial={{ opacity: 0, x: "-140%" }}
+                      animate={{ opacity: [0, 1, 0.85, 0], x: ["-140%", "40%", "360%", "520%"] }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 1.3, times: [0, 0.18, 0.67, 1], ease: [0.16, 1, 0.3, 1] }}
+                    />
+                  </AnimatePresence>
+                )}
                 <div className="projection-rank-content relative flex h-full min-h-[1.8rem] items-center">
                   <RankBadge index={index} tier={tier} />
-                  <span className="projection-rank-name min-w-0 flex-1 truncate font-black">
-                    {team.name}
-                  </span>
+                  {reduceMotion ? (
+                    <span className="projection-rank-name min-w-0 flex-1 truncate font-black">
+                      {team.name}
+                    </span>
+                  ) : (
+                    <AnimatePresence initial={false} mode="wait">
+                      <motion.span
+                        key={`rank-name-${index}`}
+                        className="projection-rank-name min-w-0 flex-1 truncate font-black"
+                        initial={{ opacity: 0, x: -18 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 10 }}
+                        transition={{ duration: 0.45, delay: 0.24, ease: [0.16, 1, 0.3, 1] }}
+                      >
+                        {team.name}
+                      </motion.span>
+                    </AnimatePresence>
+                  )}
                   <span className="flex shrink-0 items-baseline gap-1.5 leading-none">
                     <AnimatedNum
                       value={team.coins}
@@ -268,18 +301,22 @@ function RankBadge({
   const icon =
     tier === "gold" ? (
       <Crown className="projection-rank-icon" />
-    ) : tier === "silver" ? (
-      <Sparkles className="projection-rank-icon" />
-    ) : tier === "rgb" ? (
-      <Zap className="projection-rank-icon" />
+    ) : tier === "silver" || tier === "bronze" ? (
+      <Medal className="projection-rank-icon" />
     ) : (
       index + 1
     );
 
   return (
-    <span className="projection-rank-badge grid shrink-0 place-items-center rounded-lg font-black">
+    <motion.span
+      key={`${tier}-${index}`}
+      className="projection-rank-badge grid shrink-0 place-items-center rounded-lg font-black"
+      initial={{ opacity: 0, rotate: -14, scale: 0.62 }}
+      animate={{ opacity: 1, rotate: 0, scale: 1 }}
+      transition={{ type: "spring", stiffness: 180, damping: 14, mass: 0.8 }}
+    >
       {icon}
-    </span>
+    </motion.span>
   );
 }
 

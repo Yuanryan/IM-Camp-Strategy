@@ -3,7 +3,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Variants } from "framer-motion";
-import { MistSurgeOverlay } from "@/components/ui/realistic-fog-background";
 import {
   ChevronLeft,
   ChevronRight,
@@ -623,13 +622,10 @@ const SECTIONS = [
 export function InstructionsView({ onBack }: { onBack?: () => void } = {}) {
   const [section, setSection] = useState(0);
   const [direction, setDirection] = useState(0);
-  const [fogVisible, setFogVisible] = useState(false);
 
   const goTo = useCallback((next: number) => {
     if (next < 0 || next >= SECTIONS.length || next === section) return;
     setDirection(next > section ? 1 : -1);
-    setFogVisible(true);
-    setTimeout(() => setFogVisible(false), 480);
     setSection(next);
   }, [section]);
 
@@ -649,8 +645,6 @@ export function InstructionsView({ onBack }: { onBack?: () => void } = {}) {
 
   return (
     <div className={`relative flex flex-col select-none ${onBack ? "min-h-0 flex-1" : "min-h-screen"}`}>
-      <MistSurgeOverlay visible={fogVisible} direction={direction} />
-
       {/* Header — standalone only; embedded mode uses Shell's header */}
       {!onBack && (
         <motion.header

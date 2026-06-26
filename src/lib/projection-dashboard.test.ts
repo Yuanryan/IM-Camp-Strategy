@@ -7,9 +7,9 @@ import {
 
 describe("projection dashboard visual tiers", () => {
   it("gives the top three ranks distinct arena treatments", () => {
-    expect(getProjectionRankTier(0)).toBe("rgb");
-    expect(getProjectionRankTier(1)).toBe("gold");
-    expect(getProjectionRankTier(2)).toBe("silver");
+    expect(getProjectionRankTier(0)).toBe("gold");
+    expect(getProjectionRankTier(1)).toBe("silver");
+    expect(getProjectionRankTier(2)).toBe("bronze");
     expect(getProjectionRankTier(3)).toBe("standard");
     expect(getProjectionRankTier(9)).toBe("standard");
   });

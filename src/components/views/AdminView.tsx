@@ -35,6 +35,7 @@ export function AdminView() {
 
       {/* <AuthToggleCard authDisabled={snap.authDisabled} onChange={mutate} /> */}
       <LoginLinksCard authDisabled={snap.authDisabled} />
+      <BalanceAdjustmentCard snap={snap} onChange={mutate} />
       <TeamEditor snap={snap} onChange={mutate} />
       <PropertyEditor snap={snap} onChange={mutate} />
       <CardEditor />
@@ -42,6 +43,155 @@ export function AdminView() {
       <ItemEditor snap={snap} />
       <LedgerCard />
     </div>
+  );
+}
+
+type BalanceResource = "coins" | "cardPoints";
+type BalanceDirection = "add" | "subtract";
+
+const BALANCE_RESOURCE_LABEL: Record<BalanceResource, string> = {
+  coins: "光幣",
+  cardPoints: "卡牌點數",
+};
+
+function BalanceAdjustmentCard({
+  snap,
+  onChange,
+}: {
+  snap: Snapshot;
+  onChange: () => void | Promise<unknown>;
+}) {
+  const [teamId, setTeamId] = useState<number | "">("");
+  const [resource, setResource] = useState<BalanceResource>("coins");
+  const [direction, setDirection] = useState<BalanceDirection>("add");
+  const [amount, setAmount] = useState<number | "">("");
+  const [note, setNote] = useState("");
+
+  const team = snap.teams.find((candidate) => candidate.id === teamId);
+  const validAmount = typeof amount === "number" && Number.isInteger(amount) && amount > 0;
+  const actionLabel = direction === "add" ? "增加" : "扣除";
+  const resourceLabel = BALANCE_RESOURCE_LABEL[resource];
+  const currentBalance = team
+    ? resource === "coins"
+      ? team.coins
+      : team.cardPoints
+    : null;
+
+  return (
+    <Card title="手動調整小隊餘額">
+      <p className="mb-3 text-xs text-slate-400">
+        可指定小隊增減光幣或卡牌點數；每次操作都會寫入總帳，並可在下方沖銷。
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">小隊</div>
+          <select
+            value={teamId}
+            onChange={(e) => setTeamId(e.target.value ? Number(e.target.value) : "")}
+            className="fld min-w-32"
+          >
+            <option value="">選擇小隊</option>
+            {snap.teams.map((candidate) => (
+              <option key={candidate.id} value={candidate.id}>{candidate.name}</option>
+            ))}
+          </select>
+        </label>
+
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">項目</div>
+          <select
+            value={resource}
+            onChange={(e) => setResource(e.target.value as BalanceResource)}
+            className="fld min-w-28"
+          >
+            <option value="coins">光幣</option>
+            <option value="cardPoints">卡牌點數</option>
+          </select>
+        </label>
+
+        <div className="text-xs text-slate-400">
+          <div className="mb-1">操作</div>
+          <div className="flex rounded-xl border border-white/10 bg-slate-950/55 p-1">
+            <button
+              type="button"
+              onClick={() => setDirection("add")}
+              className={`rounded-lg px-3 py-2 font-semibold ${
+                direction === "add"
+                  ? "bg-emerald-400/15 text-emerald-200"
+                  : "text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              增加
+            </button>
+            <button
+              type="button"
+              onClick={() => setDirection("subtract")}
+              className={`rounded-lg px-3 py-2 font-semibold ${
+                direction === "subtract"
+                  ? "bg-rose-400/15 text-rose-200"
+                  : "text-slate-500 hover:text-slate-300"
+              }`}
+            >
+              扣除
+            </button>
+          </div>
+        </div>
+
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">數量</div>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            inputMode="numeric"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value === "" ? "" : Number(e.target.value))}
+            className="fld w-24"
+            placeholder="0"
+          />
+        </label>
+
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">備註（選填）</div>
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            className="fld w-44"
+            placeholder="例：關卡獎勵"
+          />
+        </label>
+
+        <ActionButton
+          label={`${actionLabel}${resourceLabel}`}
+          className={direction === "add" ? "btn-emerald" : "btn-rose"}
+          disabled={teamId === "" || !validAmount}
+          confirmText={
+            team && validAmount
+              ? `確定對「${team.name}」${actionLabel} ${amount} ${resourceLabel}？`
+              : undefined
+          }
+          onAction={async () => {
+            const result = await postJson("/api/admin/balance", {
+              teamId,
+              resource,
+              direction,
+              amount,
+              note,
+            });
+            await onChange();
+            return {
+              message: `已對「${team?.name}」${actionLabel} ${amount} ${resourceLabel}`,
+              undo: result.undo,
+            };
+          }}
+        />
+      </div>
+      {team && currentBalance !== null && (
+        <p className="mt-3 text-xs text-slate-500">
+          目前 {resourceLabel}：<Num>{currentBalance}</Num>
+        </p>
+      )}
+    </Card>
   );
 }
 
