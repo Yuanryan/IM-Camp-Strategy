@@ -19,6 +19,9 @@ import {
   applyAllianceBonus,
   applyPiracy,
   spinWheelCustom,
+  freeWheelReward,
+  FREE_WHEEL_STAKE,
+  GIFT_VOUCHER_NAME,
   currentValue,
   leveledValue,
   lotteryFee,
@@ -283,6 +286,47 @@ export async function applyWheel(params: {
     });
     const undo: UndoRecipe = { label: `輪盤 ×${mult}`, ledgerIds: [lid] };
     return { team: updated, mult, stake, delta, undo };
+  });
+}
+
+// 好運卡「命運眷顧」免費轉一次輪盤：以 FREE_WHEEL_STAKE 為名目投入，發「淨入帳（夾 ≥0）」。
+// 不押玩家自己的光幣（白拿的好運卡只會賺、不會倒扣），但仍享 WHEEL_BONUS / WHEEL_NO_ZERO 動產效果。
+export async function applyFreeWheel(params: { teamId: number; byToken?: string }) {
+  const { teamId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const team = await tx.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new Error("找不到小隊");
+
+    // WHEEL_NO_ZERO：排除 ×0，並消耗一次
+    const items = await tx.teamItem.findMany({
+      where: { teamId, ...ACTIVE_ITEM },
+      include: { asset: true },
+    });
+    const hasNoZero = items.some((i) => i.asset.effectType === "WHEEL_NO_ZERO");
+    const mult = spinWheelCustom(hasNoZero ? { excludeMultipliers: [0] } : undefined);
+    const noZeroUsedIds = hasNoZero
+      ? items.filter((i) => i.asset.effectType === "WHEEL_NO_ZERO").map((i) => i.id)
+      : [];
+
+    // 名目淨利（夾 ≥0），再套 WHEEL_BONUS 放大（虧損不放大，這裡本就 ≥0）
+    const baseReward = freeWheelReward(FREE_WHEEL_STAKE, mult);
+    const bonusEffect = await loadActiveEffects(tx, teamId, "WHEEL_BONUS");
+    const reward = applyWheelBonus(baseReward, bonusEffect.delta);
+    const bonusUsedIds = reward > baseReward ? bonusEffect.usedIds : [];
+
+    if (reward > 0) {
+      await tx.team.update({ where: { id: teamId }, data: { coins: { increment: reward } } });
+    }
+    await decrementUses(tx, [...noZeroUsedIds, ...bonusUsedIds]);
+    const lid = await logLedger(tx, {
+      teamId,
+      kind: "wheel",
+      delta: reward,
+      note: `好運卡 命運眷顧（免費輪盤 ×${mult}${hasNoZero ? "・保底" : ""}）`,
+      byToken,
+    });
+    const undo: UndoRecipe = { label: `命運眷顧 ×${mult}`, ledgerIds: [lid] };
+    return { ok: true, mult, stake: FREE_WHEEL_STAKE, reward, undo };
   });
 }
 
@@ -842,11 +886,15 @@ export async function sellCard(params: { teamId: number; cardType: string; byTok
     if (card.remaining <= 0) throw new Error("該卡已售完");
     const team = await tx.team.findUnique({ where: { id: teamId } });
     if (!team) throw new Error("找不到小隊");
-    if (team.cardPoints < card.cost) throw new Error(`卡牌點數不足（需 ${card.cost}）`);
-    await tx.team.update({ where: { id: teamId }, data: { cardPoints: { decrement: card.cost } } });
+    // MYSTERY_SHOP_PRICE 折扣（五折券）：神秘商店功能卡同樣享折扣（以卡牌點數計），套用後消耗一次。
+    const shopEffect = await loadActiveEffects(tx, teamId, "MYSTERY_SHOP_PRICE");
+    const cost = applyShopPrice(card.cost, shopEffect.delta);
+    if (team.cardPoints < cost) throw new Error(`卡牌點數不足（需 ${cost}）`);
+    await tx.team.update({ where: { id: teamId }, data: { cardPoints: { decrement: cost } } });
     await tx.functionCard.update({ where: { type: card.type }, data: { remaining: { decrement: 1 } } });
-    await logLedger(tx, { teamId, kind: "cardPoints", delta: -card.cost, note: `購買功能卡 ${card.type}`, byToken });
-    return { ok: true, card: card.type, cost: card.cost };
+    if (cost !== card.cost) await decrementUses(tx, shopEffect.usedIds);
+    await logLedger(tx, { teamId, kind: "cardPoints", delta: -cost, note: `購買功能卡 ${card.type}${cost !== card.cost ? `（原 ${card.cost}，折扣後 ${cost}）` : ""}`, byToken });
+    return { ok: true, card: card.type, cost };
   });
 }
 
@@ -859,9 +907,14 @@ export async function buyShopItem(params: { teamId: number; assetId: number; byT
     if (asset.shopStock <= 0) throw new Error("該動產已售完");
     const team = await tx.team.findUnique({ where: { id: teamId } });
     if (!team) throw new Error("找不到小隊");
-    if (team.coins < asset.price) throw new Error(`光幣不足（售價 ${asset.price}）`);
-    await tx.team.update({ where: { id: teamId }, data: { coins: { decrement: asset.price } } });
+    // MYSTERY_SHOP_PRICE 折扣（好運卡「神秘商店五折券」−50%）：神秘商店專屬，套用到售價並消耗一次。
+    // 注意：一般 SHOP_PRICE（高鐵票等）只折不動產，不在此套用。
+    const shopEffect = await loadActiveEffects(tx, teamId, "MYSTERY_SHOP_PRICE");
+    const price = applyShopPrice(asset.price, shopEffect.delta);
+    if (team.coins < price) throw new Error(`光幣不足（售價 ${price}）`);
+    await tx.team.update({ where: { id: teamId }, data: { coins: { decrement: price } } });
     await tx.movableAsset.update({ where: { id: asset.id }, data: { shopStock: { decrement: 1 } } });
+    if (price !== asset.price) await decrementUses(tx, shopEffect.usedIds);
     await tx.teamItem.create({
       data: {
         teamId,
@@ -873,11 +926,11 @@ export async function buyShopItem(params: { teamId: number; assetId: number; byT
     await logLedger(tx, {
       teamId,
       kind: "coins",
-      delta: -asset.price,
-      note: `神秘商店購入動產：${asset.name}（${asset.grade} 級）`,
+      delta: -price,
+      note: `神秘商店購入動產：${asset.name}（${asset.grade} 級）${price !== asset.price ? `（原 ${asset.price}，折扣後 ${price}）` : ""}`,
       byToken,
     });
-    return { ok: true, name: asset.name, price: asset.price };
+    return { ok: true, name: asset.name, price };
   });
 }
 
@@ -924,6 +977,28 @@ export async function registerLottery(params: { teamId: number; number: number; 
       ? { label: `撤銷樂透登記 ${number} 號`, ledgerIds: [ledgerId], lotteryNumberId: lotteryRow.id, lotteryPoolRevert: poolAdd }
       : undefined;
     return { ok: true, fee, poolAdd, undo };
+  });
+}
+
+// 好運卡「幸運彩券」免費登記一個大樂透號碼（關主指定號碼，免加購費、不入池）。
+// 只檢查號碼未被佔用；中獎判定與一般登記號碼完全相同。
+export async function registerFreeLottery(params: { teamId: number; number: number; byToken?: string }) {
+  const { teamId, number, byToken } = params;
+  if (number < 1 || number > 50) throw new Error("號碼需為 1–50");
+  return prisma.$transaction(async (tx) => {
+    const state = await getState(tx);
+    const existing = await tx.lotteryNumber.findUnique({
+      where: { period_number: { period: state.lotteryPeriod, number } },
+    });
+    if (existing) throw new Error("該號碼本期已被登記");
+    const team = await tx.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new Error("找不到小隊");
+    const lotteryRow = await tx.lotteryNumber.create({ data: { period: state.lotteryPeriod, number, teamId } });
+    const ledgerId = await logLedger(tx, {
+      teamId, kind: "lottery", delta: 0, note: `好運卡 幸運彩券（免費登記 ${number} 號）`, byToken,
+    });
+    const undo: UndoRecipe = { label: `撤銷彩券 ${number} 號`, ledgerIds: [ledgerId], lotteryNumberId: lotteryRow.id, lotteryPoolRevert: 0 };
+    return { ok: true, number, undo };
   });
 }
 
@@ -1411,6 +1486,27 @@ export async function grantItem(params: {
       byToken,
     });
     return { ok: true, item };
+  });
+}
+
+// 好運卡「神秘禮物」：免費發一張「神秘商店五折券」（1 次性 SHOP_PRICE −50%），
+// 持有後下一次於神秘商店購買動產自動 5 折（見 buyShopItem）。回傳可撤銷配方（刪除該 TeamItem）。
+export async function grantGiftVoucher(params: { teamId: number; byToken?: string }) {
+  const { teamId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const team = await tx.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new Error("找不到小隊");
+    const asset = await tx.movableAsset.findUnique({ where: { name: GIFT_VOUCHER_NAME } });
+    if (!asset) throw new Error("找不到五折券模板（請重新 seed）");
+    const item = await tx.teamItem.create({
+      data: { teamId, assetId: asset.id, note: "好運卡 神秘禮物", usesRemaining: asset.defaultUses ?? 1 },
+      include: { asset: true },
+    });
+    const ledgerId = await logLedger(tx, {
+      teamId, kind: "items", delta: 0, note: `好運卡 神秘禮物：${asset.name}`, byToken,
+    });
+    const undo: UndoRecipe = { label: `撤銷 神秘禮物 ${asset.name}`, ledgerIds: [ledgerId], itemIds: [item.id] };
+    return { ok: true, name: asset.name, grade: asset.grade, undo };
   });
 }
 

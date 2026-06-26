@@ -125,8 +125,58 @@ export function useCardSettle({
 
 type Settler = ReturnType<typeof useCardSettle>;
 
+// 「幸運彩券」面板：關主在此輸入號碼（1–50），免費登記一個大樂透號碼給該隊。
+function FreeLotteryAction({
+  team,
+  lock,
+  onSettled,
+}: {
+  team: number | "";
+  lock: boolean;
+  onSettled: (result?: { message: string; finalDelta?: number; undo?: UndoRecipe }) => void;
+}) {
+  const [number, setNumber] = useState("");
+  const n = parseInt(number, 10);
+  const valid = n >= 1 && n <= 50;
+  return (
+    <div className="flex gap-2">
+      <input
+        type="number"
+        min={1}
+        max={50}
+        inputMode="numeric"
+        value={number}
+        onChange={(e) => setNumber(e.target.value)}
+        placeholder="號碼 1–50"
+        disabled={lock}
+        className="w-24 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-100 outline-none focus:border-amber-400/60 disabled:opacity-40"
+      />
+      <ActionButton
+        label="免費登記號碼"
+        className="flex-1 btn-amber"
+        disabled={lock || !valid}
+        onAction={async () => {
+          const r = await postJson("/api/map/free-lottery", { teamId: team, number: n });
+          const result = { message: `🎟️ 已登記大樂透 ${n} 號`, undo: r.undo };
+          onSettled(result);
+          return result;
+        }}
+      />
+    </div>
+  );
+}
+
+// 免費獎勵 → 目標分頁中文名（路由按鈕文案用）。
+const FREEBIE_ROUTE_LABEL: Record<"wheel" | "lottery" | "card", string> = {
+  wheel: "命運輪盤",
+  lottery: "大樂透",
+  card: "神秘商店",
+};
+
 // ── 即時卡（面板就地處理）：直接獎勵好運卡 / 一翻兩瞪眼厄運卡 ────────────────
 // onMapMove：move 類獎勵（前進 / 後退 / 傳送）改由地圖面板就地執行；
+// onRouteReward：wheel / lottery / card 類獎勵改「導向對應分頁就地領取」（地圖流程用）；
+//   未提供時退回面板就地的免費動作鈕（LuckDraw 中控站沿用）。
 // onSettled：套用後收尾，帶回結算摘要（訊息 + undo）供呼叫端顯示總結算。
 export function InstantCardPanel({
   drawn,
@@ -135,6 +185,7 @@ export function InstantCardPanel({
   event1,
   settled = false,
   onMapMove,
+  onRouteReward,
   onSettled,
 }: {
   drawn: DrawnCard;
@@ -143,6 +194,7 @@ export function InstantCardPanel({
   event1: boolean;
   settled?: boolean; // 已結算過 → 鎖住動作鈕，避免重複套用（卡面仍保留顯示）
   onMapMove?: (reward: GoodCard["reward"], card: GoodCard) => void;
+  onRouteReward?: (kind: "wheel" | "lottery" | "card") => void;
   onSettled: (result?: { message: string; finalDelta?: number; undo?: UndoRecipe }) => void;
 }) {
   const { settle, goodLabel, badLabel } = settler;
@@ -183,6 +235,50 @@ export function InstantCardPanel({
           >
             於地圖執行移動
           </button>
+        ) : reward.kind === "card" && onRouteReward ? (
+          // 神秘禮物（地圖流程）：先就地發五折券，再導向神秘商店使用。
+          <ActionButton
+            label="領取五折券並前往神秘商店"
+            className="w-full btn-purple"
+            disabled={lock}
+            onAction={wrap(async () => {
+              const r = await postJson("/api/map/gift-item", { teamId: team });
+              onRouteReward("card");
+              return { message: `🎁 已領取 ${r.name}：動產 / 功能卡首件 5 折`, undo: r.undo };
+            })}
+          />
+        ) : (reward.kind === "wheel" || reward.kind === "lottery") && onRouteReward ? (
+          // 地圖流程：導向對應分頁就地領取（免費轉盤 / 免費登記）。
+          <button
+            type="button"
+            disabled={lock}
+            onClick={() => onRouteReward(reward.kind as "wheel" | "lottery")}
+            className="w-full rounded-xl bg-cyan-500 py-2.5 text-sm font-bold text-slate-950 transition hover:bg-cyan-400 active:scale-[0.98] disabled:opacity-40"
+          >
+            前往「{FREEBIE_ROUTE_LABEL[reward.kind]}」
+          </button>
+        ) : reward.kind === "wheel" ? (
+          <ActionButton
+            label="免費轉輪盤"
+            className="w-full btn-amber"
+            disabled={lock}
+            onAction={wrap(async () => {
+              const r = await postJson("/api/map/free-wheel", { teamId: team });
+              return { message: `🎡 輪盤 ×${r.mult} → 🪙 +${r.reward} 光幣`, finalDelta: r.reward as number, undo: r.undo };
+            })}
+          />
+        ) : reward.kind === "lottery" ? (
+          <FreeLotteryAction team={team} lock={lock} onSettled={onSettled} />
+        ) : reward.kind === "card" ? (
+          <ActionButton
+            label="領取五折券"
+            className="w-full btn-purple"
+            disabled={lock}
+            onAction={wrap(async () => {
+              const r = await postJson("/api/map/gift-item", { teamId: team });
+              return { message: `🎁 已領取 ${r.name}：購買動產首件 5 折`, undo: r.undo };
+            })}
+          />
         ) : (
           <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-200/90">
             ⚑ 指示型獎勵：請到對應分頁（{REWARD_TAB_HINT[reward.kind]}）為該隊執行。

@@ -12,6 +12,9 @@ import {
   parseActiveEvents,
   spinWheel,
   spinWheelCustom,
+  freeWheelReward,
+  FREE_WHEEL_STAKE,
+  GIFT_VOUCHER_NAME,
   WHEEL_OUTCOMES,
   MOVABLE_ASSET_SEED,
   EffectType,
@@ -354,6 +357,7 @@ describe("effect 覆蓋率", () => {
       EffectType.TOLL_INCOME,
       EffectType.TOLL_PAID,
       EffectType.SHOP_PRICE,
+      EffectType.MYSTERY_SHOP_PRICE, // 與 SHOP_PRICE 共用 applyShopPrice 公式
       EffectType.PROPERTY_VALUE,
       EffectType.GOOD_CARD_BONUS,
       EffectType.BAD_CARD_REDUCE,
@@ -542,6 +546,38 @@ describe("命運輪盤", () => {
     for (let i = 0; i < 1000; i++) {
       expect(valid.has(spinWheel())).toBe(true);
     }
+  });
+});
+
+// ── 好運卡「命運眷顧」免費輪盤（freeWheelReward）────────────────
+describe("freeWheelReward（命運眷顧）", () => {
+  it("淨入帳 = stake×mult − stake，夾在 ≥0", () => {
+    expect(freeWheelReward(200, 2)).toBe(200);   // 400 − 200
+    expect(freeWheelReward(200, 10)).toBe(1800); // 2000 − 200
+    expect(freeWheelReward(200, 1)).toBe(0);     // 不賺不賠
+    expect(freeWheelReward(200, 0.5)).toBe(0);   // 少賺，夾到 0（不倒扣）
+    expect(freeWheelReward(200, 0)).toBe(0);     // ×0 也不倒扣
+  });
+
+  it("任一合法輪盤倍率都不會讓玩家倒扣（白拿只賺不賠）", () => {
+    for (const o of WHEEL_OUTCOMES) {
+      expect(freeWheelReward(FREE_WHEEL_STAKE, o.mult)).toBeGreaterThanOrEqual(0);
+    }
+  });
+});
+
+// ── 好運卡「神秘禮物」五折券（GIFT_VOUCHER_NAME）────────────────
+describe("神秘商店五折券（GIFT_VOUCHER_NAME）", () => {
+  const voucher = MOVABLE_ASSET_SEED.find((a) => a.name === GIFT_VOUCHER_NAME);
+
+  it("種子資料中存在五折券", () => {
+    expect(voucher).toBeDefined();
+  });
+
+  it("為 1 次性 MYSTERY_SHOP_PRICE −50%（神秘商店專屬，不混用一般 SHOP_PRICE）", () => {
+    expect(voucher?.effectType).toBe("MYSTERY_SHOP_PRICE");
+    expect(voucher?.effectValue).toBe(-0.5);
+    expect(voucher?.defaultUses).toBe(1);
   });
 });
 

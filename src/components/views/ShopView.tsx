@@ -7,7 +7,7 @@ import { CreditCard, Package } from "lucide-react";
 import { fetcher, useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, HudTabs, TurnCompleteBar } from "@/components/ui";
-import { ITEM_GRADE_COLORS } from "@/lib/game";
+import { ITEM_GRADE_COLORS, EffectType } from "@/lib/game";
 
 type ShopCard = { type: string; cost: number; effect: string; remaining: number };
 type ShopData = { cards: ShopCard[] };
@@ -196,6 +196,7 @@ export function ShopView({
   team: teamProp,
   setTeam: setTeamProp,
   turnMode = false,
+  freeMode = false,
   onComplete,
 }: {
   team?: number | "";
@@ -203,13 +204,15 @@ export function ShopView({
   // 地圖回合操作：顯示「完成」鈕，累計本回合動產購買支出（負值）並回報。
   // 卡片以卡牌點數購買、非光幣，不計入回合金流。
   turnMode?: boolean;
+  // 好運卡「神秘禮物」免費抽動產：頂部出現一鍵「免費抽動產」面板（依等級加權隨機、免費），抽一次後鎖。
+  freeMode?: boolean;
   onComplete?: (delta: number) => void;
 } = {}) {
   // 受控（由 MapView 共用 team）或自管（/shop 獨立頁）
   const [teamInner, setTeamInner] = useState<number | "">("");
   const team = teamProp ?? teamInner;
   const setTeam = setTeamProp ?? setTeamInner;
-  const [tab, setTab] = useState<"cards" | "assets">("cards");
+  const [tab, setTab] = useState<"cards" | "assets">(freeMode ? "assets" : "cards");
   // 本回合累計動產購買支出（負值）；按「完成」時併入地圖階段 2。
   const [turnDelta, setTurnDelta] = useState(0);
   const { snap } = useSnapshot(3000);
@@ -226,6 +229,8 @@ export function ShopView({
 
   if (!snap || !data) return <p className="text-sm text-slate-400">載入中…</p>;
   const cur = snap.teams.find((t) => t.id === team);
+  // 五折券（MYSTERY_SHOP_PRICE）是否仍生效中：地圖流程在抽卡時已就地發券，這裡只反映狀態。
+  const hasVoucher = (cur?.items ?? []).some((i) => i.effectType === EffectType.MYSTERY_SHOP_PRICE);
   const byType = new Map(data.cards.map((c) => [c.type, c]));
   const byId = new Map((itemData?.items ?? []).map((it) => [String(it.id), it]));
 
@@ -254,7 +259,15 @@ export function ShopView({
         </div>
       </StickyTeam>
 
-
+      {freeMode && (
+        <Card title="神秘禮物・神秘商店五折券">
+          <div className="rounded-lg border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-sm font-semibold text-violet-200">
+            {hasVoucher
+              ? "🎁 五折券生效中：下方購買第一件動產 / 功能卡自動 5 折，買完即失效。"
+              : "（已使用或尚未持有五折券）下方為神秘商店一般購買。"}
+          </div>
+        </Card>
+      )}
 
       {tab === "cards" ? (
       <>

@@ -12,12 +12,15 @@ export function LotteryView({
   team: teamProp,
   setTeam: setTeamProp,
   turnMode = false,
+  freeMode = false,
   onComplete,
 }: {
   team?: number | "";
   setTeam?: (id: number | "") => void;
   // 由地圖回合操作開啟時為 true：顯示「完成」鈕，累計本回合登記費用（負值）並回報。
   turnMode?: boolean;
+  // 好運卡「幸運彩券」免費登記：點一個號碼免費登記（不扣加購費、不入池），登記後鎖住。
+  freeMode?: boolean;
   onComplete?: (delta: number) => void;
 } = {}) {
   const { snap, mutate } = useSnapshot(2500);
@@ -28,6 +31,8 @@ export function LotteryView({
   const [pending, setPending] = useState<number | null>(null);
   // 本回合累計金流（登記號碼的費用總和，為負）；按「完成」時回報給地圖階段 2。
   const [turnDelta, setTurnDelta] = useState(0);
+  // 免費登記：一張卡只給一個免費號碼，登記後鎖住整面號碼盤。
+  const [freeDone, setFreeDone] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [highlight, setHighlight] = useState<number | null>(null);
 
@@ -82,15 +87,25 @@ export function LotteryView({
 
   const register = async (number: number) => {
     if (team === "" || pending !== null) return;
+    if (freeMode && freeDone) return;
     setPending(number);
     try {
-      const r = await postJson("/api/lottery/register", { teamId: team, number });
+      // 免費模式（幸運彩券）：走免加購費的端點，登記後鎖住號碼盤。
+      const url = freeMode ? "/api/map/free-lottery" : "/api/lottery/register";
+      const r = await postJson(url, { teamId: team, number });
       await mutate();
-      // 回合操作：登記費用是支出 → 累計為負值，待「完成」時併入地圖階段 2。
-      if (turnMode) setTurnDelta((d) => d - (r.fee ?? 0));
-      const msg = `已登記 ${number} 號（費用 ${r.fee}）`;
-      setResult({ ok: true, msg });
-      toast(msg, "ok", r.undo);
+      if (freeMode) {
+        setFreeDone(true);
+        const msg = `已免費登記 ${number} 號（幸運彩券）`;
+        setResult({ ok: true, msg });
+        toast(`🎟️ ${msg}`, "ok", r.undo);
+      } else {
+        // 回合操作：登記費用是支出 → 累計為負值，待「完成」時併入地圖階段 2。
+        if (turnMode) setTurnDelta((d) => d - (r.fee ?? 0));
+        const msg = `已登記 ${number} 號（費用 ${r.fee}）`;
+        setResult({ ok: true, msg });
+        toast(msg, "ok", r.undo);
+      }
     } catch (e) {
       const m = e instanceof Error ? e.message : "登記失敗";
       setResult({ ok: false, msg: `${number} 號：${m}` });
@@ -145,7 +160,12 @@ export function LotteryView({
         />
       </StickyTeam>
 
-      <Card title="登記號碼">
+      <Card title={freeMode ? "幸運彩券・免費登記一個號碼" : "登記號碼"}>
+        {freeMode && !freeDone && (
+          <div className="mb-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-sm font-semibold text-amber-200">
+            好運卡・幸運彩券：點任一空號免費登記一個號碼
+          </div>
+        )}
         {result && (
           <div className={`mb-3 rounded-lg px-3 py-2 text-sm font-medium ring-1 ${
             result.ok
@@ -161,7 +181,7 @@ export function LotteryView({
             const busy = pending === n;
             return (
               <button key={n}
-                disabled={busy || (!owner && (team === "" || pending !== null))}
+                disabled={busy || (!owner && (team === "" || pending !== null || (freeMode && freeDone)))}
                 onClick={() => {
                   if (owner) {
                     const id = ownerMap.get(n) ?? null;

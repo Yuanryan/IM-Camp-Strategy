@@ -13,7 +13,7 @@ import { RealMapView } from "@/components/views/RealMapView";
 import { ScrollLock } from "@/components/ui/scroll-lock";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, EventBanner, HudTabs, TeamItemBadges, FloatingDesc } from "@/components/ui";
-import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, EffectType, ITEM_GRADE_COLORS, stackEffects, applyToll, type UndoRecipe } from "@/lib/game";
+import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, EffectType, ITEM_GRADE_COLORS, stackEffects, applyToll, FREEBIE_TAB, type Freebie, type UndoRecipe } from "@/lib/game";
 import { Map, CircleDollarSign, LoaderPinwheel, Building2, Store, Gamepad2 } from "lucide-react";
 
 // 可作為「回合操作」的分頁（地圖落地會導向、完成後把金流併回階段 2）。
@@ -24,6 +24,7 @@ const TURN_ACTION_LABEL: Record<TurnActionTab, string> = {
   exchange: "交易所",
   shop: "神秘商店",
 };
+
 
 export function MapView() {
   const { snap, mutate } = useSnapshot(2500);
@@ -38,7 +39,7 @@ export function MapView() {
   const [tab, setTab] = useState<"realmap" | "map" | "lottery" | "wheel" | "exchange" | "shop">("realmap");
   // 進行中的「回合操作」：由地圖落地導向某分頁時記下 { 小隊, 分頁 }。
   // 該分頁據此顯示「完成」按鈕並累計自身金流；按下完成才回報。null＝非回合操作（自由瀏覽分頁）。
-  const [turnAction, setTurnAction] = useState<{ teamId: number; tab: TurnActionTab } | null>(null);
+  const [turnAction, setTurnAction] = useState<{ teamId: number; tab: TurnActionTab; freebie?: Freebie } | null>(null);
   // 分頁「完成」回報的累計金流，待併入地圖階段 2 結算面板；由 RealMapView 取用後清掉。
   // subRows＝可選的文字子列（如命運輪盤的投入 / 拿回），於階段 2 縮排呈現。
   const [actionResult, setActionResult] = useState<
@@ -120,8 +121,15 @@ export function MapView() {
           team={team}
           setTeam={setTeam}
           visible={tab === "realmap"}
-          onLand={({ tab: nextTab, region: nextRegion }) => {
+          onLand={({ tab: nextTab, region: nextRegion, freebie }) => {
             if (nextRegion) setRegion(nextRegion);
+            // 好運卡免費獎勵：導向 freebie 對應分頁，並標記免費模式（該頁據此免押注 / 免加購費）。
+            if (freebie && team !== "") {
+              const fTab = FREEBIE_TAB[freebie];
+              setTurnAction({ teamId: team, tab: fTab, freebie });
+              setTab(fTab);
+              return;
+            }
             // 由地圖落地導向操作分頁＝開啟一段「回合操作」，該分頁顯示完成鈕並累計金流。
             // 「map」（地圖中控站）非操作分頁，不視為回合操作。
             if (team !== "" && nextTab !== "map") {
@@ -140,6 +148,7 @@ export function MapView() {
           team={team}
           setTeam={setTeam}
           turnMode={turnAction?.tab === "lottery"}
+          freeMode={turnAction?.freebie === "lottery"}
           onComplete={completeTurnAction}
         />
       ) : tab === "wheel" ? (
@@ -150,6 +159,7 @@ export function MapView() {
           cur={cur}
           onDone={mutate}
           turnMode={turnAction?.tab === "wheel"}
+          freeMode={turnAction?.freebie === "wheel"}
           onComplete={completeTurnAction}
         />
       ) : tab === "exchange" ? (
@@ -166,6 +176,7 @@ export function MapView() {
           team={team}
           setTeam={setTeam}
           turnMode={turnAction?.tab === "shop"}
+          freeMode={turnAction?.freebie === "card"}
           onComplete={completeTurnAction}
         />
       ) : tab === "map" ? (

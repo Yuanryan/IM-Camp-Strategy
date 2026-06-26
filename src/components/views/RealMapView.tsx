@@ -33,8 +33,10 @@ import {
   PASS_START_CARD_POINTS,
   LAND_START_COINS,
   LAND_START_CARD_POINTS,
+  FREEBIE_TAB,
   type BoardSquare,
   type MapTab,
+  type Freebie,
   type RegionCode,
   type UndoRecipe,
 } from "@/lib/game";
@@ -177,7 +179,7 @@ export function RealMapView({
 }: {
   team: number | "";
   setTeam: (id: number | "") => void;
-  onLand: (target: { tab: MapTab; region?: RegionCode }) => void;
+  onLand: (target: { tab: MapTab; region?: RegionCode; freebie?: Freebie }) => void;
   // 分頁「完成」帶回的累計金流（label＝分頁名、delta＝淨變動、subRows＝可選文字子列）；
   // 併入階段 2 後由 clearActionResult 清掉。
   actionResult?: { label: string; delta: number; subRows?: { label: string; amount: number }[] } | null;
@@ -1235,6 +1237,7 @@ export function RealMapView({
                     event1={event1}
                     settled={!!cardResult}
                     onMapMove={(_reward, card) => runMapReward(card.rewardText)}
+                    onRouteReward={(kind) => onLand({ tab: FREEBIE_TAB[kind], freebie: kind })}
                     onSettled={(r) => setCardResult(r
                       ? { ...r, label: drawn.card.name }
                       : { message: "已套用" }

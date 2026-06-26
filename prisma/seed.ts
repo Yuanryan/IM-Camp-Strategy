@@ -12,6 +12,7 @@ import {
   ITEM_GRADE_PRICE,
   DEFAULT_SHOP_STOCK,
   CURSED_ASSET_NAMES,
+  GIFT_VOUCHER_NAME,
   ROLE_LABEL,
   type Role,
 } from "../src/lib/game";
@@ -94,7 +95,8 @@ async function main() {
     data: MOVABLE_ASSET_SEED.map((a) => ({
       ...a,
       price: ITEM_GRADE_PRICE[a.grade] ?? 0,
-      shopStock: CURSED_ASSET_NAMES.has(a.name) ? 0 : DEFAULT_SHOP_STOCK,
+      // 詛咒道具與五折券（好運卡專屬非賣品）不上架（shopStock=0）。
+      shopStock: CURSED_ASSET_NAMES.has(a.name) || a.name === GIFT_VOUCHER_NAME ? 0 : DEFAULT_SHOP_STOCK,
     })),
     skipDuplicates: true,
   });

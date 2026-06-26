@@ -43,6 +43,7 @@ export function WheelView({
   cur,
   onDone,
   turnMode = false,
+  freeMode = false,
   onComplete,
 }: {
   teams: TeamLite[];
@@ -52,6 +53,9 @@ export function WheelView({
   onDone: () => void | Promise<unknown>;
   // 地圖回合操作：顯示「完成」鈕，累計本回合轉盤金流並回報（含投入 / 拿回子列）。
   turnMode?: boolean;
+  // 好運卡「命運眷顧」免費轉盤：不押注（隱藏押注控制），轉一次發「淨入帳 ≥0」，
+  // 走 /api/map/free-wheel；turnMode 同時為 true，完成時以單條「命運眷顧」子列回報。
+  freeMode?: boolean;
   onComplete?: (delta: number, subRows?: { label: string; amount: number }[]) => void;
 }) {
   const [stake, setStake] = useState(100);
@@ -89,6 +93,20 @@ export function WheelView({
     if (stake > maxStake) setStake(maxStake);
   }, [maxStake, spinning]);
 
+  // 啟動指針旋轉動畫，對準回傳倍率對應段；spin / freeSpin 共用。
+  const animateTo = (mult: number) => {
+    const seg = SEGMENTS.find((s) => s.mult === mult) ?? SEGMENTS[0];
+    // 段內微抖動，讓指針不要每次都停在正中央
+    const jitter = (Math.random() - 0.5) * seg.sweep * 0.6;
+    const targetMod = ((360 - (seg.center + jitter)) % 360 + 360) % 360;
+    setRotation((prev) => {
+      const current = ((prev % 360) + 360) % 360;
+      let add = targetMod - current;
+      if (add < 0) add += 360;
+      return prev + 360 * 6 + add; // 轉 6 圈再對準
+    });
+  };
+
   const spin = async () => {
     if (team === "" || spinning) return;
     if (stake < 1 || stake > maxStake) {
@@ -101,16 +119,7 @@ export function WheelView({
     setLast(null);
     try {
       const r = await postJson("/api/map/wheel", { teamId: team, stake });
-      const seg = SEGMENTS.find((s) => s.mult === r.mult) ?? SEGMENTS[0];
-      // 段內微抖動，讓指針不要每次都停在正中央
-      const jitter = (Math.random() - 0.5) * seg.sweep * 0.6;
-      const targetMod = ((360 - (seg.center + jitter)) % 360 + 360) % 360;
-      setRotation((prev) => {
-        const current = ((prev % 360) + 360) % 360;
-        let add = targetMod - current;
-        if (add < 0) add += 360;
-        return prev + 360 * 6 + add; // 轉 6 圈再對準
-      });
+      animateTo(r.mult);
       window.setTimeout(async () => {
         // 還原加成前的淨變動（base = round(stake×mult) − stake），讓面板顯示加成計算
         const baseDelta = Math.round(stake * r.mult) - stake;
@@ -127,6 +136,36 @@ export function WheelView({
         );
         await onDone();
         setFrozenCoins(null);
+        setFrozenEffects(null);
+        setSpinning(false);
+      }, 4200);
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "轉盤失敗", "err");
+      setSpinning(false);
+    }
+  };
+
+  // 好運卡「命運眷顧」免費轉一次：不押注，發淨入帳（夾 ≥0）。只能轉一次（轉過即 done）。
+  const [freeDone, setFreeDone] = useState(false);
+  const freeSpin = async () => {
+    if (team === "" || spinning || freeDone) return;
+    setFrozenEffects({ hasNoZero: liveHasNoZero, bonusDelta: liveBonusDelta });
+    setSpinning(true);
+    setLast(null);
+    try {
+      const r = await postJson("/api/map/free-wheel", { teamId: team });
+      animateTo(r.mult);
+      window.setTimeout(async () => {
+        // 免費轉盤無投入：stake=0、delta=淨入帳（reward）、baseDelta=0（無加成行）。
+        setLast({ mult: r.mult, delta: r.reward, baseDelta: 0, stake: 0 });
+        setFreeDone(true);
+        if (turnMode) setTurnPayoutTotal((p) => p + (r.reward ?? 0));
+        toast(
+          `🎡 命運眷顧 ×${r.mult} → 🪙 +${r.reward} 光幣`,
+          "ok",
+          r.undo as UndoRecipe | undefined,
+        );
+        await onDone();
         setFrozenEffects(null);
         setSpinning(false);
       }, 4200);
@@ -240,9 +279,15 @@ export function WheelView({
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-xs text-slate-400">
-                    投入 <Num className="font-bold text-slate-200">{last.stake}</Num>
-                    {"  →  "}
-                    拿回 <Num className="font-bold text-slate-200">{last.stake + last.delta}</Num>
+                    {freeMode ? (
+                      <span className="font-bold text-amber-300">免費・命運眷顧</span>
+                    ) : (
+                      <>
+                        投入 <Num className="font-bold text-slate-200">{last.stake}</Num>
+                        {"  →  "}
+                        拿回 <Num className="font-bold text-slate-200">{last.stake + last.delta}</Num>
+                      </>
+                    )}
                   </div>
                   {last.baseDelta > 0 && last.delta !== last.baseDelta && (
                     <div className="mt-0.5 text-xs text-emerald-300/90">
@@ -268,47 +313,65 @@ export function WheelView({
             )}
 
             <div className="mt-auto shrink-0 flex flex-col gap-3 pt-3">
-              {/* Quick-stake chips */}
-              <div>
-                <div className="mb-1.5 text-xs text-slate-400">
-                  投入光幣（上限 <span className="neon-gold font-bold">{maxStake}</span>）
-                </div>
-                <div className="flex gap-2">
-                  {[...new Set([100, 200, 300, 500, maxStake])].sort((a, b) => a - b).map((v) => (
-                    <button
-                      key={v}
-                      disabled={spinning}
-                      onClick={() => setStake(v)}
-                      className={`flex-1 rounded-lg py-2.5 text-sm font-bold transition active:scale-95 disabled:opacity-40 ${
-                        stake === v ? "btn-purple ring-1 ring-purple-400/40" : "chip"
-                      }`}
-                    >
-                      {v}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {freeMode ? (
+                // 免費轉盤：無押注控制，只有一顆「免費轉一次」鈕（轉過即鎖）。
+                <>
+                  <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2.5 text-center text-xs font-semibold text-amber-200">
+                    好運卡・命運眷顧：免費以 500 塊轉一次
+                  </div>
+                  <button
+                    onClick={freeSpin}
+                    disabled={team === "" || spinning || freeDone}
+                    className="btn-amber w-full rounded-xl py-4 text-lg font-black tracking-widest transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {spinning ? "轉動中…" : freeDone ? "已領取" : "免費轉一次"}
+                  </button>
+                </>
+              ) : (
+                <>
+                  {/* Quick-stake chips */}
+                  <div>
+                    <div className="mb-1.5 text-xs text-slate-400">
+                      投入光幣（上限 <span className="neon-gold font-bold">{maxStake}</span>）
+                    </div>
+                    <div className="flex gap-2">
+                      {[...new Set([100, 200, 300, 500, maxStake])].sort((a, b) => a - b).map((v) => (
+                        <button
+                          key={v}
+                          disabled={spinning}
+                          onClick={() => setStake(v)}
+                          className={`flex-1 rounded-lg py-2.5 text-sm font-bold transition active:scale-95 disabled:opacity-40 ${
+                            stake === v ? "btn-purple ring-1 ring-purple-400/40" : "chip"
+                          }`}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-              {/* Custom stake input */}
-              <input
-                type="number"
-                inputMode="numeric"
-                value={stake}
-                min={1}
-                max={maxStake}
-                disabled={spinning}
-                onChange={(e) => setStake(Number(e.target.value) || 0)}
-                className="fld w-full text-center text-lg font-bold"
-              />
+                  {/* Custom stake input */}
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={stake}
+                    min={1}
+                    max={maxStake}
+                    disabled={spinning}
+                    onChange={(e) => setStake(Number(e.target.value) || 0)}
+                    className="fld w-full text-center text-lg font-bold"
+                  />
 
-              {/* Spin button */}
-              <button
-                onClick={spin}
-                disabled={team === "" || spinning}
-                className="btn-purple w-full rounded-xl py-4 text-lg font-black tracking-widest transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                {spinning ? "轉動中…" : "轉輪盤"}
-              </button>
+                  {/* Spin button */}
+                  <button
+                    onClick={spin}
+                    disabled={team === "" || spinning}
+                    className="btn-purple w-full rounded-xl py-4 text-lg font-black tracking-widest transition active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {spinning ? "轉動中…" : "轉輪盤"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

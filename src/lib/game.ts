@@ -262,12 +262,22 @@ export function spinWheel(): number {
   return 1;
 }
 
+// 好運卡「命運眷顧」免費輪盤的名目投入額：以此為基準乘上輪盤倍率，
+// 取「淨變動但不低於 0」——白拿的好運卡只會賺、不會倒扣（×0／×0.5 只是少賺）。
+export const FREE_WHEEL_STAKE = 500;
+
+// 名目投入 stake 轉一次輪盤，回傳「淨入帳光幣」（夾在 ≥0）。供 service 與 UI 預覽共用。
+export function freeWheelReward(stake: number, mult: number): number {
+  return Math.max(0, Math.round(stake * mult) - stake);
+}
+
 // ── 動產效果系統 ─────────────────────────────────────────────────
 // const 物件 enum 模式：值即字串，與 Prisma String 欄位直接比較
 export const EffectType = {
   TOLL_INCOME:       "TOLL_INCOME",       // 收取過路費加成（+0.15 → +15%）
   TOLL_PAID:         "TOLL_PAID",         // 支付過路費減免（-0.10 → -10%）
-  SHOP_PRICE:        "SHOP_PRICE",        // 購買 / 升級折扣（-0.10 → -10%）
+  SHOP_PRICE:        "SHOP_PRICE",        // 不動產購買 / 升級折扣（-0.10 → -10%；僅限不動產）
+  MYSTERY_SHOP_PRICE:"MYSTERY_SHOP_PRICE",// 神秘商店折扣（動產 + 功能卡）（-0.50 → 5 折）
   PROPERTY_VALUE:    "PROPERTY_VALUE",    // 持有不動產淨值加成（+0.10 → +10%）
   COINS_PER_ROUND:   "COINS_PER_ROUND",   // 每回合固定光幣（50 → +50/輪）
   TAX_COLLECTOR:     "TAX_COLLECTOR",     // 全場每筆過路費抽成（0.02 → 2%）
@@ -295,7 +305,8 @@ export type EffectType = typeof EffectType[keyof typeof EffectType];
 export const EFFECT_TYPE_LABELS: Record<EffectType, string> = {
   TOLL_INCOME:       "過路費加成",
   TOLL_PAID:         "過路費減免",
-  SHOP_PRICE:        "購買折扣",
+  SHOP_PRICE:        "不動產折扣",
+  MYSTERY_SHOP_PRICE:"神秘商店折扣",
   PROPERTY_VALUE:    "不動產增值",
   COINS_PER_ROUND:   "每回合收益",
   TAX_COLLECTOR:     "全場稅收",
@@ -499,6 +510,11 @@ export const DEFAULT_SHOP_STOCK = 2; // 每件動產預設上架 2 個
 // 詛咒道具不該擺上商店（偽裝成 B 級的負面效果），seed 時 shopStock 設 0。
 export const CURSED_ASSET_NAMES = new Set(["管圖的廢棄麻將桌", "必修衝堂", "機車違停拖吊單"]);
 
+// 好運卡「神秘禮物」發放的「神秘商店五折券」：1 次性 MYSTERY_SHOP_PRICE −50%，
+// 自動套用到下一次「神秘商店購買動產或功能卡」（見 service.buyShopItem / sellCard）。
+// 非賣品（shopStock 設 0），seed 時與詛咒道具一樣不上架。
+export const GIFT_VOUCHER_NAME = "神秘商店五折券";
+
 export const MOVABLE_ASSET_SEED: {
   name: string;
   grade: string;
@@ -553,6 +569,8 @@ export const MOVABLE_ASSET_SEED: {
   { name: "五十嵐買一送一",       grade: "B", effectType: "SHOP_PRICE",        effectValue: -0.08, condition: null, defaultUses: 1,    description: "購買 / 升級費用 -8%（1 次）— 撿便宜" },
   { name: "轉角哥雞排",           grade: "B", effectType: "BAD_CARD_REDUCE",   effectValue: -0.50, condition: null, defaultUses: 1,    description: "厄運卡懲罰 -50%（1 次）— 雞排壓驚" },
   { name: "微積分作業解答",         grade: "B", effectType: "LOTTERY_FEE_DISCOUNT", effectValue: -0.50, condition: null, defaultUses: null, description: "大樂透加購 5 折（永久）— 抄到明牌" },
+  // ── 非賣品：好運卡「神秘禮物」發放的神秘商店五折券（shopStock=0，不上架、不參與隨機抽）──
+  { name: GIFT_VOUCHER_NAME,      grade: "A", effectType: "MYSTERY_SHOP_PRICE", effectValue: -0.50, condition: null, defaultUses: 1,    description: "神秘商店購買動產 / 功能卡首件 5 折（1 次）— 好運卡・神秘禮物" },
   // ── 詛咒道具（偽裝成普通 B 級，實際為負面效果）──
   { name: "管圖的廢棄麻將桌",     grade: "B", effectType: "SHOP_PRICE",        effectValue:  0.10, condition: null, defaultUses: 2,    description: "購買 / 升級費用 +10%（詛咒，2 次）— 廢棄桌帶賽" },
   { name: "必修衝堂",             grade: "B", effectType: "TOLL_INCOME",       effectValue: -0.15, condition: null, defaultUses: 3,    description: "收取過路費時少收 15%（詛咒，3 次）— 卡到時間" },
@@ -627,8 +645,8 @@ export const GOOD_LUCK_CARDS: GoodCard[] = [
   { name: "天降光幣", difficulty: "直接", reward: { kind: "coins", amount: 400 }, rewardText: "獲得 400 光幣。" },
   { name: "意外之財", difficulty: "直接", reward: { kind: "coins", amount: 450 }, rewardText: "獲得 450 光幣。" },
   { name: "命運眷顧", difficulty: "直接", reward: { kind: "wheel" }, rewardText: "免費轉一次命運輪盤（請到「命運輪盤」分頁執行）。" },
-  { name: "幸運彩券", difficulty: "直接", reward: { kind: "lottery" }, rewardText: "免費獲得一次大樂透抽籤（請到「大樂透」分頁登記號碼）。" },
-  { name: "神秘禮物", difficulty: "直接", reward: { kind: "card" }, rewardText: "免費抽一張功能卡 / 動產（由關主發放）。" },
+  { name: "幸運彩券", difficulty: "直接", reward: { kind: "lottery" }, rewardText: "免費獲得一次大樂透抽籤。" },
+  { name: "神秘禮物", difficulty: "直接", reward: { kind: "card" }, rewardText: "獲得一張神秘商店優惠卷，進入神秘商店使用（購買動產 / 功能卡首件 5 折）。" },
   { name: "向前躍進", difficulty: "直接", reward: { kind: "move" }, rewardText: "棋子前進 2 格（由關主於地圖移動）。" },
   { name: "時光倒流", difficulty: "直接", reward: { kind: "move" }, rewardText: "棋子後退 2 格（由關主於地圖移動）。" },
   { name: "傳送門", difficulty: "直接", reward: { kind: "move" }, rewardText: "直接移動到指定格（由關主指定並移動棋子）。" },
@@ -1154,6 +1172,18 @@ export function advance(from: number, steps: number): { to: number; passedStart:
 // 停留格 → MapView 既有分頁 + （PROPERTY）預選區域。
 // GLOW / FOG 都導向 "map" 分頁（光源點 / 迷霧區抽卡），由 draw 區分好運 / 厄運。
 export type MapTab = "map" | "exchange" | "shop" | "lottery" | "wheel";
+
+// 好運卡「免費獎勵」種類：抽到後導向對應分頁，於該頁就地領取免費的轉盤 / 登記 / 抽動產。
+// wheel→命運輪盤、lottery→大樂透、card→神秘商店。隨地圖路由帶到目標頁觸發「免費模式」。
+export type Freebie = "wheel" | "lottery" | "card";
+// 目標分頁僅取「回合操作分頁」子集（wheel / lottery / shop），故型別收斂到這三者，
+// 方便 MapView 直接塞進 turnAction.tab（TurnActionTab）而不需再轉型。
+export const FREEBIE_TAB: Record<Freebie, "wheel" | "lottery" | "shop"> = {
+  wheel: "wheel",
+  lottery: "lottery",
+  card: "shop",
+};
+
 export function squareToTab(sq: BoardSquare): { tab: MapTab; region?: RegionCode } {
   switch (sq.kind) {
     case "PROPERTY":
