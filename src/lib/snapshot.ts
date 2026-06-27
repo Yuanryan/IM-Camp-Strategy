@@ -12,6 +12,7 @@ import {
   findMonopoly,
   evalObjectiveProgress,
   TASK_GOOD_CARDS,
+  CURSE_CARDS,
   TOLL_RATE,
   type RegionCode,
   type TaskKind as TaskKindT,
@@ -65,7 +66,8 @@ export type ObjectiveView = {
   target: number;
   done: boolean; // 已達標（下次回合結算將自動發獎）
   rewardCoins: number;
-  description: string; // 任務說明（取自 TASK_GOOD_CARDS[].rewardText）
+  description: string; // 任務說明（好運：TASK_GOOD_CARDS[].rewardText；詛咒：CURSE_CARDS[].taskText）
+  isCurse: boolean;    // true = 詛咒卡（達標＝解咒 + 補償）
 };
 
 export type TeamView = {
@@ -313,8 +315,10 @@ export async function getSnapshot(): Promise<Snapshot> {
         baseline,
         cur,
       );
-      const description = TASK_GOOD_CARDS.find((c) => c.name === o.cardName)?.rewardText ?? "";
-      return { id: o.id, cardName: o.cardName, taskKind: o.taskKind as TaskKindT, current: p.current, target: p.target, done: p.done, rewardCoins: o.rewardCoins, description };
+      const description = o.isCurse
+        ? (CURSE_CARDS.find((c) => c.name === o.cardName)?.taskText ?? "")
+        : (TASK_GOOD_CARDS.find((c) => c.name === o.cardName)?.rewardText ?? "");
+      return { id: o.id, cardName: o.cardName, taskKind: o.taskKind as TaskKindT, current: p.current, target: p.target, done: p.done, rewardCoins: o.rewardCoins, description, isCurse: o.isCurse };
     });
   };
 

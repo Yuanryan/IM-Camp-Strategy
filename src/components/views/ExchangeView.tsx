@@ -285,7 +285,7 @@ function CardActions({
   properties, teams, actorTeam, act,
 }: {
   properties: PropView[];
-  teams: { id: number; name: string; coins: number }[];
+  teams: { id: number; name: string; coins: number; items?: { effectType: string }[] }[];
   actorTeam: number | "";
   act: ActFn;
 }) {
@@ -296,7 +296,10 @@ function CardActions({
 
   const reset = () => { setSrc(""); setTgt(""); };
 
-  const actorName = teams.find((t) => t.id === actorTeam)?.name;
+  const actorTeamObj = teams.find((t) => t.id === actorTeam);
+  const actorName = actorTeamObj?.name;
+  // 詛咒・封卡（CARD_BLOCK）：出卡隊持有生效中的封卡詛咒道具 → 前端封鎖出卡。
+  const actorBlocked = (actorTeamObj?.items ?? []).some((i) => i.effectType === EffectType.CARD_BLOCK);
   // 基底過濾
   const owned = properties.filter((p) => p.ownerTeamId != null);
   const mine = actorTeam === "" ? [] : owned.filter((p) => p.ownerTeamId === actorTeam);
@@ -307,6 +310,7 @@ function CardActions({
 
   const run = async () => {
     if (!card) return "請先選卡片";
+    if (actorBlocked) return "此隊中了詛咒，無法對其他隊伍出功能卡";
     if (meta?.needsActor && actorTeam === "") return "請先在上方選作用小隊（出卡隊）";
     if (card === "seizeLand") {
       if (tgt === "") return "請選要收購的對手土地";
@@ -324,6 +328,12 @@ function CardActions({
   return (
     <Card title="功能卡效果（不動產相關）">
       <p className="mb-3 text-xs text-amber-300/80">⚠ 關主收到卡牌後再執行</p>
+
+      {actorBlocked && (
+        <div className="mb-3 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/10 px-3 py-2 text-sm text-fuchsia-200">
+          ☠ <b className="text-fuchsia-100">{actorName ?? "此隊"}</b> 中了詛咒，無法對其他隊伍出功能卡。完成解咒任務後即可解除。
+        </div>
+      )}
 
       {/* 選卡 */}
       <div className="mb-4 flex flex-wrap gap-2">
@@ -362,7 +372,8 @@ function CardActions({
             </p>
           )}
 
-          <ActionButton label={`執行 ${meta.name}`} className="btn-emerald"
+          <ActionButton label={actorBlocked ? "詛咒中・無法出卡" : `執行 ${meta.name}`} className="btn-emerald"
+            disabled={actorBlocked}
             onAction={run} />
         </div>
       )}

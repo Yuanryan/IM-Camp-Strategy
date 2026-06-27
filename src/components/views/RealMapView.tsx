@@ -11,6 +11,7 @@ import {
   useCardSettle,
   InstantCardPanel,
   TaskObjectivePanel,
+  CursePanel,
   type DrawnCard,
 } from "@/components/views/LuckDraw";
 import {
@@ -1244,6 +1245,13 @@ export function RealMapView({
                     registered={!!cardResult}
                     onRegistered={() => { void mutate(); setCardResult({ message: `已發放任務・${drawn.card.name}` }); }}
                   />
+                ) : drawn.side === "curse" ? (
+                  <CursePanel
+                    drawn={drawn}
+                    team={team}
+                    registered={!!cardResult}
+                    onRegistered={() => { void mutate(); setCardResult({ message: `已套用詛咒・${drawn.card.name}` }); }}
+                  />
                 ) : (
                   <InstantCardPanel
                     drawn={drawn}
@@ -1451,11 +1459,11 @@ function PhaseResult({
           {objectives.map((o) => (
             <div key={o.id} className="flex items-start justify-between gap-4 border-b border-white/5 py-1 text-sm last:border-0">
               <span className="min-w-0">
+                {o.isCurse && <span className="mr-1 font-bold text-fuchsia-300">☠ 詛咒</span>}
                 <span className="text-slate-200">{o.description}</span>
-                {/* <span className="mt-0.5 block text-xs leading-snug text-slate-500">{o.description}</span> */}
               </span>
-              <span className={`shrink-0 font-mono font-extrabold tabular-nums ${o.done ? "text-emerald-400" : "text-slate-400"}`}>
-                {o.done ? "已完成任務 ✓" : `${o.current}/${o.target}`}
+              <span className={`shrink-0 font-mono font-extrabold tabular-nums ${o.done ? "text-emerald-400" : o.isCurse ? "text-rose-300" : "text-slate-400"}`}>
+                {o.done ? (o.isCurse ? "已解咒 ✓" : "已完成任務 ✓") : `${o.current}/${o.target}`}
               </span>
             </div>
           ))}

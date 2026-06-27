@@ -6,6 +6,7 @@ import {
   GOOD_LUCK_CARDS,
   BAD_LUCK_CARDS,
   TASK_GOOD_CARDS,
+  CURSE_CARDS,
   MAX_OPEN_TASKS,
   EffectType,
   stackEffects,
@@ -16,6 +17,7 @@ import {
   isTaskGood,
   type GoodCard,
   type BadCard,
+  type CurseCard,
   type TaskKind,
   type UndoRecipe,
 } from "@/lib/game";
@@ -32,28 +34,39 @@ const REWARD_TAB_HINT: Record<string, string> = {
 // ── 一張抽到的卡 + 分類旗標 ──────────────
 //  instant：可在面板就地結算的即時卡（直接獎勵好運卡 / 一翻兩瞪眼厄運卡）
 //  task   ：任務目標型好運卡（抽到即登記，回合結算自動評估）
+//  curse  ：詛咒卡（厄運抽到，登記即發詛咒道具；完成解咒任務 → 道具失效 + 獎勵）
 export type DrawnCard =
   | { side: "good"; card: GoodCard; instant: boolean; task: boolean }
-  | { side: "bad"; card: BadCard; instant: boolean; task: boolean };
+  | { side: "bad"; card: BadCard; instant: boolean; task: boolean }
+  | { side: "curse"; card: CurseCard; instant: false; task: true };
 
-// 隨機抽一張卡。好運卡牌池＝直接獎勵卡 + 任務目標卡。
+// 隨機抽一張卡。
+//  好運卡牌池＝直接獎勵卡 + 任務目標卡；厄運卡牌池＝直接懲罰牌 + 詛咒卡。
 // open.kinds：該隊已有進行中的任務種類（避免同種堆疊）；open.count：進行中任務總數，
-// 達 MAX_OPEN_TASKS 即整個任務池排除（只抽直接獎勵卡）。
+// 達 MAX_OPEN_TASKS 即整個任務池 / 詛咒池排除（只抽直接卡）。
 export function drawCard(
   side: "good" | "bad",
   open: { kinds: Set<TaskKind>; count: number } = { kinds: new Set(), count: 0 },
 ): DrawnCard {
+  const atCap = open.count >= MAX_OPEN_TASKS;
   if (side === "good") {
     // 任務已達上限 → 任務池整個排除；否則排除已進行中的種類。
-    const atCap = open.count >= MAX_OPEN_TASKS;
     const taskPool = atCap
       ? []
       : TASK_GOOD_CARDS.filter((c) => c.taskKind && !open.kinds.has(c.taskKind));
     const card = pick([...GOOD_LUCK_CARDS, ...taskPool]);
     return { side, card, instant: isInstantGood(card), task: isTaskGood(card) };
   }
-  const card = pick(BAD_LUCK_CARDS);
-  return { side, card, instant: isInstantBad(card), task: false };
+  // 厄運：直接懲罰牌 + 詛咒卡（達上限 / 同種已存在則排除該詛咒卡，避免堆疊）。
+  const cursePool = atCap ? [] : CURSE_CARDS.filter((c) => !open.kinds.has(c.taskKind));
+  const card = pick<BadCard | CurseCard>([...BAD_LUCK_CARDS, ...cursePool]);
+  if (isCurseCard(card)) return { side: "curse", card, instant: false, task: true };
+  return { side: "bad", card, instant: isInstantBad(card), task: false };
+}
+
+// 型別守衛：詛咒卡有 curseAsset / taskKind，直接懲罰牌（BadCard）沒有。
+function isCurseCard(c: BadCard | CurseCard): c is CurseCard {
+  return "curseAsset" in c;
 }
 
 // ── 結算 hook：把卡面金額（含動產效果、事件加倍）寫進後端，回傳統一的 settle / 預覽標籤 ──
@@ -288,6 +301,8 @@ export function InstantCardPanel({
     );
   }
 
+  // 詛咒卡不在此面板處理（由 CursePanel 負責）；防呆。
+  if (drawn.side === "curse") return null;
   // 即時厄運卡：無題庫 / 無判定，一鍵套用各 outcome。
   const bad = drawn.card;
   return (
@@ -359,6 +374,48 @@ export function TaskObjectivePanel({
   );
 }
 
+// ── 詛咒卡：按「套用詛咒」登記 → 立刻發詛咒道具（負面效果生效中）並登記解咒任務。──
+// 完成解咒任務後回合結算會自動令詛咒道具失效並發 rewardCoins 補償。此面板只負責登記。
+export function CursePanel({
+  drawn,
+  team,
+  registered = false,
+  onRegistered,
+}: {
+  drawn: Extract<DrawnCard, { side: "curse" }>;
+  team: number | "";
+  registered?: boolean;
+  onRegistered?: () => void;
+}) {
+  const curse = drawn.card;
+
+  const register = async (): Promise<{ message: string }> => {
+    if (team === "") return { message: "請先選小隊" };
+    await postJson("/api/map/curse", { teamId: team, cardName: curse.name });
+    onRegistered?.();
+    return { message: `已套用詛咒・${curse.name}` };
+  };
+
+  return (
+    <div className="rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/5 p-3 ring-1 ring-fuchsia-500/15">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="rounded-md bg-fuchsia-600/25 px-2 py-0.5 text-[11px] font-bold text-fuchsia-200">
+          厄運卡・詛咒
+        </span>
+        <span className="font-bold text-fuchsia-100">{curse.name}</span>
+      </div>
+      <p className="mb-1 text-sm text-rose-200">☠ {curse.curseText}</p>
+      <p className="mb-3 text-sm text-slate-200">解咒：{curse.taskText}</p>
+      <ActionButton
+        label={registered ? "已套用詛咒" : "套用詛咒"}
+        className="w-full btn-rose"
+        disabled={team === "" || registered}
+        onAction={register}
+      />
+    </div>
+  );
+}
+
 // ── 原「光源點 / 迷霧區」抽卡卡（地圖中控站分頁沿用）：抽好運 / 厄運，皆為即時卡就地呈現。 ──
 export function LuckDraw({
   team,
@@ -390,7 +447,7 @@ export function LuckDraw({
           抽好運卡
         </button>
         <button
-          onClick={() => setDrawn(drawCard("bad"))}
+          onClick={() => setDrawn(drawCard("bad", openArg))}
           className="btn-rose rounded-xl py-3 text-sm font-bold transition active:scale-95"
         >
           抽厄運卡
@@ -399,6 +456,8 @@ export function LuckDraw({
 
       {drawn && drawn.side === "good" && drawn.task ? (
         <TaskObjectivePanel drawn={drawn} team={team} onRegistered={() => { void onDone(); clear(); }} />
+      ) : drawn && drawn.side === "curse" ? (
+        <CursePanel drawn={drawn} team={team} onRegistered={() => { void onDone(); clear(); }} />
       ) : drawn ? (
         <InstantCardPanel
           drawn={drawn}

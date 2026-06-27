@@ -39,6 +39,7 @@ import {
   TOLL_RATE,
   REGIONS,
   TASK_GOOD_CARDS,
+  CURSE_CARDS,
   MAX_OPEN_TASKS,
   findMonopoly,
   evalObjectiveProgress,
@@ -1366,6 +1367,53 @@ export async function createObjective(params: { teamId: number; cardName: string
   });
 }
 
+// 詛咒卡：抽厄運抽到時登記。依 cardName 在 CURSE_CARDS 找規格（不信任前端），
+// 立刻發放對應詛咒道具（curseAsset，負面效果生效中），並登記一個 isCurse 任務目標。
+// 完成解咒任務後 evaluateAndSettleObjectives 會令該詛咒道具失效並發 rewardCoins 補償。
+// 同 taskKind 已有進行中目標時拒絕（避免堆疊；抽卡端本就排除，這是安全網）。
+export async function createCurse(params: { teamId: number; cardName: string; byToken?: string }) {
+  const { teamId, cardName, byToken } = params;
+  const card = CURSE_CARDS.find((c) => c.name === cardName);
+  if (!card) throw new Error("找不到詛咒卡");
+  const taskKind = card.taskKind;
+  const targetRegion = card.targetRegion ?? null;
+  return prisma.$transaction(async (tx) => {
+    const openCount = await tx.teamObjective.count({ where: { teamId, completedAt: null } });
+    if (openCount >= MAX_OPEN_TASKS) throw new Error(`進行中任務已達上限（${MAX_OPEN_TASKS}）`);
+    const existing = await tx.teamObjective.findFirst({ where: { teamId, taskKind, completedAt: null } });
+    if (existing) throw new Error("已有相同進行中任務");
+
+    // 發放詛咒道具（負面效果即時生效；defaultUses 一般為永久 null，靠解咒結束）。
+    const asset = await tx.movableAsset.findUnique({ where: { name: card.curseAsset } });
+    if (!asset) throw new Error(`找不到詛咒道具模板「${card.curseAsset}」（請重新 seed）`);
+    const curseItem = await tx.teamItem.create({
+      data: { teamId, assetId: asset.id, note: `詛咒・${card.name}`, usesRemaining: asset.defaultUses ?? null },
+    });
+    await logLedger(tx, { teamId, kind: "items", delta: 0, note: `詛咒卡 ${card.name}：${asset.name}`, byToken });
+
+    const base = await queryObjectiveState(tx, teamId, targetRegion);
+    const obj = await tx.teamObjective.create({
+      data: {
+        teamId,
+        cardName: card.name,
+        taskKind,
+        isCurse: true,
+        curseItemId: curseItem.id,
+        targetCount: card.targetCount ?? 1,
+        targetRegion,
+        rewardCoins: card.rewardCoins,
+        baseTradeCount: base.tradeCount,
+        basePropertyCount: base.propertyCount,
+        baseLevel3Count: base.level3Count,
+        baseCardUseCount: base.cardUseCount,
+        baseAuctionWins: base.auctionWins,
+        baseMonopolyRegions: base.monopolyRegions.join(","),
+      },
+    });
+    return { ok: true, objectiveId: obj.id, cardName: obj.cardName, curseItemId: curseItem.id };
+  });
+}
+
 // 把 DB 列轉成 evalObjectiveProgress 需要的 baseline。
 function baselineOf(o: {
   baseTradeCount: number; basePropertyCount: number; baseLevel3Count: number;
@@ -1397,17 +1445,25 @@ export async function evaluateAndSettleObjectives(params: { teamId: number; byTo
         cur,
       );
       if (!progress.done) continue;
+      const noteLabel = o.isCurse ? `解除詛咒・${o.cardName}` : `任務完成・${o.cardName}`;
       const pay = await _applyGoodCardTx(tx, {
         teamId,
         baseReward: o.rewardCoins,
-        note: `任務完成・${o.cardName}`,
+        note: noteLabel,
         byToken,
       });
+      // 詛咒卡：解咒＝令詛咒道具失效（active=false），負面效果即停。
+      if (o.isCurse && o.curseItemId != null) {
+        await tx.teamItem.updateMany({
+          where: { id: o.curseItemId, teamId },
+          data: { active: false },
+        });
+      }
       await tx.teamObjective.update({
         where: { id: o.id },
         data: { completedAt: new Date(), rewardLedgerId: pay.undo.ledgerIds[0] ?? null },
       });
-      settled.push({ objectiveId: o.id, cardName: o.cardName, reward: pay.finalReward, undo: pay.undo });
+      settled.push({ objectiveId: o.id, cardName: noteLabel, reward: pay.finalReward, undo: pay.undo });
     }
     return { ok: true, settled };
   });

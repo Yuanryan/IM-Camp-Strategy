@@ -299,6 +299,7 @@ export const EffectType = {
   PIRACY:            "PIRACY",            // 俠盜印記・懸賞標記：被標記隊收過路費時抽成（僅當俠盜較窮才生效）
   MOVEMENT:          "MOVEMENT",          // 主動移動道具：關主在遊戲地圖按鈕觸發，改變本次擲骰步數（見 MovementMode）
   REMINDER:          "REMINDER",          // 無計算，僅提醒關主
+  CARD_BLOCK:        "CARD_BLOCK",        // 詛咒：禁止對其他隊伍出功能卡（前端封鎖出卡操作），解咒後解除
 } as const;
 export type EffectType = typeof EffectType[keyof typeof EffectType];
 
@@ -328,6 +329,7 @@ export const EFFECT_TYPE_LABELS: Record<EffectType, string> = {
   PIRACY:            "海盜旗",
   MOVEMENT:          "主動移動",
   REMINDER:          "提醒（無計算）",
+  CARD_BLOCK:        "詛咒・封卡",
 };
 
 // ── 主動移動道具（MOVEMENT）─────────────────────────────────
@@ -387,10 +389,11 @@ export const ITEM_GRADE_COLORS: Record<string, string> = {
   S: "text-amber-300 border-amber-400/60 bg-amber-500/10",
   A: "text-violet-300 border-violet-400/60 bg-violet-500/10",
   B: "text-slate-300 border-slate-400/40 bg-white/5",
+  C: "text-rose-300 border-rose-400/40 bg-rose-500/5", // 詛咒道具專用稀有度
 };
 
-// 稀有度排序權重：S < A < B（數字越小越靠前）；未知級別排最後。
-const GRADE_RANK: Record<string, number> = { S: 0, A: 1, B: 2 };
+// 稀有度排序權重：S < A < B < C（數字越小越靠前）；未知級別排最後。
+const GRADE_RANK: Record<string, number> = { S: 0, A: 1, B: 2, C: 3 };
 export function GRADE_ORDER(grade: string): number {
   return GRADE_RANK[grade] ?? 99;
 }
@@ -504,11 +507,15 @@ export function spinWheelCustom(options?: { excludeMultipliers?: number[] }): nu
 // 動產模板種子資料（seeded to DB via prisma/seed.ts）
 // defaultUses: null=永久；n=效果觸發 n 次後失效
 // 神秘商店：依等級給定預設售價（光幣）與上架庫存。admin 可逐項覆寫。
-export const ITEM_GRADE_PRICE: Record<string, number> = { S: 2000, A: 1000, B: 400 };
+export const ITEM_GRADE_PRICE: Record<string, number> = { S: 2000, A: 1000, B: 400, C: 0 };
 export const DEFAULT_SHOP_STOCK = 2; // 每件動產預設上架 2 個
 
 // 詛咒道具不該擺上商店（偽裝成 B 級的負面效果），seed 時 shopStock 設 0。
-export const CURSED_ASSET_NAMES = new Set(["管圖的廢棄麻將桌", "必修衝堂", "機車違停拖吊單"]);
+// 含舊版偽裝詛咒道具與詛咒卡（CURSE_CARDS）專屬的詛咒道具。
+export const CURSED_ASSET_NAMES = new Set([
+  "管圖的廢棄麻將桌", "必修衝堂", "機車違停拖吊單",
+  "繳不完的卡費", "教務系統大當機", "宿網被斷線", "二一警告", "排到地獄籤",
+]);
 
 // 好運卡「神秘禮物」發放的「神秘商店五折券」：1 次性 MYSTERY_SHOP_PRICE −50%，
 // 自動套用到下一次「神秘商店購買動產或功能卡」（見 service.buyShopItem / sellCard）。
@@ -575,6 +582,13 @@ export const MOVABLE_ASSET_SEED: {
   { name: "管圖的廢棄麻將桌",     grade: "B", effectType: "SHOP_PRICE",        effectValue:  0.10, condition: null, defaultUses: 2,    description: "購買 / 升級費用 +10%（詛咒，2 次）— 廢棄桌帶賽" },
   { name: "必修衝堂",             grade: "B", effectType: "TOLL_INCOME",       effectValue: -0.15, condition: null, defaultUses: 3,    description: "收取過路費時少收 15%（詛咒，3 次）— 卡到時間" },
   { name: "機車違停拖吊單",       grade: "B", effectType: "SHOP_PRICE",        effectValue:  0.10, condition: null, defaultUses: 2,    description: "購買 / 升級費用 +10%（詛咒，2 次）— 荷包失血" },
+  // ── 詛咒卡專屬詛咒道具（厄運抽到時發放；完成詛咒任務即失效解除）。
+  //    皆為永久（defaultUses=null）：靠「解除詛咒任務」結束，而非次數耗盡。──
+  { name: "繳不完的卡費",         grade: "C", effectType: "COINS_PER_ROUND",   effectValue: -100,  condition: null, defaultUses: null, description: "每回合失去 100 光幣（詛咒）— 帳單追著你跑，快完成任務解咒" },
+  { name: "教務系統大當機",       grade: "C", effectType: "COINS_PER_ROUND",   effectValue: -80,   condition: null, defaultUses: null, description: "每回合失去 80 光幣（詛咒）— 選課失利連環賠，完成任務即解咒" },
+  { name: "宿網被斷線",           grade: "C", effectType: "TOLL_INCOME",       effectValue: -0.30, condition: null, defaultUses: null, description: "收取過路費時少收 30%（詛咒）— 收租也卡頓，完成任務即解咒" },
+  { name: "二一警告",             grade: "C", effectType: "CARD_BLOCK",        effectValue:  0,    condition: null, defaultUses: null, description: "詛咒：無法對其他隊伍出功能卡 — 忙著被當，完成任務即解咒" },
+  { name: "排到地獄籤",           grade: "C", effectType: "CARD_BLOCK",        effectValue:  0,    condition: null, defaultUses: null, description: "詛咒：無法對其他隊伍出功能卡 — 衰運纏身，完成任務即解咒" },
 ];
 
 // ── 好運卡 / 厄運卡（光源點 / 迷霧區抽卡）─────────────────────
@@ -652,16 +666,15 @@ export const GOOD_LUCK_CARDS: GoodCard[] = [
   { name: "傳送門", difficulty: "直接", reward: { kind: "move" }, rewardText: "直接移動到指定格（由關主指定並移動棋子）。" },
 ];
 
-// 厄運卡：懲罰任務牌（一翻兩瞪眼，無題庫 / 判定）
+// 厄運卡：直接懲罰牌（一翻兩瞪眼，無題庫 / 判定）。關主一鍵套用單一 outcome（直接扣光幣）。
+// 厄運抽牌池＝這些直接懲罰牌 + 詛咒卡（CURSE_CARDS）。
 export const BAD_LUCK_CARDS: BadCard[] = [
-  { name: "大頭貼時刻", kind: "懲罰任務牌", content: "全隊鬼臉五連拍，關主拍照存檔", difficulty: "簡單", outcomes: [{ label: "完成", deduct: 0 }, { label: "未完成", deduct: 100 }] },
-  { name: "訓練時間", kind: "懲罰任務牌", content: "每人捲腹 10 下", difficulty: "簡單", outcomes: [{ label: "完成", deduct: 0 }, { label: "未完成", deduct: 100 }] },
-  { name: "神秘書法家", kind: "懲罰任務牌", content: "用屁股寫指定國字，隊輔猜對才完成", difficulty: "中等", outcomes: [{ label: "猜中", deduct: 0 }, { label: "沒猜中", deduct: 100 }] },
-  { name: "霧中魅力秀", kind: "懲罰任務牌", content: "輪流擺自選姿勢，關主評分", difficulty: "簡單", outcomes: [{ label: "及格", deduct: 0 }, { label: "不及格", deduct: 200 }] },
-  { name: "影焰跳操", kind: "懲罰任務牌", content: "每人開合跳 20 下", difficulty: "中等", outcomes: [{ label: "完成", deduct: 0 }, { label: "未完成", deduct: 100 }] },
-  { name: "友善外交", kind: "懲罰任務牌", content: "找三個工人，分別說出各自三個優點", difficulty: "簡單", outcomes: [{ label: "完成", deduct: 0 }, { label: "沒說", deduct: 400 }] },
-  { name: "美麗指數", kind: "懲罰任務牌", content: "說出本隊最帥或最美的人並說明理由", difficulty: "簡單", outcomes: [{ label: "完成", deduct: 0 }] },
-  { name: "部首大考驗", kind: "懲罰任務牌", content: "90 秒內寫出指定數量含該部首的字", difficulty: "困難", outcomes: [{ label: "完成", deduct: 0 }, { label: "失敗", deduct: 100 }] },
+  { name: "繳稅日", kind: "懲罰任務牌", content: "國稅局來敲門，直接補繳 150 光幣。", outcomes: [{ label: "扣款", deduct: 150 }] },
+  { name: "宵夜破費", kind: "懲罰任務牌", content: "嘴饞訂了一堆宵夜，失去 100 光幣。", outcomes: [{ label: "扣款", deduct: 100 }] },
+  { name: "手機進水", kind: "懲罰任務牌", content: "手機泡水送修，失去 200 光幣。", outcomes: [{ label: "扣款", deduct: 200 }] },
+  { name: "停車費爆表", kind: "懲罰任務牌", content: "違停被開單，失去 120 光幣。", outcomes: [{ label: "扣款", deduct: 120 }] },
+  { name: "悠遊卡掉了", kind: "懲罰任務牌", content: "悠遊卡連同餘額一起遺失，失去 80 光幣。", outcomes: [{ label: "扣款", deduct: 80 }] },
+  { name: "重補修費", kind: "懲罰任務牌", content: "被當要重修，繳交重補修費 250 光幣。", outcomes: [{ label: "扣款", deduct: 250 }] },
 ];
 
 // ── 卡片分類：所有好運 / 厄運卡皆為即時結算卡（可在右側面板就地處理）。──
@@ -705,6 +718,52 @@ export const TASK_GOOD_CARDS: GoodCard[] = [
   { name: "區域霸主", difficulty: "任務", taskKind: TaskKind.MONOPOLY_REGION, rewardCoins: 450,
     rewardText: "獨佔一個區域" },
 ];
+
+// ── 詛咒卡（厄運抽牌池）─────────────────────────────────────────
+// 厄運抽到詛咒卡：立刻發一張「詛咒道具」（curseAsset，負面效果生效中），並登記一個任務目標。
+// 完成任務（與好運任務同一套 TaskKind 自動評估）即「解除詛咒」：詛咒道具失效 + 發 rewardCoins 補償。
+// curseAsset 必須對應 MOVABLE_ASSET_SEED 中的詛咒道具名稱；rewardCoins 為解咒獎勵（佔位值，可調）。
+export type CurseCard = {
+  name: string;
+  curseAsset: string;   // 抽到即發放的詛咒道具名（見 MOVABLE_ASSET_SEED）
+  curseText: string;    // 詛咒內容說明（顯示給關主 / 玩家）
+  taskKind: TaskKind;   // 解咒任務種類（沿用好運任務自動評估）
+  targetCount?: number; // 交易 / 拍賣 次數目標；其餘 kind 用 1
+  targetRegion?: RegionCode | null; // BUY_LAND 指定區；null = 任一區
+  rewardCoins: number;  // 解咒獎勵光幣
+  taskText: string;     // 解咒條件說明
+};
+
+export const CURSE_CARDS: CurseCard[] = [
+  { name: "卡費追殺令", curseAsset: "繳不完的卡費",
+    curseText: "每回合失去 100 光幣，直到解除詛咒。",
+    taskKind: TaskKind.BUY_LAND, targetRegion: null, rewardCoins: 200,
+    taskText: "買下任一塊地即可解除詛咒（並獲 200 光幣）。" },
+  { name: "選課地獄", curseAsset: "教務系統大當機",
+    curseText: "每回合失去 80 光幣，直到解除詛咒。",
+    taskKind: TaskKind.TRADE_N_TIMES, targetCount: 2, rewardCoins: 250,
+    taskText: "跟其他隊伍完成 2 次交易即可解除詛咒（並獲 250 光幣）。" },
+  { name: "斷網風暴", curseAsset: "宿網被斷線",
+    curseText: "收取過路費時少收 30%，直到解除詛咒。",
+    taskKind: TaskKind.BUILD_LEVEL3, rewardCoins: 300,
+    taskText: "蓋出一棟三級大樓即可解除詛咒（並獲 300 光幣）。" },
+  { name: "二一危機", curseAsset: "二一警告",
+    curseText: "無法對其他隊伍出功能卡，直到解除詛咒。",
+    taskKind: TaskKind.WIN_AUCTION_N, targetCount: 1, rewardCoins: 250,
+    taskText: "在拍賣中得標 1 次即可解除詛咒（並獲 250 光幣）。" },
+  { name: "地獄籤運", curseAsset: "排到地獄籤",
+    curseText: "無法對其他隊伍出功能卡，直到解除詛咒。",
+    taskKind: TaskKind.BUY_LAND, targetRegion: null, rewardCoins: 220,
+    taskText: "買下任一塊地即可解除詛咒（並獲 220 光幣）。" },
+];
+
+// 詛咒卡：抽厄運卡時自 CURSE_CARDS 排除該隊已有進行中的 taskKind（避免同種堆疊），加權隨機抽一張。
+// 全部被排除（或達任務上限）時回 null（呼叫端可改抽即時厄運卡 / 提示）。
+export function pickCurseCard(openKinds: Set<TaskKind>, rng: () => number = Math.random): CurseCard | null {
+  const pool = CURSE_CARDS.filter((c) => !openKinds.has(c.taskKind));
+  if (pool.length === 0) return null;
+  return weightedPick(pool.map((value) => ({ value, weight: 1 })), rng);
+}
 
 // 計算某區獨佔隊伍：需有 ≥1 棟三級 → 最多三級 → 再比總持有數 → 平手則無。
 // 與 service.payToll 的獨佔判定一致（含三級門檻）。snapshot 與 service 共用此單一事實來源。

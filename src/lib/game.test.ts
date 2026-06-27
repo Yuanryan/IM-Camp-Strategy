@@ -379,6 +379,7 @@ describe("effect 覆蓋率", () => {
       EffectType.PIRACY,
       EffectType.MOVEMENT,
       EffectType.REMINDER,
+      EffectType.CARD_BLOCK, // 詛咒・封卡：無數值公式，純前端封鎖出卡（同 REMINDER 為標記型）
     ]);
     for (const t of Object.values(EffectType)) {
       expect(tested.has(t)).toBe(true);
@@ -601,9 +602,9 @@ describe("MOVABLE_ASSET_SEED", () => {
     }
   });
 
-  it("grade 僅限 S / A / B", () => {
+  it("grade 僅限 S / A / B / C（C 為詛咒道具）", () => {
     for (const a of MOVABLE_ASSET_SEED) {
-      expect(["S", "A", "B"]).toContain(a.grade);
+      expect(["S", "A", "B", "C"]).toContain(a.grade);
     }
   });
 
@@ -621,6 +622,7 @@ describe("MOVABLE_ASSET_SEED", () => {
       EffectType.WHEEL_NO_ZERO,
       EffectType.WHEEL_ON_GOOD_CARD,
       EffectType.DOUBLE_OR_NOTHING,
+      EffectType.CARD_BLOCK, // 詛咒・封卡：純標記，effectValue 恆 0（前端封鎖出卡）
     ]);
     for (const a of MOVABLE_ASSET_SEED) {
       // MOVEMENT 的 effectValue 語意依模式而定（DOUBLE 模式為 0），另由 MOVEMENT 區塊驗證

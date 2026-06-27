@@ -109,6 +109,7 @@ enum ItemEffectType {
   PIRACY
   MOVEMENT
   REMINDER
+  CARD_BLOCK
 }
 
 // 動產模板：定義效果種類與強度
@@ -241,12 +242,16 @@ model Trade {
 
 // 好運卡「任務型」目標：抽卡當下登記，記下各項基準（since-draw），
 // 之後該隊回合結算（地圖階段 2）時自動評估是否達標，達標即發獎並 completedAt。
+// 詛咒卡（isCurse=true）共用同一張表：抽卡即發一張詛咒道具（curseItemId）並登記任務目標，
+// 達標時除了發 rewardCoins 獎勵，還會把該詛咒道具失效（解除詛咒）。
 model TeamObjective {
   id                  Int       @id @default(autoincrement())
   teamId              Int
   team                Team      @relation(fields: [teamId], references: [id])
-  cardName            String // 對應 TASK_GOOD_CARDS[].name（顯示用）
+  cardName            String // 對應 TASK_GOOD_CARDS[] / CURSE_CARDS[].name（顯示用）
   taskKind            String // TaskKind 值
+  isCurse             Boolean   @default(false) // true = 詛咒卡（厄運抽到，達標解咒 + 獎勵）
+  curseItemId         Int? // isCurse 時，抽卡發放的詛咒 TeamItem id，達標時令其失效
   targetCount         Int       @default(1) // 交易 / 拍賣 次數；其餘用 1
   targetRegion        String? // BUY_LAND 指定區（AURORA/SPECTRA/EMBER/HAVEN）；null = 任一區
   rewardCoins         Int
