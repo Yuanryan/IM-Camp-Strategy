@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { SelectZeroNumberInput } from "@/components/SelectZeroNumberInput";
+import { SystemAmbientBackground } from "@/components/SystemAmbientBackground";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,9 +29,12 @@ export default function RootLayout({
       lang="zh-Hant"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col text-slate-100">
-        <SelectZeroNumberInput />
-        {children}
+      <body className="relative min-h-full flex flex-col overflow-x-hidden text-slate-100">
+        <SystemAmbientBackground />
+        <div className="system-content-shell flex min-h-full flex-1 flex-col">
+          <SelectZeroNumberInput />
+          {children}
+        </div>
       </body>
     </html>
   );

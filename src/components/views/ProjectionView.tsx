@@ -54,7 +54,7 @@ export function ProjectionView() {
 
   return (
     <>
-      <ProjectionArenaDashboard snap={snap} />
+      <ProjectionArenaDashboard snap={snap} lotteryAnimating={activeAnimation?.kind === "lottery"} />
 
       <HammerImagePreloader />
 

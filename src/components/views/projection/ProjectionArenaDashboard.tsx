@@ -13,6 +13,7 @@ import {
 
 import { AnimatedNum, PriceTag } from "@/components/ui";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
+import { JackpotBallCanvas, type JackpotBallDef } from "./JackpotBallCanvas";
 import { REGIONS, REGION_UI, type RegionCode } from "@/lib/game";
 import {
   getProjectionLevelTier,
@@ -36,12 +37,13 @@ const RANK_TIER_CLASS: Record<ProjectionRankTier, string> = {
   standard: "projection-rank-standard",
 };
 
-const JACKPOT_BALLS = [
-  3, 7, 9, 12, 14, 18, 21, 23, 27, 31, 33, 36, 39, 42, 45, 49, 52, 56, 61,
-  66,
-];
-
-export function ProjectionArenaDashboard({ snap }: { snap: Snapshot }) {
+export function ProjectionArenaDashboard({
+  snap,
+  lotteryAnimating,
+}: {
+  snap: Snapshot;
+  lotteryAnimating?: boolean;
+}) {
   const ranking = [...snap.teams].sort((a, b) => b.netWorth - a.netWorth);
   return (
     <div
@@ -53,7 +55,12 @@ export function ProjectionArenaDashboard({ snap }: { snap: Snapshot }) {
 
         <main className="grid min-h-0 grid-cols-[23.5rem_minmax(0,1fr)] gap-3">
           <aside className="grid min-h-0 grid-rows-[8.75rem_minmax(0,1fr)] gap-3">
-            <JackpotCard pool={snap.lottery.pool} />
+            <JackpotCard
+              pool={snap.lottery.pool}
+              numbers={snap.lottery.numbers}
+              teams={snap.teams}
+              frozen={lotteryAnimating ?? false}
+            />
             <ArenaLeaderboard ranking={ranking} />
           </aside>
 
@@ -327,20 +334,43 @@ function RankBadge({
   );
 }
 
-function JackpotCard({ pool }: { pool: number }) {
+function makeBalls(
+  numbers: Snapshot["lottery"]["numbers"],
+  teams: TeamView[],
+): JackpotBallDef[] {
+  return numbers.map((n) => {
+    const team = teams.find((t) => t.id === n.teamId);
+    return {
+      number: n.number,
+      color: team?.color ?? "#6b7280",
+      ringColor: team?.colorRing ?? "#9ca3af",
+    };
+  });
+}
+
+function JackpotCard({
+  pool,
+  numbers,
+  teams,
+  frozen,
+}: {
+  pool: number;
+  numbers: Snapshot["lottery"]["numbers"];
+  teams: TeamView[];
+  frozen: boolean;
+}) {
+  const [displayBalls, setDisplayBalls] = useState<JackpotBallDef[]>(() =>
+    makeBalls(numbers, teams),
+  );
+
+  useEffect(() => {
+    if (!frozen) setDisplayBalls(makeBalls(numbers, teams));
+  }, [frozen, numbers, teams]);
+
   return (
     <section className="projection-jackpot projection-panel relative overflow-hidden rounded-[1.35rem] border-emerald-300/25 px-4 py-3">
-      <div className="absolute inset-0" aria-hidden="true">
-        {JACKPOT_BALLS.map((number, index) => (
-          <span
-            key={number}
-            className="projection-jackpot-ball"
-            style={{ "--ball-index": index } as CSSProperties}
-          >
-            {number}
-          </span>
-        ))}
-      </div>
+      <JackpotBallCanvas balls={displayBalls} />
+      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" aria-hidden="true" />
       <div className="relative z-10 flex h-full items-center justify-between gap-3">
         <div>
           <div className="flex items-center gap-2 text-xs font-black tracking-[0.2em] text-emerald-200/80">

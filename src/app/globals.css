@@ -33,6 +33,20 @@ body {
   overscroll-behavior-y: none;
 }
 
+.system-ambient-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.system-content-shell {
+  position: relative;
+  z-index: 1;
+}
+
 /* 數字：等寬、對齊、科技感 */
 .num {
   font-family: var(--font-geist-mono), "Space Grotesk", ui-monospace, monospace;
@@ -386,10 +400,11 @@ input[type="number"] {
 /* ── 投影：四區競技場儀表板 ─────────────────────────────────── */
 .projection-arena {
   isolation: isolate;
+  position: relative;
   background:
-    radial-gradient(circle at 82% 8%, rgba(34, 211, 238, 0.1), transparent 30%),
-    radial-gradient(circle at 15% 85%, rgba(244, 63, 94, 0.08), transparent 28%),
-    linear-gradient(145deg, rgba(2, 6, 23, 0.78), rgba(3, 7, 18, 0.94));
+    radial-gradient(circle at 82% 8%, rgba(34, 211, 238, 0.12), transparent 30%),
+    radial-gradient(circle at 15% 85%, rgba(244, 63, 94, 0.1), transparent 28%),
+    linear-gradient(145deg, rgba(2, 6, 23, 0.58), rgba(3, 7, 18, 0.82));
 }
 
 .projection-arena::before {
@@ -398,7 +413,7 @@ input[type="number"] {
   z-index: -1;
   pointer-events: none;
   content: "";
-  opacity: 0.2;
+  opacity: 0.14;
   background-image:
     linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
     linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
@@ -720,541 +735,24 @@ input[type="number"] {
     0 0 28px rgba(52, 211, 153, 0.12);
 }
 
-.projection-jackpot-ball {
-  --ball-glow: 52, 211, 153;
-  position: absolute;
-  display: grid;
-  width: 1.45rem;
-  height: 1.45rem;
-  place-items: center;
-  border: 1px solid rgba(var(--ball-glow), 0.42);
-  border-radius: 9999px;
-  color: rgba(240, 253, 250, 0.58);
-  font-family: var(--font-geist-mono), ui-monospace, monospace;
-  font-size: 0.54rem;
-  font-weight: 900;
-  background: radial-gradient(
-    circle at 32% 27%,
-    rgba(255, 255, 255, 0.42),
-    rgba(var(--ball-glow), 0.18) 55%,
-    rgba(var(--ball-glow), 0.02) 72%
-  );
-  box-shadow:
-    0 0 12px rgba(var(--ball-glow), 0.28),
-    inset 0 0 10px rgba(255, 255, 255, 0.08);
-  opacity: 0.82;
-  will-change: transform;
-  animation: projectionBallRicochetA 1.15s linear infinite;
-}
-
-.projection-jackpot-ball:nth-child(1) {
-  top: 8%;
-  left: 4%;
-  animation-delay: -0.2s;
-  animation-duration: 0.98s;
-}
-.projection-jackpot-ball:nth-child(2) {
-  --ball-glow: 34, 211, 238;
-  top: 54%;
-  left: 8%;
-  animation-name: projectionBallRicochetB;
-  animation-delay: -0.74s;
-  animation-duration: 1.18s;
-}
-.projection-jackpot-ball:nth-child(3) {
-  --ball-glow: 250, 204, 21;
-  top: 25%;
-  left: 15%;
-  animation-name: projectionBallRicochetC;
-  animation-delay: -0.43s;
-  animation-duration: 0.86s;
-}
-.projection-jackpot-ball:nth-child(4) {
-  --ball-glow: 244, 63, 94;
-  top: -4%;
-  left: 22%;
-  animation-name: projectionBallRicochetD;
-  animation-delay: -1.05s;
-  animation-duration: 1.28s;
-}
-.projection-jackpot-ball:nth-child(5) {
-  --ball-glow: 168, 85, 247;
-  top: 68%;
-  left: 26%;
-  animation-delay: -0.63s;
-  animation-duration: 0.92s;
-}
-.projection-jackpot-ball:nth-child(6) {
-  --ball-glow: 251, 146, 60;
-  top: 32%;
-  left: 34%;
-  animation-name: projectionBallRicochetB;
-  animation-delay: -0.31s;
-  animation-duration: 1.04s;
-}
-.projection-jackpot-ball:nth-child(7) {
-  top: 4%;
-  left: 43%;
-  animation-name: projectionBallRicochetC;
-  animation-delay: -0.88s;
-  animation-duration: 1.22s;
-}
-.projection-jackpot-ball:nth-child(8) {
-  --ball-glow: 34, 211, 238;
-  top: 73%;
-  left: 48%;
-  animation-name: projectionBallRicochetD;
-  animation-delay: -0.51s;
-  animation-duration: 0.94s;
-}
-.projection-jackpot-ball:nth-child(9) {
-  --ball-glow: 250, 204, 21;
-  top: 42%;
-  left: 57%;
-  animation-delay: -0.17s;
-  animation-duration: 1.34s;
-}
-.projection-jackpot-ball:nth-child(10) {
-  --ball-glow: 244, 63, 94;
-  top: 12%;
-  left: 66%;
-  animation-name: projectionBallRicochetB;
-  animation-delay: -1.12s;
-  animation-duration: 0.88s;
-}
-.projection-jackpot-ball:nth-child(11) {
-  --ball-glow: 168, 85, 247;
-  top: 61%;
-  left: 69%;
-  animation-name: projectionBallRicochetC;
-  animation-delay: -0.38s;
-  animation-duration: 1.12s;
-}
-.projection-jackpot-ball:nth-child(12) {
-  --ball-glow: 251, 146, 60;
-  top: -8%;
-  left: 78%;
-  animation-name: projectionBallRicochetD;
-  animation-delay: -0.81s;
-  animation-duration: 1s;
-}
-.projection-jackpot-ball:nth-child(13) {
-  top: 77%;
-  left: 84%;
-  animation-delay: -0.47s;
-  animation-duration: 1.08s;
-}
-.projection-jackpot-ball:nth-child(14) {
-  --ball-glow: 34, 211, 238;
-  top: 35%;
-  left: 90%;
-  animation-name: projectionBallRicochetB;
-  animation-delay: -0.21s;
-  animation-duration: 1.26s;
-}
-.projection-jackpot-ball:nth-child(15) {
-  --ball-glow: 250, 204, 21;
-  top: 18%;
-  left: 95%;
-  animation-name: projectionBallRicochetC;
-  animation-delay: -0.68s;
-  animation-duration: 0.9s;
-}
-.projection-jackpot-ball:nth-child(16) {
-  --ball-glow: 244, 63, 94;
-  top: 58%;
-  left: 102%;
-  animation-name: projectionBallRicochetD;
-  animation-delay: -1.18s;
-  animation-duration: 1.18s;
-}
-.projection-jackpot-ball:nth-child(17) {
-  --ball-glow: 168, 85, 247;
-  top: 46%;
-  left: -3%;
-  animation-delay: -0.93s;
-  animation-duration: 1.42s;
-}
-.projection-jackpot-ball:nth-child(18) {
-  --ball-glow: 251, 146, 60;
-  top: 4%;
-  left: 53%;
-  animation-name: projectionBallRicochetB;
-  animation-delay: -0.57s;
-  animation-duration: 0.82s;
-}
-.projection-jackpot-ball:nth-child(19) {
-  top: 82%;
-  left: 38%;
-  animation-name: projectionBallRicochetC;
-  animation-delay: -0.27s;
-  animation-duration: 1.16s;
-}
-.projection-jackpot-ball:nth-child(20) {
-  --ball-glow: 34, 211, 238;
-  top: 21%;
-  left: 74%;
-  animation-name: projectionBallRicochetD;
-  animation-delay: -0.99s;
-  animation-duration: 0.96s;
-}
-
-@keyframes projectionBallRicochetA {
-  0% {
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
-  }
-  21% {
-    transform: translate3d(74px, -18px, 0) rotate(98deg) scale(1);
-  }
-  24% {
-    transform: translate3d(78px, -20px, 0) rotate(112deg) scale(1.18, 0.84);
-  }
-  49% {
-    transform: translate3d(146px, 34px, 0) rotate(235deg) scale(1);
-  }
-  52% {
-    transform: translate3d(148px, 38px, 0) rotate(248deg) scale(0.86, 1.16);
-  }
-  76% {
-    transform: translate3d(61px, 70px, 0) rotate(360deg) scale(1);
-  }
-  100% {
-    transform: translate3d(-26px, 8px, 0) rotate(492deg) scale(1);
-  }
-}
-
-@keyframes projectionBallRicochetB {
-  0% {
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
-  }
-  18% {
-    transform: translate3d(-54px, 28px, 0) rotate(-86deg) scale(1);
-  }
-  21% {
-    transform: translate3d(-60px, 31px, 0) rotate(-102deg) scale(0.88, 1.14);
-  }
-  46% {
-    transform: translate3d(24px, -36px, 0) rotate(-220deg) scale(1);
-  }
-  50% {
-    transform: translate3d(31px, -40px, 0) rotate(-238deg) scale(1.16, 0.86);
-  }
-  74% {
-    transform: translate3d(112px, 52px, 0) rotate(-355deg) scale(1);
-  }
-  100% {
-    transform: translate3d(14px, 78px, 0) rotate(-492deg) scale(1);
-  }
-}
-
-@keyframes projectionBallRicochetC {
-  0% {
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
-  }
-  16% {
-    transform: translate3d(42px, 48px, 0) rotate(76deg) scale(1);
-  }
-  19% {
-    transform: translate3d(48px, 52px, 0) rotate(94deg) scale(1.14, 0.88);
-  }
-  43% {
-    transform: translate3d(124px, -28px, 0) rotate(211deg) scale(1);
-  }
-  47% {
-    transform: translate3d(128px, -33px, 0) rotate(228deg) scale(0.88, 1.14);
-  }
-  71% {
-    transform: translate3d(47px, -66px, 0) rotate(352deg) scale(1);
-  }
-  100% {
-    transform: translate3d(-48px, 22px, 0) rotate(520deg) scale(1);
-  }
-}
-
-@keyframes projectionBallRicochetD {
-  0% {
-    transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
-  }
-  20% {
-    transform: translate3d(-86px, -18px, 0) rotate(-104deg) scale(1);
-  }
-  24% {
-    transform: translate3d(-92px, -21px, 0) rotate(-124deg) scale(1.16, 0.86);
-  }
-  52% {
-    transform: translate3d(-16px, 62px, 0) rotate(-260deg) scale(1);
-  }
-  55% {
-    transform: translate3d(-8px, 68px, 0) rotate(-274deg) scale(0.86, 1.16);
-  }
-  78% {
-    transform: translate3d(84px, 22px, 0) rotate(-392deg) scale(1);
-  }
-  100% {
-    transform: translate3d(24px, -58px, 0) rotate(-528deg) scale(1);
-  }
-}
-
 .projection-region-card::before {
   position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
   content: "";
-  opacity: var(--region-motion-opacity, 0.17);
+  opacity: 0.12;
   background:
-    var(
-      --region-motion-bg,
-      linear-gradient(135deg, rgba(var(--region-glow), 0.16), transparent 44%)
+    linear-gradient(135deg, rgba(var(--region-glow), 0.16), transparent 44%),
+    repeating-linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.025) 0 1px,
+      transparent 1px 9px
     );
-  background-position: var(--region-motion-position, 0 0);
-  background-size: var(--region-motion-size, auto);
-  filter: var(--region-motion-filter, none);
-  mix-blend-mode: screen;
-  animation-duration: var(--region-motion-duration, 18s);
-  animation-direction: var(--region-motion-direction, alternate);
-  animation-iteration-count: infinite;
-  animation-name: var(--region-motion-animation, projectionRegionAmbientDrift);
-  animation-timing-function: var(--region-motion-timing, linear);
-  will-change: background-position, opacity, filter;
 }
 
 .projection-region-card[data-controlled="true"]::before {
-  --region-motion-opacity: 0.30;
-  --region-motion-filter: saturate(1.14) contrast(1.06) brightness(1.05);
-}
-
-/* 極光金域：高級金色極光、柔和幣環、少量金粉 */
-.projection-region-card[data-region="AURORA"]::before {
-  --region-motion-animation: projectionAuroraCapitalFlow;
-  --region-motion-duration: 32s;
-  --region-motion-opacity: 0.24;
-  --region-motion-filter: saturate(1.08) contrast(1.04);
-  --region-motion-bg:
-    linear-gradient(112deg, transparent 12%, rgba(253, 224, 71, 0.13) 34%, transparent 58%),
-    linear-gradient(76deg, transparent 30%, rgba(251, 191, 36, 0.08) 54%, transparent 78%),
-    radial-gradient(ellipse at 78% 18%, rgba(254, 240, 138, 0.18), transparent 46%),
-    radial-gradient(circle at 18% 72%, transparent 0 18px, rgba(250, 204, 21, 0.12) 20px, transparent 25px),
-    radial-gradient(circle at 69% 76%, rgba(255, 247, 178, 0.24) 0 1px, transparent 2.8px),
-    linear-gradient(135deg, rgba(251, 191, 36, 0.10), transparent 58%);
-  --region-motion-size: 230% 100%, 270% 100%, 100% 100%, 260px 190px, 180px 140px, 100% 100%;
-}
-
-.projection-region-card[data-region="AURORA"][data-controlled="true"]::before {
-  --region-motion-animation: projectionAuroraGoldRush;
-  --region-motion-duration: 18s;
-  --region-motion-opacity: 0.34;
-  --region-motion-timing: linear;
-  --region-motion-bg:
-    linear-gradient(112deg, transparent 10%, rgba(254, 240, 138, 0.16) 34%, transparent 60%),
-    linear-gradient(76deg, transparent 26%, rgba(251, 191, 36, 0.11) 55%, transparent 80%),
-    radial-gradient(ellipse at 78% 18%, rgba(254, 240, 138, 0.22), transparent 48%),
-    radial-gradient(circle at 18% 72%, transparent 0 16px, rgba(250, 204, 21, 0.16) 18px, transparent 26px),
-    radial-gradient(circle at 69% 76%, rgba(255, 247, 178, 0.28) 0 1.2px, transparent 3px),
-    radial-gradient(circle at 50% 50%, rgba(253, 224, 71, 0.12), transparent 62%),
-    linear-gradient(135deg, rgba(251, 191, 36, 0.13), transparent 62%);
-  --region-motion-size: 250% 100%, 290% 100%, 100% 100%, 240px 174px, 150px 116px, 100% 100%, 100% 100%;
-}
-
-/* 靈序研究：玻璃感資料場、低對比網格、冷色掃描光 */
-.projection-region-card[data-region="SPECTRA"]::before {
-  --region-motion-animation: projectionSpectraDataGrid;
-  --region-motion-duration: 32s;
-  --region-motion-opacity: 0.24;
-  --region-motion-filter: saturate(1.08) contrast(1.05);
-  --region-motion-bg:
-    linear-gradient(90deg, rgba(125, 211, 252, 0.055) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(34, 211, 238, 0.045) 1px, transparent 1px),
-    linear-gradient(112deg, transparent 18%, rgba(103, 232, 249, 0.12) 48%, transparent 66%),
-    radial-gradient(ellipse at 28% 34%, rgba(103, 232, 249, 0.18), transparent 58%),
-    radial-gradient(ellipse at 74% 68%, rgba(96, 165, 250, 0.14), transparent 58%),
-    radial-gradient(circle at 64% 36%, rgba(165, 243, 252, 0.22) 0 1px, transparent 3px),
-    linear-gradient(135deg, rgba(34, 211, 238, 0.09), transparent 58%);
-  --region-motion-size: 42px 42px, 42px 42px, 220% 100%, 100% 100%, 100% 100%, 210px 170px, 100% 100%;
-}
-
-.projection-region-card[data-region="SPECTRA"][data-controlled="true"]::before {
-  --region-motion-animation: projectionSpectraDataFrenzy;
-  --region-motion-duration: 18s;
-  --region-motion-opacity: 0.32;
-  --region-motion-timing: linear;
-  --region-motion-bg:
-    linear-gradient(90deg, rgba(165, 243, 252, 0.07) 1px, transparent 1px),
-    linear-gradient(0deg, rgba(103, 232, 249, 0.055) 1px, transparent 1px),
-    linear-gradient(112deg, transparent 14%, rgba(165, 243, 252, 0.16) 48%, transparent 68%),
-    radial-gradient(ellipse at 28% 34%, rgba(103, 232, 249, 0.22), transparent 56%),
-    radial-gradient(ellipse at 74% 68%, rgba(96, 165, 250, 0.18), transparent 56%),
-    radial-gradient(circle at 64% 36%, rgba(165, 243, 252, 0.28) 0 1.2px, transparent 3.4px),
-    repeating-linear-gradient(0deg, rgba(103, 232, 249, 0.08) 0, rgba(103, 232, 249, 0.08) 1px, transparent 1px, transparent 12px),
-    linear-gradient(135deg, rgba(34, 211, 238, 0.11), transparent 60%);
-  --region-motion-size: 34px 34px, 34px 34px, 235% 100%, 100% 100%, 100% 100%, 180px 146px, 100% 12px, 100% 100%;
-}
-
-/* 影焰工域：電影感底部熱光、慢速熱霧、少量餘燼 */
-.projection-region-card[data-region="EMBER"]::before {
-  --region-motion-animation: projectionEmberHeatRise;
-  --region-motion-duration: 32s;
-  --region-motion-opacity: 0.26;
-  --region-motion-filter: saturate(1.10) contrast(1.06);
-  --region-motion-bg:
-    radial-gradient(ellipse 84% 44% at 50% 118%, rgba(249, 115, 22, 0.30), transparent 66%),
-    radial-gradient(ellipse 26% 60% at 24% 112%, rgba(251, 113, 133, 0.20), transparent 68%),
-    radial-gradient(ellipse 30% 68% at 66% 114%, rgba(251, 146, 60, 0.18), transparent 70%),
-    linear-gradient(104deg, transparent 18%, rgba(251, 113, 133, 0.10) 44%, transparent 66%),
-    radial-gradient(circle at 72% 42%, rgba(254, 215, 170, 0.22) 0 1px, transparent 3px),
-    linear-gradient(0deg, rgba(190, 18, 60, 0.13), transparent 58%);
-  --region-motion-size: 100% 100%, 210px 210px, 260px 230px, 230% 100%, 210px 160px, 100% 100%;
-}
-
-.projection-region-card[data-region="EMBER"][data-controlled="true"]::before {
-  --region-motion-animation: projectionEmberBlaze;
-  --region-motion-duration: 18s;
-  --region-motion-timing: linear;
-  --region-motion-opacity: 0.34;
-  --region-motion-bg:
-    radial-gradient(ellipse 88% 52% at 50% 120%, rgba(251, 146, 60, 0.32), transparent 66%),
-    radial-gradient(ellipse 28% 64% at 24% 112%, rgba(251, 113, 133, 0.24), transparent 66%),
-    radial-gradient(ellipse 32% 72% at 66% 114%, rgba(251, 146, 60, 0.22), transparent 68%),
-    linear-gradient(104deg, transparent 14%, rgba(251, 113, 133, 0.12) 44%, transparent 68%),
-    radial-gradient(circle at 72% 42%, rgba(254, 215, 170, 0.28) 0 1.2px, transparent 3.4px),
-    linear-gradient(0deg, rgba(220, 38, 38, 0.15), transparent 60%);
-  --region-motion-size: 100% 100%, 190px 200px, 240px 220px, 240% 100%, 180px 138px, 100% 100%;
-}
-
-/* 晨霧棲城：絲綢感霧層、柔霧團、少量晨露光 */
-.projection-region-card[data-region="HAVEN"]::before {
-  --region-motion-animation: projectionHavenDrift;
-  --region-motion-duration: 32s;
-  --region-motion-opacity: 0.36;
-  --region-motion-filter: blur(3px) saturate(1.04);
-  --region-motion-bg:
-    linear-gradient(18deg, transparent 18%, rgba(209, 250, 229, 0.09) 44%, transparent 70%),
-    radial-gradient(50% 55% at 25% 45%, rgba(110, 231, 183, 0.20), transparent 70%),
-    radial-gradient(48% 52% at 70% 60%, rgba(52, 211, 153, 0.18), transparent 72%),
-    radial-gradient(45% 50% at 50% 28%, rgba(167, 243, 208, 0.14), transparent 70%),
-    radial-gradient(circle at 82% 36%, rgba(209, 250, 229, 0.18) 0 1px, transparent 3px),
-    linear-gradient(135deg, rgba(52, 211, 153, 0.08), transparent 58%);
-  --region-motion-size: 230% 100%, 175% 175%, 175% 175%, 160% 160%, 210px 160px, 100% 100%;
-}
-
-.projection-region-card[data-region="HAVEN"][data-controlled="true"]::before {
-  --region-motion-animation: projectionHavenSwell;
-  --region-motion-duration: 18s;
-  --region-motion-timing: linear;
-  --region-motion-opacity: 0.36;
-  --region-motion-bg:
-    linear-gradient(18deg, transparent 14%, rgba(209, 250, 229, 0.12) 44%, transparent 72%),
-    radial-gradient(52% 58% at 25% 45%, rgba(167, 243, 208, 0.22), transparent 68%),
-    radial-gradient(50% 54% at 70% 60%, rgba(45, 212, 191, 0.20), transparent 70%),
-    radial-gradient(48% 52% at 50% 28%, rgba(110, 231, 183, 0.16), transparent 68%),
-    radial-gradient(circle at 82% 36%, rgba(209, 250, 229, 0.22) 0 1.2px, transparent 3.4px),
-    linear-gradient(135deg, rgba(16, 185, 129, 0.10), transparent 60%);
-  --region-motion-size: 240% 100%, 185% 185%, 185% 185%, 170% 170%, 180px 138px, 100% 100%;
-}
-
-@keyframes projectionRegionAmbientDrift {
-  from {
-    background-position: 0 0;
-  }
-  to {
-    background-position: 48px -36px;
-  }
-}
-
-/* 極光金域：柔和極光帶慢速流動 */
-@keyframes projectionAuroraCapitalFlow {
-  0% {
-    background-position: 0% 0, 100% 0, 0 0, 30px 8px, 12px 18px, 0 0;
-  }
-  100% {
-    background-position: 96% 0, -84% 0, 0 0, 290px 198px, -168px 158px, 0 0;
-  }
-}
-
-/* 極光金域 獨佔：更亮但克制的金色流光 */
-@keyframes projectionAuroraGoldRush {
-  0% {
-    background-position: 0% 0, 100% 0, 0 0, 20px 8px, 8px 12px, 0 0, 0 0;
-    filter: saturate(1.12) contrast(1.04) brightness(1.04);
-    opacity: 0.28;
-  }
-  100% {
-    background-position: 92% 0, -78% 0, 0 0, 260px 182px, -142px 128px, 0 0, 0 0;
-    filter: saturate(1.22) contrast(1.08) brightness(1.08);
-    opacity: 0.36;
-  }
-}
-
-/* 靈序研究：低調資料場與掃描光錯位滑動 */
-@keyframes projectionSpectraDataGrid {
-  0% {
-    background-position: 0 0, 0 0, -80% 0, 0 0, 0 0, 18px 24px, 0 0;
-  }
-  100% {
-    background-position: 42px 42px, 42px 42px, 140% 0, 0 0, 0 0, 210px 170px, 0 0;
-  }
-}
-
-/* 靈序研究 獨佔：掃描層加亮，避免 glitch 廉價感 */
-@keyframes projectionSpectraDataFrenzy {
-  0% {
-    background-position: 0 0, 0 0, -84% 0, 0 0, 0 0, 14px 18px, 0 0, 0 0;
-    filter: saturate(1.10) contrast(1.04) brightness(1.04);
-    opacity: 0.26;
-  }
-  100% {
-    background-position: 34px 34px, 34px 34px, 142% 0, 0 0, 0 0, 180px 146px, 0 -108px, 0 0;
-    filter: saturate(1.22) contrast(1.08) brightness(1.08);
-    opacity: 0.34;
-  }
-}
-
-/* 影焰工域：熱霧慢慢偏移，主視覺留在底部 */
-@keyframes projectionEmberHeatRise {
-  0% {
-    background-position: 0 0, 0 44px, 32px 58px, -70% 0, 24px 18px, 0 0;
-  }
-  100% {
-    background-position: 0 0, 0 -210px, 0 -230px, 140% 0, 210px 160px, 0 0;
-  }
-}
-
-/* 影焰工域 獨佔：熱光加強但不做廉價爆閃 */
-@keyframes projectionEmberBlaze {
-  0% {
-    background-position: 0 0, 0 38px, 28px 52px, -76% 0, 18px 14px, 0 0;
-    filter: saturate(1.12) contrast(1.04) brightness(1.04);
-    opacity: 0.28;
-  }
-  100% {
-    background-position: 0 0, 0 -200px, 0 -220px, 142% 0, 180px 138px, 0 0;
-    filter: saturate(1.24) contrast(1.09) brightness(1.08);
-    opacity: 0.36;
-  }
-}
-
-/* 晨霧棲城：絲綢霧層緩慢漂移 */
-@keyframes projectionHavenDrift {
-  0% {
-    background-position: -60% 0, 18% 45%, 75% 58%, 48% 28%, 12px 16px, 0 0;
-  }
-  100% {
-    background-position: 140% 0, 18% 45%, 75% 58%, 48% 28%, 210px 160px, 0 0;
-  }
-}
-
-/* 晨霧棲城 獨佔：霧層加亮加速，保持柔和 */
-@keyframes projectionHavenSwell {
-  0% {
-    background-position: -62% 0, 18% 45%, 75% 58%, 48% 28%, 10px 14px, 0 0;
-    filter: blur(2.4px) brightness(1.04) saturate(1.06);
-    opacity: 0.28;
-  }
-  100% {
-    background-position: 140% 0, 18% 45%, 75% 58%, 48% 28%, 180px 138px, 0 0;
-    filter: blur(3.2px) brightness(1.08) saturate(1.12);
-    opacity: 0.36;
-  }
+  opacity: 0.16;
 }
 
 .projection-region-controlled {
@@ -1262,46 +760,6 @@ input[type="number"] {
   box-shadow:
     inset 0 0 28px rgba(var(--region-glow), 0.12),
     0 0 24px rgba(var(--region-glow), 0.28);
-  animation: projectionRegionFrameGlow 2.4s ease-in-out infinite;
-}
-
-@property --projection-region-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0turn;
-}
-
-.projection-region-controlled::after {
-  --projection-region-angle: 0turn;
-  position: absolute;
-  inset: 0;
-  z-index: 20;
-  pointer-events: none;
-  content: "";
-  padding: 2px;
-  border-radius: inherit;
-  background: conic-gradient(
-    from var(--projection-region-angle),
-    rgba(var(--region-glow), 0.3) 0deg,
-    rgba(var(--region-glow), 0.3) 248deg,
-    rgba(var(--region-glow), 0.7) 282deg,
-    rgba(255, 255, 255, 1) 304deg,
-    rgba(var(--region-glow), 1) 322deg,
-    rgba(var(--region-glow), 0.3) 360deg
-  );
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  opacity: 0.88;
-  filter: drop-shadow(0 0 5px rgba(var(--region-glow), 0.82));
-  animation:
-    projectionRegionBorderSpin 3.1s linear infinite,
-    projectionRegionBorderFlash 1.55s ease-in-out infinite alternate;
 }
 
 .projection-dominance-badge {
@@ -1310,39 +768,6 @@ input[type="number"] {
   box-shadow:
     inset 0 0 18px rgba(var(--region-glow), 0.13),
     0 0 18px rgba(var(--region-glow), 0.26);
-}
-
-@keyframes projectionRegionFrameGlow {
-  0%,
-  100% {
-    border-color: rgba(var(--region-glow), 0.62);
-    box-shadow:
-      inset 0 0 26px rgba(var(--region-glow), 0.1),
-      0 0 20px rgba(var(--region-glow), 0.22);
-  }
-  50% {
-    border-color: rgba(var(--region-glow), 0.92);
-    box-shadow:
-      inset 0 0 34px rgba(var(--region-glow), 0.18),
-      0 0 34px rgba(var(--region-glow), 0.42);
-  }
-}
-
-@keyframes projectionRegionBorderSpin {
-  to {
-    --projection-region-angle: 1turn;
-  }
-}
-
-@keyframes projectionRegionBorderFlash {
-  from {
-    opacity: 0.66;
-    filter: drop-shadow(0 0 4px rgba(var(--region-glow), 0.68));
-  }
-  to {
-    opacity: 1;
-    filter: drop-shadow(0 0 9px rgba(var(--region-glow), 1));
-  }
 }
 
 .projection-level-light {
@@ -1420,7 +845,6 @@ input[type="number"] {
 
 @media (prefers-reduced-motion: reduce) {
   .projection-region-card::before,
-  .projection-jackpot-ball,
   .projection-level-lights[data-level-tier="max"]
     .projection-level-light[data-active="true"],
   .projection-rank-gold,
@@ -1429,8 +853,7 @@ input[type="number"] {
   .projection-rank-silver,
   .projection-rank-silver .projection-rank-badge,
   .projection-rank-bronze::after,
-  .projection-region-controlled,
-  .projection-region-controlled::after {
+  .projection-region-controlled {
     animation: none;
   }
 }
