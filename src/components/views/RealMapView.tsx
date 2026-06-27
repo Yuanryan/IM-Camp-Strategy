@@ -417,8 +417,8 @@ export function RealMapView({
   // ── 流程階段（右側面板）：可達上限 + 抽卡相關 ──
   const event1 = (snap.activeEvents ?? []).includes(1);
   const isCardSquare = landed?.kind === "GLOW" || landed?.kind === "FOG";
-  // 階段 2 需有落地結果；階段 3 再加上落地為 GLOW / FOG（抽卡格）。
-  const reachablePhase: 1 | 2 | 3 = landed ? (isCardSquare ? 3 : 2) : 1;
+  // 階段 2 永遠可點（移動前顯示「先移動」提示）；階段 3 需落在抽卡格才可達。
+  const reachablePhase: 1 | 2 | 3 = isCardSquare ? 3 : 2;
   const goPhase = (p: number) => {
     if (p < 1 || p > reachablePhase) return;
     setPhase(p as 1 | 2 | 3);
@@ -582,9 +582,12 @@ export function RealMapView({
         if (r.landedOnStart) {
           rows.push({ label: "中央燈塔收益", amount: LAND_START_COINS, cardPoints: LAND_START_CARD_POINTS });
         }
-        if (roundIncome > 0) {
-          // 回合收益來源：本隊持有的每輪收益型道具（提醒類不計金額，排除）。
+        // 回合收益列：僅在本回合確實結算（doSettle，即擲骰前進且非卡片觸發）時才列出。
+        // 卡片觸發的移動（noSettle）不結算每輪收益 → 不列此列，面板顯示「本回合不結算」。
+        if (doSettle) {
+          // 來源：本隊持有的每輪收益 / 詛咒型道具（提醒類不計金額，排除）。
           // UNDERDOG（末位補貼）僅在該隊為全場最低淨值時才觸發 → 否則不列為來源（與伺服器一致）。
+          // 詛咒道具（COINS_PER_ROUND 負值）會讓 roundIncome 變負或淨額抵銷，亦需列出。
           const minNW = Math.min(...teams.map((t) => t.netWorth));
           const isLast = cur.netWorth === minNW;
           const incomeItems = (cur.items ?? []).filter(
@@ -593,7 +596,7 @@ export function RealMapView({
               i.effectType !== EffectType.REMINDER &&
               (i.effectType !== EffectType.UNDERDOG || isLast),
           );
-          // 逐項拆分：用與 distributeRoundIncome 相同公式算出每個動產的貢獻，
+          // 逐項拆分：用與 distributeRoundIncome 相同公式算出每個動產的貢獻（含負值詛咒），
           // 讓面板把「回合收益」按來源道具一條一條列出。基準值取移動前快照
           // （cur.coins / cur.propertyValue），與伺服器結算口徑一致。
           const breakdown = incomeItems
@@ -610,8 +613,11 @@ export function RealMapView({
               }
               return { item: it, amount };
             })
-            .filter((b) => b.amount > 0);
-          rows.push({ label: "回合收益", amount: roundIncome, items: incomeItems, breakdown });
+            .filter((b) => b.amount !== 0); // 含負值（詛咒扣款）
+          // 有任何來源道具（含詛咒）或非零淨額就列出，net 為負時顯示為紅色扣款。
+          if (incomeItems.length > 0 || roundIncome !== 0) {
+            rows.push({ label: "回合收益", amount: roundIncome, items: incomeItems, breakdown });
+          }
         }
         if (tollPaid > 0) {
           // 過路費減免來源：本隊套用到該區的 TOLL_PAID 道具（讓關主看出為何金額被打折）。
@@ -1209,7 +1215,9 @@ export function RealMapView({
             isCardSquare={isCardSquare}
             actionDone={actionDone}
             onGoTab={() => landed && onLand(squareToTab(landed))}
+            onRoute={(square) => onLand(squareToTab(square))}
             onDraw={() => setPhase(3)}
+            onDrawAt={(square) => { setLanded(square); setPhase(3); }}
             onEndTurn={() => setTeam("")}
           />
         )}
@@ -1312,7 +1320,9 @@ function PhaseResult({
   isCardSquare,
   actionDone,
   onGoTab,
+  onRoute,
   onDraw,
+  onDrawAt,
   onEndTurn,
 }: {
   landed: BoardSquare | null;
@@ -1323,13 +1333,53 @@ function PhaseResult({
   isCardSquare: boolean;
   actionDone: boolean;
   onGoTab: () => void;
+  onRoute: (square: BoardSquare) => void; // 前往任一格對應分頁（尚未落地時用棋子當前格）
   onDraw: () => void;
+  onDrawAt: (square: BoardSquare) => void; // 尚未落地時於棋子當前抽卡格抽卡（先設落地格再進階段 3）
   onEndTurn: () => void;
 }) {
+  // 尚未落地（未移動）：比照「本回合不結算」呈現 —— 顯示不結算提示 + 該隊資產 / 進行中任務。
+  // 下一步＝前往「棋子當前所在格」對應分頁（routing）；抽卡格（地圖中控站 GLOW/FOG）→ 前往抽卡；
+  // START 格無分頁則收尾結束回合。
   if (!landed) {
+    const here = team ? boardSquareAt(team.boardPos) : null;
+    const hereIsCard = here?.kind === "GLOW" || here?.kind === "FOG";
+    const hereTab = here ? squareToTab(here).tab : null;
     return (
-      <section className="flex min-h-0 flex-1 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] p-4 text-center text-sm text-slate-400">
-        先在階段 1 移動棋子，這裡會顯示結算結果。
+      <section className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain rounded-xl border border-white/10 bg-white/[0.03] p-3">
+        <div className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-3 text-center text-sm font-semibold text-slate-400">
+          本回合不結算
+        </div>
+        {team && <TeamAssetSummary team={team} net={0} />}
+        {objectives.length > 0 && <ObjectiveList objectives={objectives} />}
+        <div className="mt-auto">
+          {hereIsCard && here ? (
+            <button
+              type="button"
+              onClick={() => onDrawAt(here)}
+              style={{ background: teamColor }}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-black text-slate-950 transition active:scale-[0.98]"
+            >
+              前往抽卡 <ArrowRight className="h-4 w-4" />
+            </button>
+          ) : here && hereTab && here.kind !== "START" ? (
+            <button
+              type="button"
+              onClick={() => onRoute(here)}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-cyan-500 text-sm font-black text-slate-950 transition hover:bg-cyan-400 active:scale-[0.98]"
+            >
+              前往{TAB_LABEL[hereTab]} <ArrowRight className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onEndTurn}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 text-sm font-black text-slate-950 transition hover:bg-emerald-400 active:scale-[0.98]"
+            >
+              <Check className="h-4 w-4" /> 結束回合
+            </button>
+          )}
+        </div>
       </section>
     );
   }
@@ -1384,7 +1434,9 @@ function PhaseResult({
                           {itemEffectLabel(b.item)}
                         </span>
                       </span>
-                      <span className="shrink-0 font-mono text-xs tabular-nums text-emerald-400/90">+{b.amount}</span>
+                      <span className={`shrink-0 font-mono text-xs tabular-nums ${b.amount >= 0 ? "text-emerald-400/90" : "text-rose-400/90"}`}>
+                        {b.amount >= 0 ? `+${b.amount}` : b.amount}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -1425,50 +1477,10 @@ function PhaseResult({
       )}
 
       {/* 該隊目前資產價值（光幣 + 不動產現值 = 結算淨值），讓關主一眼掌握全局。*/}
-      {team && (
-        <div className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2">
-          <div className="mb-1 text-[11px] font-bold tracking-wide text-slate-400">{team.name}・目前資產價值</div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-400">光幣</span>
-            {/* 本回合有金流變動時顯示「原值 → 新值」，讓關主看出加總前後差異。*/}
-            {net !== 0 ? (
-              <span className="flex items-center gap-1.5 font-mono tabular-nums">
-                <Num className="text-slate-500">{team.coins - net}</Num>
-                <ArrowRight className="h-3 w-3 text-slate-500" />
-                <Num className="neon-gold font-bold">{team.coins}</Num>
-              </span>
-            ) : (
-              <Num className="neon-gold font-bold tabular-nums">{team.coins}</Num>
-            )}
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-slate-400">不動產現值</span>
-            <Num className="font-bold tabular-nums text-cyan-300">{team.propertyValue}</Num>
-          </div>
-          <div className="mt-1 flex items-center justify-between border-t border-white/10 pt-1 text-sm">
-            <span className="font-bold text-slate-300">總資產價值</span>
-            <Num className="font-black tabular-nums text-emerald-300">{team.netWorth}</Num>
-          </div>
-        </div>
-      )}
+      {team && <TeamAssetSummary team={team} net={net} />}
 
       {/* 該隊進行中好運卡任務目標（達標後回合結算自動發獎；與「本次結算」同卡片風格）。*/}
-      {objectives.length > 0 && (
-        <div className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2">
-          <div className="mb-1 text-[11px] font-bold tracking-wide text-slate-400">進行中任務</div>
-          {objectives.map((o) => (
-            <div key={o.id} className="flex items-start justify-between gap-4 border-b border-white/5 py-1 text-sm last:border-0">
-              <span className="min-w-0">
-                {o.isCurse && <span className="mr-1 font-bold text-fuchsia-300">☠ 詛咒</span>}
-                <span className="text-slate-200">{o.description}</span>
-              </span>
-              <span className={`shrink-0 font-mono font-extrabold tabular-nums ${o.done ? "text-emerald-400" : o.isCurse ? "text-rose-300" : "text-slate-400"}`}>
-                {o.done ? (o.isCurse ? "已解咒 ✓" : "已完成任務 ✓") : `${o.current}/${o.target}`}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      {objectives.length > 0 && <ObjectiveList objectives={objectives} />}
 
       <div className="mt-auto">
         {actionDone ? (
@@ -1511,13 +1523,65 @@ function PhaseResult({
   );
 }
 
+// 該隊目前資產價值卡（光幣 + 不動產現值 = 結算淨值）。net !== 0 時光幣顯示「原值 → 新值」。
+// 階段 2（已落地結算）與「尚未落地」皆共用此卡。
+function TeamAssetSummary({ team, net }: { team: TeamView; net: number }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2">
+      <div className="mb-1 text-[11px] font-bold tracking-wide text-slate-400">{team.name}・目前資產價值</div>
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-slate-400">光幣</span>
+        {net !== 0 ? (
+          <span className="flex items-center gap-1.5 font-mono tabular-nums">
+            <Num className="text-slate-500">{team.coins - net}</Num>
+            <ArrowRight className="h-3 w-3 text-slate-500" />
+            <Num className="neon-gold font-bold">{team.coins}</Num>
+          </span>
+        ) : (
+          <Num className="neon-gold font-bold tabular-nums">{team.coins}</Num>
+        )}
+      </div>
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-slate-400">不動產現值</span>
+        <Num className="font-bold tabular-nums text-cyan-300">{team.propertyValue}</Num>
+      </div>
+      <div className="mt-1 flex items-center justify-between border-t border-white/10 pt-1 text-sm">
+        <span className="font-bold text-slate-300">總資產價值</span>
+        <Num className="font-black tabular-nums text-emerald-300">{team.netWorth}</Num>
+      </div>
+    </div>
+  );
+}
+
+// 該隊進行中好運卡 / 詛咒任務目標清單（達標後回合結算自動發獎 / 解咒）。
+function ObjectiveList({ objectives }: { objectives: TeamView["objectives"] }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-slate-950/40 px-3 py-2">
+      <div className="mb-1 text-[11px] font-bold tracking-wide text-slate-400">進行中任務</div>
+      {objectives.map((o) => (
+        <div key={o.id} className="flex items-start justify-between gap-4 border-b border-white/5 py-1 text-sm last:border-0">
+          <span className="min-w-0">
+            {o.isCurse && <span className="mr-1 font-bold text-fuchsia-300">☠ 詛咒</span>}
+            <span className="text-slate-200">{o.description}</span>
+          </span>
+          <span className={`shrink-0 font-mono font-extrabold tabular-nums ${o.done ? "text-emerald-400" : o.isCurse ? "text-rose-300" : "text-slate-400"}`}>
+            {o.done ? (o.isCurse ? "已解咒 ✓" : "已完成任務 ✓") : `${o.current}/${o.target}`}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // 道具效果值文字：每輪收益 +N/輪、補貼 +N光幣、其餘以百分比表示（過路費減免、複利、分紅等）。
 function itemEffectLabel(item: ActiveItemView): string {
+  // 負值（詛咒：每回合扣光幣）需顯示為「-100/輪」而非「+-100/輪」，故只在非負時加 +。
+  const sign = item.effectValue >= 0 ? "+" : "";
   return item.effectType === EffectType.COINS_PER_ROUND
-    ? `+${item.effectValue}/輪`
+    ? `${sign}${item.effectValue}/輪`
     : item.effectType === EffectType.ALLIANCE_BONUS || item.effectType === EffectType.UNDERDOG
-      ? `+${item.effectValue}光幣`
-      : `${item.effectValue >= 0 ? "+" : ""}${(item.effectValue * 100).toFixed(0)}%`;
+      ? `${sign}${item.effectValue}光幣`
+      : `${sign}${(item.effectValue * 100).toFixed(0)}%`;
 }
 
 // 結算明細裡的來源道具徽章（grade 配色 + 名稱 + 效果值；title 顯示完整說明）。

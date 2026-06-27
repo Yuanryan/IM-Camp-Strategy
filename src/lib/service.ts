@@ -1664,8 +1664,10 @@ export async function distributeRoundIncome(params: { teamId: number; byToken?: 
     const lastPlaceIds = new Set([...teamNetWorth.entries()].filter(([, nw]) => nw === minNW).map(([id]) => id));
 
     const incomeMap = new Map<number, { total: number; ids: number[] }>();
+    // 累計每隊每輪淨變動。amount 可為負（詛咒：每回合扣光幣 COINS_PER_ROUND<0），
+    // 仍要計入並消耗使用次數；amount==0 不貢獻金額但也不需記錄該道具。
     const addIncome = (teamId: number, amount: number, itemId: number) => {
-      if (amount <= 0) return;
+      if (amount === 0) return;
       const cur = incomeMap.get(teamId) ?? { total: 0, ids: [] };
       cur.total += amount;
       cur.ids.push(itemId);
@@ -1692,8 +1694,11 @@ export async function distributeRoundIncome(params: { teamId: number; byToken?: 
 
     const results: { teamId: number; income: number }[] = [];
     for (const [teamId, { total, ids }] of incomeMap) {
-      await tx.team.update({ where: { id: teamId }, data: { coins: { increment: total } } });
-      await logLedger(tx, { teamId, kind: "coins", delta: total, note: "每輪動產收益", byToken });
+      // total 可為負（淨扣款）或 0（收益被詛咒抵銷）。為 0 時不動光幣 / 不記帳，但仍消耗道具次數。
+      if (total !== 0) {
+        await tx.team.update({ where: { id: teamId }, data: { coins: { increment: total } } });
+        await logLedger(tx, { teamId, kind: "coins", delta: total, note: total >= 0 ? "每輪動產收益" : "每輪動產收支（含詛咒扣款）", byToken });
+      }
       await decrementUses(tx, ids);
       results.push({ teamId, income: total });
     }

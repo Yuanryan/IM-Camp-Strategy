@@ -328,9 +328,9 @@ export function TeamItemBadges({
             ) : item.effectType !== EffectType.REMINDER && item.effectType !== EffectType.WHEEL_NO_ZERO && (
               <span className={`font-mono ${item.effectValue >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
                 {item.effectType === EffectType.COINS_PER_ROUND
-                  ? `+${item.effectValue}/輪`
+                  ? `${item.effectValue >= 0 ? "+" : ""}${item.effectValue}/輪`
                   : item.effectType === EffectType.ALLIANCE_BONUS || item.effectType === EffectType.UNDERDOG
-                    ? `+${item.effectValue}光幣`
+                    ? `${item.effectValue >= 0 ? "+" : ""}${item.effectValue}光幣`
                     : `${item.effectValue >= 0 ? "+" : ""}${(item.effectValue * 100).toFixed(0)}%`}
               </span>
             )}
