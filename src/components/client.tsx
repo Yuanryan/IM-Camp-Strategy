@@ -1,7 +1,7 @@
 "use client";
 
 import useSWR, { mutate as globalMutate } from "swr";
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import type { Snapshot, ActiveItemView } from "@/lib/snapshot";
 import type { UndoRecipe } from "@/lib/game";
@@ -242,94 +242,5 @@ export function confirmDialog(message: string): Promise<boolean> {
   });
 }
 
-// 小隊下拉選擇（自製，避免原生 <select> 在全螢幕模式下觸發離開全螢幕）
-export function TeamSelect({
-  teams,
-  value,
-  onChange,
-  placeholder = "選擇小隊",
-}: {
-  teams: { id: number; name: string; color?: string; colorName?: string; colorText?: string; colorRing?: string }[];
-  value: number | "";
-  onChange: (id: number | "") => void;
-  placeholder?: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const selected = teams.find((t) => t.id === value);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
-
-  return (
-    <div ref={ref} className="relative min-w-36">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="fld flex w-full items-center justify-between gap-2 font-medium"
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          {selected?.color && (
-            <span
-              className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/60"
-              style={{
-                background: selected.color,
-                boxShadow: selected.colorRing ? `0 0 7px ${selected.colorRing}` : undefined,
-              }}
-              title={selected.colorName}
-            />
-          )}
-          <span className="truncate">
-            {selected ? `${teams.indexOf(selected) + 1}. ${selected.name}` : placeholder}
-          </span>
-        </span>
-        <span className="text-slate-400">▾</span>
-      </button>
-      {open && (
-        <ul className="absolute left-0 top-full z-50 mt-1 w-full rounded-xl border border-white/10 bg-slate-900 py-1 shadow-xl">
-          <li>
-            <button
-              type="button"
-              onMouseDown={(e) => { e.preventDefault(); onChange(""); setOpen(false); }}
-              className="w-full px-3 py-2 text-left text-sm text-slate-400 hover:bg-white/8"
-            >
-              {placeholder}
-            </button>
-          </li>
-          {teams.map((t, i) => (
-            <li key={t.id}>
-              <button
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); onChange(t.id); setOpen(false); }}
-                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium hover:bg-white/8 ${value === t.id ? "text-cyan-300" : "text-slate-100"}`}
-              >
-                <span
-                  className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/60 bg-slate-500"
-                  style={t.color ? {
-                    background: t.color,
-                    boxShadow: t.colorRing ? `0 0 7px ${t.colorRing}` : undefined,
-                  } : undefined}
-                  title={t.colorName}
-                />
-                <span className="truncate">
-                  {i + 1}. {t.name}
-                </span>
-                {t.colorName && (
-                  <span className="ml-auto shrink-0 text-[10px] font-bold text-slate-500">
-                    {t.colorName}
-                  </span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
+// 小隊下拉選擇已抽出至獨立元件；此處 re-export 維持既有 import 路徑相容。
+export { TeamSelect, type TeamOption } from "@/components/TeamSelect";

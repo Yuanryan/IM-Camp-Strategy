@@ -4,8 +4,9 @@
 // useGameTimer：倒數狀態 + 控制；TimerRing：說明階段大圓環（可手動調整）；TimerPill：進行中固定角落小膠囊。
 // 由呼叫端（GameSession）持有狀態，同一份倒數可同時餵給兩種外觀。
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Num } from "@/components/ui";
-import { Pause, Play, RotateCcw, Timer as TimerIcon, Maximize2 } from "lucide-react";
+import { Pause, Play, RotateCcw, Timer as TimerIcon, Maximize2, GripVertical } from "lucide-react";
 
 const MAX_SEC = 99 * 60 + 59;
 const clampSec = (n: number) => Math.max(0, Math.min(MAX_SEC, Math.floor(n)));
@@ -127,29 +128,137 @@ export function TimerRing({ timer }: { timer: GameTimer }) {
 }
 
 // 固定角落小膠囊（進行中）：mm:ss + 暫停 / 繼續，點 mm:ss 可呼叫 onExpand 展開大圓環。
+// 可拖曳：在觸控或滑鼠上按住整個膠囊（非按鈕區）拖移到螢幕任意位置。
 export function TimerPill({ timer, onExpand }: { timer: GameTimer; onExpand?: () => void }) {
   const { sec, running } = timer;
   const isDanger = sec <= 10 && sec > 0;
   const ended = sec === 0;
+
+  // 拖曳狀態：pos=null 表示尚未定位（mount 後會錨到遊戲卡片右上角）。
+  // 用「同一事件串流內的指標位移量」累加，避免 clientX 與 getBoundingClientRect 座標空間不一致
+  // （例如裝置模擬 / 縮放）造成的固定偏移。drag 含上次指標位置、目前 pill 左上座標、膠囊尺寸。
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const drag = useRef<{ lastX: number; lastY: number; x: number; y: number; w: number; h: number } | null>(null);
+  const pillRef = useRef<HTMLDivElement>(null);
+  // 不被 portal 出去的錨點：留在卡片內，用來量「遊戲卡片」在視窗中的位置，定出初始右上角座標
+  const anchorRef = useRef<HTMLSpanElement>(null);
+
+  // 透過 portal 掛到 <body>：避免被 .glass 的 backdrop-filter（會替 fixed 子元素建立 containing block）
+  // 當成定位基準，導致膠囊錨在卡片左上而非視窗。portal 需在 mount 後才有 document。
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // mount 後把初始位置定在所屬遊戲卡片的右上角（往內縮 12px）。pillRef 此時已 portal 完成。
+  useEffect(() => {
+    if (!mounted || pos) return;
+    const card = anchorRef.current?.closest("section");
+    const cardRect = card?.getBoundingClientRect();
+    const w = pillRef.current?.offsetWidth ?? 160;
+    const h = pillRef.current?.offsetHeight ?? 48;
+    if (cardRect) {
+      setPos(clampToViewport(cardRect.right - w - 12, cardRect.top + 12, w, h));
+    } else {
+      // 找不到卡片就退回右下角
+      setPos(clampToViewport(window.innerWidth - w - 16, window.innerHeight - h - 16, w, h));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mounted]);
+
+  // 夾在可視區域內：x/y 不得超出 [0, viewport - 膠囊尺寸]
+  const clampToViewport = (x: number, y: number, w: number, h: number) => ({
+    x: Math.max(0, Math.min(window.innerWidth - w, x)),
+    y: Math.max(0, Math.min(window.innerHeight - h, y)),
+  });
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    const el = pillRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    // 以目前實際位置與尺寸為基準（拖曳期間尺寸不變），之後只累加位移量
+    drag.current = { lastX: e.clientX, lastY: e.clientY, x: rect.left, y: rect.top, w: rect.width, h: rect.height };
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    d.x += e.clientX - d.lastX;
+    d.y += e.clientY - d.lastY;
+    d.lastX = e.clientX;
+    d.lastY = e.clientY;
+    const c = clampToViewport(d.x, d.y, d.w, d.h);
+    d.x = c.x; // 把夾住後的值寫回，避免拖出邊界後「累積債務」需反向拖很久才回來
+    d.y = c.y;
+    setPos(c);
+  };
+
+  const endDrag = (e: React.PointerEvent) => {
+    if (drag.current && e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    drag.current = null;
+  };
+
+  // 視窗縮放時把膠囊拉回可視範圍內，避免卡在畫面外
+  useEffect(() => {
+    if (!pos) return;
+    const onResize = () => {
+      const el = pillRef.current;
+      const w = el?.offsetWidth ?? 160;
+      const h = el?.offsetHeight ?? 48;
+      setPos((p) => (p ? clampToViewport(p.x, p.y, w, h) : p));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [pos]);
+
+  const style: React.CSSProperties = {
+    // touchAction:none → 觸控拖曳時不觸發頁面捲動 / 下拉刷新（否則會與拖曳衝突、視覺視窗位移）
+    touchAction: "none",
+    maxWidth: "calc(100vw - 2rem)",
+    ...(pos
+      ? { position: "fixed", left: pos.x, top: pos.y, bottom: "auto", right: "auto" }
+      : { position: "fixed", bottom: "1rem", right: "1rem" }),
+  };
+
   return (
-    <div className="fixed bottom-4 right-4 z-30 flex items-center gap-2 rounded-full border border-white/15 bg-slate-900/90 px-3 py-2 shadow-lg shadow-black/40 backdrop-blur-md">
-      <TimerIcon className={`h-4 w-4 ${ended ? "text-rose-400" : "text-cyan-400"}`} />
-      <button onClick={onExpand} title="展開計時器"
-        className={`font-mono text-xl font-black tabular-nums tracking-wider ${
-          ended ? "animate-pulse text-rose-400" : isDanger ? "animate-pulse text-rose-400" : "text-cyan-300"
-        }`}>
-        {mmss(sec)}
-      </button>
-      <button onClick={timer.toggle} disabled={ended}
-        className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-slate-200 transition hover:bg-white/20 active:scale-95 disabled:opacity-40">
-        {running ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-      </button>
-      {onExpand && (
-        <button onClick={onExpand} className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 transition hover:bg-white/15 active:scale-95" title="展開">
-          <Maximize2 className="h-3.5 w-3.5" />
-        </button>
-      )}
-    </div>
+    <>
+      {/* 量測用錨點：留在卡片 DOM 內（不被 portal），用來定出初始右上角座標 */}
+      <span ref={anchorRef} className="hidden" aria-hidden="true" />
+      {mounted &&
+        createPortal(
+          <div
+            ref={pillRef}
+            style={style}
+            className="z-30 flex cursor-grab items-center gap-1.5 rounded-full border border-white/15 bg-slate-900/90 py-2 pl-2 pr-3 shadow-lg shadow-black/40 backdrop-blur-md active:cursor-grabbing"
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+          >
+            {/* 拖曳把手：三點，提示可拖移 */}
+            <GripVertical className="h-4 w-4 shrink-0 text-slate-500" aria-label="拖曳移動" />
+            <TimerIcon className={`h-4 w-4 ${ended ? "text-rose-400" : "text-cyan-400"}`} />
+            <button onClick={onExpand} title="展開計時器"
+              className={`font-mono text-xl font-black tabular-nums tracking-wider ${
+                ended ? "animate-pulse text-rose-400" : isDanger ? "animate-pulse text-rose-400" : "text-cyan-300"
+              }`}>
+              {mmss(sec)}
+            </button>
+            <button onClick={timer.toggle} disabled={ended}
+              className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/10 text-slate-200 transition hover:bg-white/20 active:scale-95 disabled:opacity-40">
+              {running ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            </button>
+            {onExpand && (
+              <button onClick={onExpand} className="flex h-7 w-7 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 transition hover:bg-white/15 active:scale-95" title="展開">
+                <Maximize2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
