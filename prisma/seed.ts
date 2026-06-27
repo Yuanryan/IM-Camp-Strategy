@@ -64,8 +64,46 @@ async function reset() {
   }
 }
 
+// 動產模板的目標欄位（price/shopStock 依等級與是否為非賣品計算）。單一事實來源，
+// 全量 seed 與 --no-reset 增量補種共用。
+function assetSeedData(a: (typeof MOVABLE_ASSET_SEED)[number]) {
+  return {
+    ...a,
+    price: ITEM_GRADE_PRICE[a.grade] ?? 0,
+    // 詛咒道具與五折券（好運卡專屬非賣品）不上架（shopStock=0）。
+    shopStock: CURSED_ASSET_NAMES.has(a.name) || a.name === GIFT_VOUCHER_NAME ? 0 : DEFAULT_SHOP_STOCK,
+  };
+}
+
+// 增量補種動產模板：只新增缺少的、對齊既有的，絕不刪任何資料（供 --no-reset 用）。
+// 用 upsert 確保既有模板若改了 effectValue / 描述也會同步，且不影響小隊 / 帳本等動態資料。
+async function upsertMovableAssets() {
+  for (const a of MOVABLE_ASSET_SEED) {
+    const data = assetSeedData(a);
+    await prisma.movableAsset.upsert({
+      where: { name: a.name },
+      update: data,
+      create: data,
+    });
+  }
+}
+
+// --no-reset / SEED_NO_RESET=1：只補種「靜態模板」（動產模板），不執行 reset()、
+// 不重建小隊 / token / 不動產 / 全場狀態。用於正式賽局進行中安全補上新道具模板。
+const NO_RESET =
+  process.argv.includes("--no-reset") || process.env.SEED_NO_RESET === "1";
+
 async function main() {
   await prisma.$executeRaw`SET timezone = 'Asia/Taipei'`;
+
+  if (NO_RESET) {
+    console.log("⚙ --no-reset：只補種動產模板，不重置任何動態資料。");
+    await upsertMovableAssets();
+    const total = await prisma.movableAsset.count();
+    console.log(`✅ 動產模板已對齊（目前共 ${total} 種，未動小隊 / 不動產 / 帳本）。\n`);
+    return;
+  }
+
   await reset();
 
   // 不動產（四區域表）
@@ -90,14 +128,8 @@ async function main() {
   }
 
   // 動產模板（skipDuplicates：重跑 seed 不覆蓋已建立的模板）
-  // price/shopStock 依等級給預設；詛咒道具不上架（shopStock=0）。神秘商店與 admin 可再調。
   await prisma.movableAsset.createMany({
-    data: MOVABLE_ASSET_SEED.map((a) => ({
-      ...a,
-      price: ITEM_GRADE_PRICE[a.grade] ?? 0,
-      // 詛咒道具與五折券（好運卡專屬非賣品）不上架（shopStock=0）。
-      shopStock: CURSED_ASSET_NAMES.has(a.name) || a.name === GIFT_VOUCHER_NAME ? 0 : DEFAULT_SHOP_STOCK,
-    })),
+    data: MOVABLE_ASSET_SEED.map(assetSeedData),
     skipDuplicates: true,
   });
 

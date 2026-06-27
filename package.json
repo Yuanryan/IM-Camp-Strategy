@@ -11,6 +11,7 @@
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
     "seed": "tsx prisma/seed.ts",
+    "seed:assets": "tsx prisma/seed.ts --no-reset",
     "test": "vitest run",
     "test:watch": "vitest"
   },
