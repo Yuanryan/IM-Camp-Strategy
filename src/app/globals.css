@@ -257,6 +257,20 @@ select:focus {
   animation: breathe 2.6s ease-in-out infinite;
 }
 
+/* 階段面板「可向左滑」提示：箭頭左右輕推（RealMapView 右側指示鈕內的圖示用）*/
+@keyframes hintSwipeX {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(3px);
+  }
+}
+.hint-swipe-x {
+  animation: hintSwipeX 1.4s ease-in-out infinite;
+}
+
 /* 確認對話框進場（confirmDialog 用） */
 @keyframes appFadeIn {
   from {

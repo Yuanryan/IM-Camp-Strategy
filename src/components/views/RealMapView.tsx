@@ -54,6 +54,9 @@ import {
   Check,
 } from "lucide-react";
 
+// 右側控制台三段流程的名稱（指示箭頭顯示目標階段用）。
+const PHASE_NAME: Record<1 | 2 | 3, string> = { 1: "移動", 2: "結算", 3: "抽卡" };
+
 // ── 棋子配色（依小隊清單順序循環；色盤見 lib/team-colors.ts）────────
 function pieceColor(team: Pick<TeamView, "color"> | undefined, idx: number): string {
   return team?.color ?? getTeamColorByIndex(idx).hex;
@@ -214,7 +217,11 @@ export function RealMapView({
   // 移動時快照任務列表，保持顯示直到結束回合（避免結算後 completedAt 非 null 導致任務從快照消失）。
   const [frozenObjectives, setFrozenObjectives] = useState<NonNullable<typeof cur>["objectives"]>([]);
   // 階段滑動：記錄 pointerdown 起點，放開時判定是否為水平滑動（切換階段）。
-  const phaseSwipeRef = useRef<{ x: number; y: number } | null>(null);
+  const phaseSwipeRef = useRef<{ x: number; y: number; locked: boolean } | null>(null);
+  // 拖曳中的即時水平位移（px）：讓滑動容器跟著手指走；放開後歸 0、由 transition 補完。
+  const [phaseDrag, setPhaseDrag] = useState(0);
+  // 滑動軌道寬度（量單頁寬度，用來把位移換算成百分比 / 限制拖曳範圍）。
+  const phaseTrackRef = useRef<HTMLDivElement>(null);
   // 面板寬度鎖：量階段 1（最大）的渲染寬度，套到滑動容器 width，
   // 讓階段 2/3 維持同樣寬度、不縮水。
   const phase1Ref = useRef<HTMLDivElement>(null);
@@ -425,18 +432,40 @@ export function RealMapView({
   };
 
   // 階段滑動：水平位移 > 50px 且明顯大於垂直位移 → 切換階段（不攔截內部垂直捲動）。
+  // 過程中即時更新 phaseDrag，讓軌道跟著手指走；放開歸 0 由 transition 滑入定位。
   const onPhasePointerDown = (e: RPointerEvent) => {
-    phaseSwipeRef.current = { x: e.clientX, y: e.clientY };
+    phaseSwipeRef.current = { x: e.clientX, y: e.clientY, locked: false };
+  };
+  const onPhasePointerMove = (e: RPointerEvent) => {
+    const s = phaseSwipeRef.current;
+    if (!s) return;
+    const dx = e.clientX - s.x;
+    const dy = e.clientY - s.y;
+    // 尚未判定方向：垂直為主就放棄滑動（留給內部捲動）；水平為主才鎖定為滑頁。
+    if (!s.locked) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+      if (Math.abs(dx) <= Math.abs(dy)) { phaseSwipeRef.current = null; return; }
+      s.locked = true;
+    }
+    // 已到邊界（最前 / 最後階段）的方向加阻尼，給出「滑不動」的回饋。
+    const atStart = phase <= 1 && dx > 0;
+    const atEnd = phase >= reachablePhase && dx < 0;
+    setPhaseDrag(atStart || atEnd ? dx * 0.25 : dx);
   };
   const onPhasePointerUp = (e: RPointerEvent) => {
     const s = phaseSwipeRef.current;
     phaseSwipeRef.current = null;
-    if (!s) return;
+    setPhaseDrag(0);
+    if (!s || !s.locked) return;
     const dx = e.clientX - s.x;
     const dy = e.clientY - s.y;
     if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
       goPhase(phase + (dx < 0 ? 1 : -1)); // 左滑＝下一階段、右滑＝上一階段
     }
+  };
+  const onPhasePointerCancel = () => {
+    phaseSwipeRef.current = null;
+    setPhaseDrag(0);
   };
 
   // 階段 3 抽卡：好運卡含即時獎勵卡與任務目標卡（後者抽到即登記）；厄運卡為即時卡。
@@ -799,7 +828,7 @@ export function RealMapView({
     <div
       ref={rowRef}
       style={rowH != null ? { height: rowH } : undefined}
-      className="mx-auto flex max-w-[1700px] gap-4 overflow-hidden overscroll-contain max-lg:h-auto max-lg:flex-col max-lg:overflow-visible"
+      className="relative mx-auto flex max-w-[1700px] gap-4 overflow-hidden overscroll-contain max-lg:h-auto max-lg:flex-col max-lg:overflow-visible"
     >
       {/* ── 棋盤 ─────────────────────────────────────────────── */}
       <div
@@ -966,7 +995,8 @@ export function RealMapView({
       </div>
 
       {/* ── 控制台（側欄）：三段流程（移動 / 結算 / 抽卡），分頁點切換、可左右滑動 ──
-          width 鎖在階段 1 量得的寬度 → 階段 2/3（內容較少）維持同寬、不縮水。*/}
+          外層 relative 包裝，讓階段指示箭頭可貼在面板左右兩側（面板本身 overflow-hidden）。*/}
+      <div className="relative flex shrink-0 max-lg:w-full">
       <aside
         ref={phase1Ref}
         style={{ width: phaseBoxW ?? undefined }}
@@ -975,16 +1005,26 @@ export function RealMapView({
         {/* 流程分頁點：指示目前階段 + 可點切換（階段 2/3 需有落地結果才可達）*/}
         <PhaseDots phase={phase} reachable={reachablePhase} color={teamColor} onJump={goPhase} />
 
-        {/* 滑動容器：水平滑動切換階段（不攔截內部垂直捲動），垂直留給頁面 / 內捲 */}
+        {/* 滑動視窗：水平滑動切換階段（不攔截內部垂直捲動），垂直留給頁面 / 內捲。
+            三階段並排成軌道，靠 translateX 滑入；拖曳中跟著手指（phaseDrag）。*/}
         <div
-          className="flex min-h-0 w-full flex-1 flex-col"
+          ref={phaseTrackRef}
+          className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden"
           style={{ touchAction: "pan-y" }}
           onPointerDown={onPhasePointerDown}
+          onPointerMove={onPhasePointerMove}
           onPointerUp={onPhasePointerUp}
+          onPointerCancel={onPhasePointerCancel}
+        >
+        <div
+          className="flex min-h-0 w-full flex-1"
+          style={{
+            transform: `translateX(calc(${-(phase - 1) * 100}% + ${phaseDrag}px))`,
+            transition: phaseDrag ? "none" : "transform 320ms cubic-bezier(0.22, 1, 0.36, 1)",
+          }}
         >
         {/* ── 階段 1：移動 ───────────────────────────────────── */}
-        {phase === 1 && (
-        <div className="flex min-h-0 flex-1 flex-col gap-2">
+        <div className="flex min-h-0 w-full min-w-0 shrink-0 flex-col gap-2 overflow-hidden">
         {/* 1. 當前小隊 + 擲骰 */}
         <section className="shrink-0 rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
           <div className="mb-2 flex items-center justify-between">
@@ -1196,10 +1236,9 @@ export function RealMapView({
           )}
         </section>
         </div>
-        )}
 
         {/* ── 階段 2：結算結果 + 路由 ─────────────────────────── */}
-        {phase === 2 && (
+        <div className="flex min-h-0 w-full min-w-0 shrink-0 flex-col overflow-hidden">
           <PhaseResult
             landed={landed}
             result={result}
@@ -1220,10 +1259,10 @@ export function RealMapView({
             onDrawAt={(square) => { setLanded(square); setPhase(3); }}
             onEndTurn={() => setTeam("")}
           />
-        )}
+        </div>
 
         {/* ── 階段 3：抽卡（GLOW・FOG）─────────────────────────── */}
-        {phase === 3 && (
+        <div className="flex min-h-0 w-full min-w-0 shrink-0 flex-col overflow-hidden">
           <section className="flex min-h-0 flex-1 flex-col gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-2.5">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold tracking-wider text-slate-400">
@@ -1301,9 +1340,42 @@ export function RealMapView({
               </button>
             )}
           </section>
-        )}
+        </div>
+        </div>
         </div>
       </aside>
+
+      {/* 階段切換指示：浮在面板外側（左／右），無底色、含目標階段名稱（移動／結算／抽卡），
+          提示可左右滑動切換；點擊亦可跳階。拖曳中淡出避免干擾。並排版面才顯示（縱向堆疊隱藏）。*/}
+      {phase > 1 && (
+        <button
+          type="button"
+          aria-label={`上一階段：${PHASE_NAME[(phase - 1) as 1 | 2 | 3]}`}
+          onClick={() => goPhase(phase - 1)}
+          style={{ opacity: phaseDrag ? 0 : undefined }}
+          className="pointer-events-auto absolute -left-3.5 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-1 text-slate-400 transition-opacity duration-200 hover:text-slate-200 max-lg:hidden"
+        >
+          <ChevronLeft className="h-6 w-6" />
+          <span className="text-[11px] font-bold tracking-wider [writing-mode:vertical-rl]">
+            {PHASE_NAME[(phase - 1) as 1 | 2 | 3]}
+          </span>
+        </button>
+      )}
+      {phase < reachablePhase && (
+        <button
+          type="button"
+          aria-label={`下一階段：${PHASE_NAME[(phase + 1) as 1 | 2 | 3]}`}
+          onClick={() => goPhase(phase + 1)}
+          style={{ color: teamColor, opacity: phaseDrag ? 0 : undefined }}
+          className="pointer-events-auto absolute right-1 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-1 transition-opacity duration-200 max-lg:hidden"
+        >
+          <ChevronRight className="hint-swipe-x h-6 w-6" />
+          <span className="text-[11px] font-bold tracking-wider [writing-mode:vertical-rl]">
+            {PHASE_NAME[(phase + 1) as 1 | 2 | 3]}
+          </span>
+        </button>
+      )}
+      </div>
     </div>
     </div>
   );
