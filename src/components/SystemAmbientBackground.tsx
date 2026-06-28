@@ -39,16 +39,24 @@ export function SystemAmbientBackground() {
     let dpr = 1;
     let rafId = 0;
     let startedAt = performance.now();
+    let lastDraw = 0;
     const seed = makeSeed();
     let pieces: AmbientPiece[] = [];
     let reduceMotion = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
+    // 手機 / 觸控裝置：降載 —— 較少粒子、較低 DPR、停用 shadowBlur、限制 30fps。
+    // backdrop 滿版逐格重繪在桌機很順，但在手機會吃滿 GPU（shadowBlur 與 radial gradient 是主因）。
+    const isPhone =
+      window.matchMedia("(max-width: 640px)").matches ||
+      window.matchMedia("(pointer: coarse)").matches;
+    // 30fps（手機）/ 60fps（桌機）：限制重繪頻率，省一半的繪圖工作。
+    const minFrameMs = isPhone ? 1000 / 30 : 0;
 
     const resize = () => {
       width = window.innerWidth;
       height = window.innerHeight;
-      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      dpr = Math.min(window.devicePixelRatio || 1, isPhone ? 1 : 1.5);
 
       canvas.width = Math.max(1, Math.floor(width * dpr));
       canvas.height = Math.max(1, Math.floor(height * dpr));
@@ -56,8 +64,8 @@ export function SystemAmbientBackground() {
       canvas.style.height = `${height}px`;
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      pieces = createPieces(width, height, seed);
-      drawFrame(context, width, height, pieces, 29, true);
+      pieces = createPieces(width, height, seed, isPhone);
+      drawFrame(context, width, height, pieces, 29, true, isPhone);
     };
 
     const stop = () => {
@@ -68,18 +76,22 @@ export function SystemAmbientBackground() {
     };
 
     const tick = (now: number) => {
-      const elapsed = (now - startedAt) / 1000;
-      drawFrame(context, width, height, pieces, elapsed, false);
       rafId = window.requestAnimationFrame(tick);
+      // 手機降到 30fps：跳過尚未達到最小間隔的影格（桌機 minFrameMs=0，不跳）。
+      if (now - lastDraw < minFrameMs) return;
+      lastDraw = now;
+      const elapsed = (now - startedAt) / 1000;
+      drawFrame(context, width, height, pieces, elapsed, false, isPhone);
     };
 
     const start = () => {
       stop();
       if (document.hidden || reduceMotion) {
-        drawFrame(context, width, height, pieces, 29, true);
+        drawFrame(context, width, height, pieces, 29, true, isPhone);
         return;
       }
       startedAt = performance.now();
+      lastDraw = 0;
       rafId = window.requestAnimationFrame(tick);
     };
 
@@ -121,10 +133,18 @@ export function SystemAmbientBackground() {
   );
 }
 
-function createPieces(width: number, height: number, seed: number) {
+function createPieces(
+  width: number,
+  height: number,
+  seed: number,
+  isPhone: boolean,
+) {
   const random = mulberry32(seed);
   const area = Math.max(1, width * height);
-  const count = clamp(Math.round(area / 62000), 24, 42);
+  // 手機：粒子密度減半、上限壓到 18（桌機 24–42）。
+  const count = isPhone
+    ? clamp(Math.round(area / 120000), 10, 18)
+    : clamp(Math.round(area / 62000), 24, 42);
 
   return Array.from({ length: count }, (_, index): AmbientPiece => {
     const kind = random() < 0.58 ? "coin" : "dice";
@@ -163,17 +183,18 @@ function drawFrame(
   pieces: AmbientPiece[],
   time: number,
   staticOnly: boolean,
+  isPhone: boolean,
 ) {
   context.clearRect(0, 0, width, height);
-  drawAmbientWash(context, width, height, time);
+  drawAmbientWash(context, width, height, time, isPhone);
 
   context.globalCompositeOperation = "screen";
   for (const piece of pieces) {
     const point = piecePosition(piece, width, height, staticOnly ? 29 : time);
     if (piece.kind === "coin") {
-      drawCoin(context, piece, point.x, point.y, time);
+      drawCoin(context, piece, point.x, point.y, time, isPhone);
     } else {
-      drawDice(context, piece, point.x, point.y, time);
+      drawDice(context, piece, point.x, point.y, time, isPhone);
     }
   }
 }
@@ -183,6 +204,7 @@ function drawAmbientWash(
   width: number,
   height: number,
   time: number,
+  isPhone: boolean,
 ) {
   context.globalCompositeOperation = "source-over";
 
@@ -209,14 +231,17 @@ function drawAmbientWash(
     "251, 191, 36",
     0.09,
   );
-  drawGlow(
-    context,
-    width * 0.42 + Math.sin(time * 0.025) * 70,
-    height * 0.72,
-    width * 0.44,
-    "52, 211, 153",
-    0.055,
-  );
+  // 手機省略第三道（最不明顯的）綠色光暈，少一次滿版 radial gradient 填充。
+  if (!isPhone) {
+    drawGlow(
+      context,
+      width * 0.42 + Math.sin(time * 0.025) * 70,
+      height * 0.72,
+      width * 0.44,
+      "52, 211, 153",
+      0.055,
+    );
+  }
 }
 
 function piecePosition(
@@ -240,6 +265,7 @@ function drawCoin(
   x: number,
   y: number,
   time: number,
+  isPhone: boolean,
 ) {
   const spin = Math.sin(time * piece.spin + piece.phase);
   const squash = 0.24 + Math.abs(spin) * 0.56;
@@ -251,8 +277,11 @@ function drawCoin(
   context.save();
   context.translate(x, y);
   context.rotate(rotation);
-  context.shadowColor = `rgba(${piece.color}, ${alpha * 0.8})`;
-  context.shadowBlur = piece.size * 0.45;
+  // shadowBlur 是手機上最貴的繪圖呼叫（每筆觸發離屏模糊），手機停用。
+  if (!isPhone) {
+    context.shadowColor = `rgba(${piece.color}, ${alpha * 0.8})`;
+    context.shadowBlur = piece.size * 0.45;
+  }
 
   context.fillStyle = `rgba(120, 53, 15, ${alpha * 0.46})`;
   context.beginPath();
@@ -290,6 +319,7 @@ function drawDice(
   x: number,
   y: number,
   time: number,
+  isPhone: boolean,
 ) {
   const angle = time * piece.spin * 0.35 + piece.phase;
   const side = piece.size;
@@ -299,8 +329,11 @@ function drawDice(
   context.save();
   context.translate(x, y);
   context.rotate(angle);
-  context.shadowColor = `rgba(${piece.accent}, ${alpha * 0.75})`;
-  context.shadowBlur = side * 0.45;
+  // shadowBlur 是手機上最貴的繪圖呼叫，手機停用。
+  if (!isPhone) {
+    context.shadowColor = `rgba(${piece.accent}, ${alpha * 0.75})`;
+    context.shadowBlur = side * 0.45;
+  }
 
   roundedRect(context, -side * 0.5 + depth, -side * 0.5 + depth, side, side, side * 0.18);
   context.fillStyle = `rgba(15, 23, 42, ${alpha * 0.64})`;
