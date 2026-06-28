@@ -424,8 +424,8 @@ export function RealMapView({
   // ── 流程階段（右側面板）：可達上限 + 抽卡相關 ──
   const event1 = (snap.activeEvents ?? []).includes(1);
   const isCardSquare = landed?.kind === "GLOW" || landed?.kind === "FOG";
-  // 階段 2 永遠可點（移動前顯示「先移動」提示）；階段 3 需落在抽卡格才可達。
-  const reachablePhase: 1 | 2 | 3 = isCardSquare ? 3 : 2;
+  // 階段 2 需選隊才可達；階段 3 再加上落在抽卡格。
+  const reachablePhase: 1 | 2 | 3 = team === "" ? 1 : isCardSquare ? 3 : 2;
   const goPhase = (p: number) => {
     if (p < 1 || p > reachablePhase) return;
     setPhase(p as 1 | 2 | 3);
