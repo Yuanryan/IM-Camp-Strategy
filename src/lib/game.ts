@@ -954,8 +954,17 @@ export type MobileRewardConfig =
   | { mode: "per-question"; difficulties: MobileDifficulty[] }
   | { mode: "win-lose"; winCoins: number; winDice: number; loseCoins: number };
 
-// ── 流動關卡：七款小遊戲（單一事實來源）─────────────────────────
-// hasBank=true 者題目存於 Question 表（gameName 相同）；false 者為純規則卡（海帶拳 / 憤怒企業）。
+// 注音聯想：題庫存「主題」，遊戲抽到主題後再隨機抽一個注音聲母，兩隊輪流聯想該主題、該注音開頭的詞。
+// 此清單即可抽的聲母（去掉較難聯想的 ㄪ/ㄟ 等韻母，只取常用聲母）。
+export const BOPOMOFO_INITIALS = [
+  "ㄅ", "ㄆ", "ㄇ", "ㄈ", "ㄉ", "ㄊ", "ㄋ", "ㄌ", "ㄍ", "ㄎ", "ㄏ",
+  "ㄐ", "ㄑ", "ㄒ", "ㄓ", "ㄔ", "ㄕ", "ㄖ", "ㄗ", "ㄘ", "ㄙ",
+] as const;
+// 觸發「抽注音聲母」附加機制的遊戲名（QuestionBank 依此在每題旁顯示隨機聲母）。
+export const BOPOMOFO_DRAW_GAME = "注音聯想";
+
+// ── 流動關卡：小遊戲清單（單一事實來源）─────────────────────────
+// hasBank=true 者題目存於 Question 表（gameName 相同）；false 者為純規則卡（海帶拳 / 憤怒企業 / 烏龜烏龜翹 / 傳接球）。
 // time/rule/reward 為關主執行時的提示文字；mobile 頁照此渲染卡片，順序即清單順序。
 export type MobileGame = {
   name: string;
@@ -989,14 +998,38 @@ export const MOBILE_GAMES: MobileGame[] = [
     rewardConfig: { mode: "win-lose", winCoins: 150, winDice: 2, loseCoins: 50 },
   },
   {
-    name: "比手畫腳",
+    name: "烏龜烏龜翹",
+    hasBank: false,
+    versus: "team-vs-team",
+    rule: "兩隊每個人都玩，最先被淘汰完的小隊輸",
+    note: "全員出拳，依關主喊的指令翹手，慢半拍或出錯者淘汰。",
+    rewardConfig: { mode: "win-lose", winCoins: 100, winDice: 1, loseCoins: 50 },
+  },
+  {
+    name: "烏龜烏龜翹（vs 關主）",
+    hasBank: false,
+    versus: "team-vs-host",
+    rule: "小隊與關主對玩，比關主慢半拍或出錯即敗",
+    note: "依關主喊的指令翹手，小隊跟著做；慢半拍或出錯者淘汰，撐到最後即勝。",
+    rewardConfig: { mode: "win-lose", winCoins: 150, winDice: 2, loseCoins: 50 },
+  },
+  {
+    name: "注音猜詞",
     hasBank: true,
     versus: "coop",
     time: "3 分鐘",
     seconds: 180,
-    note: "關主念關鍵字，全隊同時比同一動作，相同算一題。",
-    rule: "3 分鐘內完成越多題越多獎勵",
+    rule: "3 分鐘內答對越多題越多獎勵",
+    note: "關主給注音，全隊搶答對應的詞。",
     rewardConfig: { mode: "per-question", difficulties: ["簡單", "中等", "困難"] },
+  },
+  {
+    name: "注音聯想",
+    hasBank: true,
+    versus: "team-vs-team",
+    rule: "兩隊輪流聯想，答不出或重複者輸",
+    note: "系統抽一個主題＋一個注音聲母，兩隊輪流說出該主題、該注音開頭的詞，接不下去或重複即敗。",
+    rewardConfig: { mode: "win-lose", winCoins: 150, winDice: 2, loseCoins: 50 },
   },
   {
     name: "默契大考驗",
@@ -1007,6 +1040,14 @@ export const MOBILE_GAMES: MobileGame[] = [
     rule: "3 分鐘內答對越多題越多獎勵",
     note: "關主自選難度。關主念關鍵字，全隊同時比同一動作，相同才算對。",
     rewardConfig: { mode: "per-question", difficulties: ["簡單", "中等", "困難"] },
+  },
+  {
+    name: "傳接球",
+    hasBank: false,
+    versus: "team-vs-team",
+    rule: "圍成圈一次傳三顆，成功傳兩圈球不落地則成功（一回合可挑戰三次）",
+    note: "道具：桌球。全隊圍成一圈，同時傳三顆桌球，要連續傳滿兩圈且球不落地才算成功。",
+    rewardConfig: { mode: "win-lose", winCoins: 100, winDice: 1, loseCoins: 50 },
   },
   {
     name: "口型猜答案",
@@ -1024,6 +1065,24 @@ export const MOBILE_GAMES: MobileGame[] = [
     versus: "team-vs-team",
     rule: "兩隊每個人都玩，最先被淘汰完的小隊輸",
     rewardConfig: { mode: "win-lose", winCoins: 100, winDice: 1, loseCoins: 50 },
+  },
+  {
+    name: "海帶拳（vs 關主）",
+    hasBank: false,
+    versus: "team-vs-host",
+    rule: "小隊與關主對玩，輸給關主即敗",
+    note: "與關主猜海帶拳，跟錯動作或輸即淘汰，撐到最後即勝。",
+    rewardConfig: { mode: "win-lose", winCoins: 150, winDice: 2, loseCoins: 50 },
+  },
+  {
+    name: "比手畫腳",
+    hasBank: true,
+    versus: "coop",
+    time: "3 分鐘",
+    seconds: 180,
+    note: "關主念關鍵字，全隊同時比同一動作，相同算一題。",
+    rule: "3 分鐘內完成越多題越多獎勵",
+    rewardConfig: { mode: "per-question", difficulties: ["簡單", "中等", "困難"] },
   },
   {
     name: "跳跳Tempo",

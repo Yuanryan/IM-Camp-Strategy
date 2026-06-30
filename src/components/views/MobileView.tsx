@@ -78,6 +78,9 @@ const VERSUS_META: Record<MobileGame["versus"], { label: string; icon: React.Rea
 type Done = () => void | Promise<unknown>;
 type TeamLite = { id: number; name: string };
 
+// 遊戲選單分組順序（依對抗形式；標題用 VERSUS_META 的圖示 / 文案 / 配色）
+const GAME_GROUP_ORDER: MobileGame["versus"][] = ["coop", "team-vs-team", "team-vs-host"];
+
 // 流動關卡：選遊戲 → 看規則 →（有題庫者）抽題 → 表現制發獎
 function Games({ teams, team, mutate }: { teams: TeamLite[]; team: number | ""; mutate: Done }) {
   const [name, setName] = useState<string>(MOBILE_GAMES[0]?.name ?? "");
@@ -85,13 +88,28 @@ function Games({ teams, team, mutate }: { teams: TeamLite[]; team: number | ""; 
 
   return (
     <Card title={<div className="flex items-center gap-2"><Gamepad2 className="h-5 w-5 text-cyan-400" /> 流動關卡</div>}>
-      <div className="-mx-1 mb-4 flex gap-2 overflow-x-auto px-1 py-1.5">
-        {MOBILE_GAMES.map((g) => (
-          <button key={g.name} onClick={() => setName(g.name)}
-            className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition ${name === g.name ? "bg-cyan-500 text-slate-950" : "chip"}`}>
-            {g.name}
-          </button>
-        ))}
+      {/* 依對抗形式分組：每組一個彩色小標題 + 換行排列的遊戲 chip（不再橫向捲動） */}
+      <div className="mb-4 space-y-3">
+        {GAME_GROUP_ORDER.map((versus) => {
+          const groupGames = MOBILE_GAMES.filter((g) => g.versus === versus);
+          if (groupGames.length === 0) return null;
+          const meta = VERSUS_META[versus];
+          return (
+            <div key={versus}>
+              <div className={`mb-1.5 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${meta.cls}`}>
+                {meta.icon}{meta.label}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {groupGames.map((g) => (
+                  <button key={g.name} onClick={() => setName(g.name)}
+                    className={`rounded-lg px-4 py-2 text-sm font-medium transition ${name === g.name ? "bg-cyan-500 text-slate-950" : "chip"}`}>
+                    {g.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* key={game.name}：切換遊戲時重置答對數 / 難度 / 幣別等所有關卡狀態 */}
@@ -153,14 +171,15 @@ function GameSession({ game, teams, team, mutate }: { game: MobileGame; teams: T
       {/* 進行中精簡列：對抗徽章 + 即時答對數 */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-3">
         <span className="text-sm font-semibold text-cyan-200">{game.name}・進行中</span>
-        {game.hasBank && (
+        {game.rewardConfig.mode === "per-question" && (
           <span className="text-sm text-slate-300">答對 <Num className="text-xl font-black text-emerald-300">{count}</Num> 題</span>
         )}
       </div>
 
       {game.hasBank && (
         <QuestionBank
-          game={game.name} onCorrect={() => setCount((c) => c + 1)}
+          game={game.name}
+          onCorrect={game.rewardConfig.mode === "per-question" ? () => setCount((c) => c + 1) : undefined}
           showFilters={false} type={type} level={level} onType={setType} onLevel={setLevel}
         />
       )}
@@ -204,7 +223,7 @@ function SettleHeader({ game, count }: { game: MobileGame; count: number }) {
   return (
     <div className="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 p-3">
       <span className="text-sm font-semibold text-slate-200">{game.name}・計分</span>
-      {game.hasBank && <span className="text-sm text-slate-400">本關答對 <span className="font-black text-emerald-300">{count}</span> 題</span>}
+      {game.rewardConfig.mode === "per-question" && <span className="text-sm text-slate-400">本關答對 <span className="font-black text-emerald-300">{count}</span> 題</span>}
     </div>
   );
 }
@@ -286,7 +305,10 @@ function RewardCalculator({
     // vs 關主：單隊勝 / 敗
     return (
       <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-4">
-        <div className="mb-3 text-sm font-semibold text-cyan-200">發放獎勵</div>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-cyan-200">發放獎勵</span>
+          {team === "" && <span className="text-xs text-amber-300/80">⚠ 請先選小隊</span>}
+        </div>
         <div className="grid grid-cols-2 gap-2">
           <ActionButton
             label={<span className="flex items-center justify-center gap-1.5"><Trophy className="h-4 w-4" />勝　+{cfg.winCoins} 光幣{cfg.winDice > 0 ? ` ＋${cfg.winDice} 骰` : ""}</span>}
@@ -314,7 +336,10 @@ function RewardCalculator({
 
   return (
     <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/5 p-4">
-      <div className="mb-3 text-sm font-semibold text-cyan-200">發放獎勵</div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <span className="text-sm font-semibold text-cyan-200">發放獎勵</span>
+        {team === "" && <span className="text-xs text-amber-300/80">⚠ 請先選小隊</span>}
+      </div>
 
       {/* 難度（單一難度時不顯示） */}
       {cfg.difficulties.length > 1 && (

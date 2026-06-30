@@ -5,6 +5,9 @@
 import { useState } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/components/client";
+import { BOPOMOFO_INITIALS, BOPOMOFO_DRAW_GAME } from "@/lib/game";
+
+const drawBopomofo = () => BOPOMOFO_INITIALS[Math.floor(Math.random() * BOPOMOFO_INITIALS.length)];
 
 export type QData = {
   games: string[];
@@ -98,6 +101,9 @@ export function QuestionBank({
   const [idx, setIdx] = useState(0);
   const [show, setShow] = useState(false);
   const [picked, setPicked] = useState<string | null>(null); // 互動作答：已選的選項（顯示正解後跳下一題）
+  // 注音聯想：每抽一題（主題）同時隨機抽一個注音聲母，顯示在題目旁。
+  const drawsBopo = game === BOPOMOFO_DRAW_GAME;
+  const [bopo, setBopo] = useState<string>(drawBopomofo);
 
   // 受控優先；未受控則用內建 state
   const level = levelProp ?? levelState;
@@ -120,7 +126,9 @@ export function QuestionBank({
   // 互動作答模式：計分關卡（onCorrect）+ 三選一題；點選項直接判定。
   const interactive = !!onCorrect && !!opts;
 
-  const next = () => { setIdx(Math.floor(Math.random() * pool.length)); setShow(false); setPicked(null); };
+  const nextTheme = () => { setIdx(Math.floor(Math.random() * pool.length)); setShow(false); setPicked(null); };
+  // 注音聯想：「下一題」只換注音（同主題繼續玩），主題用「換主題」另抽；其餘遊戲「下一題」＝換題目。
+  const next = drawsBopo ? () => setBopo(drawBopomofo()) : nextTheme;
   // 點選項：對 → 計入答對並跳題；錯 → 顯示正解後跳題。
   const choose = (o: string) => {
     if (picked) return; // 已作答，等跳題
@@ -145,7 +153,17 @@ export function QuestionBank({
       {pool.length === 0 ? <p className="text-sm text-slate-400">此條件下尚無題目（可調整篩選或在「題庫管理」分頁新增）</p> : (
           <div className="rounded-xl border border-white/10 bg-white/5 p-4">
             <div className="text-xs text-slate-500">第 {idx + 1} / {pool.length} 題 {q.difficulty && `・${q.difficulty}`}</div>
-            <div className="my-2 text-xl font-bold">{q.prompt}</div>
+            {drawsBopo ? (
+              <div className="my-2 flex flex-wrap items-center gap-3">
+                <span className="text-xl font-bold">主題：{q.prompt}</span>
+                <span className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/40 bg-cyan-500/15 px-4 py-2">
+                  <span className="text-xs font-semibold text-cyan-300/80">注音</span>
+                  <span className="text-3xl font-black leading-none text-cyan-200">{bopo}</span>
+                </span>
+              </div>
+            ) : (
+              <div className="my-2 text-xl font-bold">{q.prompt}</div>
+            )}
             {opts ? (
               <div className="mt-2 space-y-1.5">
                 {opts.map((o, i) => {
@@ -180,15 +198,27 @@ export function QuestionBank({
               show && q.answer && <div className="text-emerald-300">答案：{q.answer}</div>
             )}
             <div className="mt-3 flex flex-wrap gap-2">
-              {/* 互動三選一：點選項即判定，無需 ✓答對 / 看答案；其餘模式保留按鈕 */}
-              {!interactive && onCorrect && (
-                <button onClick={() => { onCorrect(); next(); }}
-                  className="btn-emerald rounded-lg px-4 py-2 text-sm font-bold">✓ 答對</button>
-              )}
-              <button onClick={next}
-                className="btn-rose rounded-lg px-4 py-2 text-sm hover:bg-white/20">{interactive ? "下一題" : "跳過"}</button>
-              {!interactive && (opts || q.answer) && (
-                <button onClick={() => setShow((s) => !s)} className="chip px-4 py-2 text-sm">{show ? (opts ? "隱藏正解" : "隱藏答案") : (opts ? "公布答案" : "看答案")}</button>
+              {/* 注音聯想：勝負制，無需「✓答對／看答案」；「下一題」換注音、「換主題」另抽主題。 */}
+              {drawsBopo ? (
+                <>
+                  <button onClick={next}
+                    className="btn-emerald rounded-lg px-4 py-2 text-sm font-bold hover:bg-white/20">下一個注音</button>
+                  <button onClick={nextTheme}
+                    className="chip px-4 py-2 text-sm hover:bg-white/15">換主題</button>
+                </>
+              ) : (
+                <>
+                  {/* 互動三選一：點選項即判定，無需 ✓答對 / 看答案；其餘模式保留按鈕 */}
+                  {!interactive && onCorrect && (
+                    <button onClick={() => { onCorrect(); next(); }}
+                      className="btn-emerald rounded-lg px-4 py-2 text-sm font-bold">✓ 答對</button>
+                  )}
+                  <button onClick={next}
+                    className="btn-rose rounded-lg px-4 py-2 text-sm hover:bg-white/20">{interactive ? "下一題" : "跳過"}</button>
+                  {!interactive && (opts || q.answer) && (
+                    <button onClick={() => setShow((s) => !s)} className="chip px-4 py-2 text-sm">{show ? (opts ? "隱藏正解" : "隱藏答案") : (opts ? "公布答案" : "看答案")}</button>
+                  )}
+                </>
               )}
             </div>
           </div>

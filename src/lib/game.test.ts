@@ -762,6 +762,15 @@ describe("MOBILE_GAMES 設定", () => {
       if (!g.hasBank) expect(g.rewardConfig.mode).toBe("win-lose");
     }
   });
+
+  // 選單依 versus 分三組（coop / team-vs-team / team-vs-host）渲染；
+  // 若有遊戲的 versus 不在這三組內，會在 MobileView 的分組選單中被漏掉。
+  it("每款遊戲的 versus 都屬於三個選單分組之一", () => {
+    const groups = ["coop", "team-vs-team", "team-vs-host"];
+    for (const g of MOBILE_GAMES) {
+      expect(groups).toContain(g.versus);
+    }
+  });
 });
 
 // ── 加權抽樣 weightedPick ─────────────────────────────────────
