@@ -58,6 +58,8 @@ import {
   havenAppreciationMult,
   houseIncome,
   applyCardRegionMult,
+  parseMonopolySince,
+  serializeMonopolySince,
   type ObjectiveBaseline,
   type ObjectiveState,
 } from "./game";
@@ -994,5 +996,21 @@ describe("applyCardRegionMult", () => {
   it("applyCardRegionMult 純疊乘", () => {
     expect(applyCardRegionMult(1, 1.3)).toBeCloseTo(1.3, 6);
     expect(applyCardRegionMult(0.75, 1.3)).toBeCloseTo(0.975, 6);
+  });
+});
+
+// ── monopolySince 解析/序列化 ────────────────────────────────
+describe("parseMonopolySince/serialize round-trip", () => {
+  it("parseMonopolySince/serialize round-trip", () => {
+    const csv = "AURORA:3:1700000000000,HAVEN:12:1699999999999";
+    const m = parseMonopolySince(csv);
+    expect(m.HAVEN).toEqual({ teamId: 12, since: 1699999999999 });
+    expect(m.AURORA).toEqual({ teamId: 3, since: 1700000000000 });
+    expect(serializeMonopolySince(m)).toBe(csv);
+  });
+
+  it("parseMonopolySince 忽略壞格式與空字串", () => {
+    expect(parseMonopolySince("")).toEqual({});
+    expect(parseMonopolySince("HAVEN:x:y,GARBAGE")).toEqual({});
   });
 });

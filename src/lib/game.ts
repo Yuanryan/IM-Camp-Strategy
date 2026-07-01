@@ -1400,3 +1400,25 @@ export function squareHint(sq: BoardSquare): string {
       return "";
   }
 }
+
+// monopolySince CSV：region:teamId:epochMs，多筆逗號分隔。
+export function parseMonopolySince(csv: string): Record<string, { teamId: number; since: number }> {
+  const out: Record<string, { teamId: number; since: number }> = {};
+  if (!csv) return out;
+  for (const part of csv.split(",")) {
+    const [region, t, s] = part.split(":");
+    const teamId = Number(t), since = Number(s);
+    if (!region || !Number.isFinite(teamId) || !Number.isFinite(since)) continue;
+    out[region] = { teamId, since };
+  }
+  return out;
+}
+
+export function serializeMonopolySince(
+  map: Record<string, { teamId: number; since: number }>,
+): string {
+  return Object.keys(map)
+    .sort()
+    .map((r) => `${r}:${map[r].teamId}:${map[r].since}`)
+    .join(",");
+}
