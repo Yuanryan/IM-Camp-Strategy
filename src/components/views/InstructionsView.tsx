@@ -7,24 +7,24 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
-  Coins,
   Zap,
   Map,
-  ShoppingBag,
   Star,
-  Trophy,
-  Shield,
-  TrendingUp,
   Package,
   BookOpen,
   Ticket,
-  Info,
-  Building2,
   Landmark,
   Sword,
-  Dices,
   LoaderPinwheel,
+  Building2,
+  Coins,
+  TrendingUp,
+  Trophy,
+  Dices,
+  ZoomIn,
 } from "lucide-react";
+import Image from "next/image";
+import { MOBILE_GAMES, REGIONS, FUNCTION_CARDS } from "@/lib/game";
 
 // ─── Variants ────────────────────────────────────────────────────────────────
 
@@ -106,6 +106,9 @@ function SectionHeader({
 }
 
 // ─── Section 0: Hero ─────────────────────────────────────────────────────────
+
+// 啟用中的功能卡種數（庫存 > 0），與資產頁清單同步。
+const ACTIVE_CARD_COUNT = FUNCTION_CARDS.filter((c) => c.defaultStock > 0).length;
 
 function HeroSection() {
   return (
@@ -192,7 +195,7 @@ function HeroSection() {
           { val: "36", label: "地圖格" },
           { val: "4", label: "區域" },
           { val: "4", label: "市場事件" },
-          { val: "8", label: "功能卡種" },
+          { val: String(ACTIVE_CARD_COUNT), label: "功能卡種" },
         ].map(({ val, label }) => (
           <div key={label} className="glass rounded-xl px-3 py-3 text-center">
             <div className="neon-gold text-xl font-black num">{val}</div>
@@ -220,105 +223,92 @@ function HeroSection() {
   );
 }
 
-// ─── Section 1: Objective ─────────────────────────────────────────────────────
-
-function ObjectiveSection() {
-  const steps = [
-    { icon: Map, text: "在 36 格地圖上移動，觸發各格效果", color: "text-cyan-400", border: "border-cyan-500/25", bg: "bg-cyan-500/8" },
-    { icon: Dices, text: "找流動關主挑戰小遊戲取得骰子來移動", color: "text-purple-400", border: "border-purple-500/25", bg: "bg-purple-500/8" },
-    { icon: Coins, text: "用光幣購買與升級四大區域不動產", color: "text-amber-400", border: "border-amber-500/25", bg: "bg-amber-500/8" },
-    { icon: TrendingUp, text: "根據市場事件判斷資產漲跌，搶佔先機", color: "text-emerald-400", border: "border-emerald-500/25", bg: "bg-emerald-500/8" },
-    { icon: Package, text: "蒐集動產、情報牌與功能卡強化實力", color: "text-rose-400", border: "border-rose-500/25", bg: "bg-rose-500/8" },
-    { icon: Trophy, text: "遊戲結束計算總資產，最高隊伍獲勝！", color: "text-yellow-400", border: "border-yellow-500/25", bg: "bg-yellow-500/8" },
-  ];
-
-  return (
-    <motion.div variants={stagger} initial="hidden" animate="show"
-      className="flex flex-col gap-4 px-4 py-8 max-w-2xl mx-auto w-full">
-      <SectionHeader chapter="Chapter 01" title="遊戲目標" en="OBJECTIVE" accent="text-cyan-400" />
-
-      <motion.div variants={fogItem} className="glass rounded-2xl p-4 border border-cyan-500/15">
-        <p className="text-slate-300 text-sm leading-relaxed">
-          《IM 大富翁：迷霧資本戰》結合大富翁、投資策略、情報判斷與小隊交易。
-          遊戲結算時，{" "}
-          <span className="neon-gold font-bold">現金光幣 ＋ 不動產市值 ＋ 特殊加成</span>{" "}
-          最高的隊伍獲勝。
-        </p>
-      </motion.div>
-
-      <div className="grid gap-2.5">
-        {steps.map(({ icon: Icon, text, color, border, bg }, i) => (
-          <motion.div key={i} variants={fogItem}
-            className={`glass rounded-xl p-3.5 flex items-center gap-3.5 border ${border} ${bg}`}>
-            <div className={`w-8 h-8 rounded-lg glass flex items-center justify-center shrink-0`}>
-              <Icon className={`w-4 h-4 ${color}`} />
-            </div>
-            <p className="text-slate-200 text-sm">{text}</p>
-          </motion.div>
-        ))}
-      </div>
-    </motion.div>
-  );
-}
-
-// ─── Section 2: Resources ─────────────────────────────────────────────────────
-
-function ResourceSection() {
-  const resources = [
-    { icon: Coins, name: "光幣", desc: "主要貨幣，購買、升級、過路費、大樂透", color: "text-amber-400" },
-    { icon: Dices, name: "骰子", desc: "移動工具，完成小遊戲取得，可累積使用", color: "text-purple-400" },
-    { icon: Building2, name: "不動產", desc: "四大區域資產，購買並升至三級，成為獨佔大富翁", color: "text-emerald-400" },
-    { icon: Package, name: "動產", desc: "S/A/B 等級道具，自帶被動效果", color: "text-rose-400" },
-    { icon: Info, name: "情報牌", desc: "市場事件線索，真假參半，需自行判斷", color: "text-sky-400" },
-    { icon: ShoppingBag, name: "卡牌點數", desc: "玩遊戲或過燈塔取得，在神秘商店購買功能卡", color: "text-violet-400" },
-    { icon: Sword, name: "功能卡", desc: "主動進攻策略：購地、拆房等 5 種", color: "text-orange-400" },
-  ];
-
-  return (
-    <motion.div variants={stagger} initial="hidden" animate="show"
-      className="flex flex-col gap-4 px-4 py-8 max-w-2xl mx-auto w-full">
-      <SectionHeader chapter="Chapter 02" title="基本資源" en="RESOURCES" accent="text-purple-400" />
-
-      <div className="grid grid-cols-2 gap-3">
-        {resources.map(({ icon: Icon, name, desc, color }, i) => (
-          <motion.div key={i} variants={fogItem}
-            className="glass rounded-xl p-4 border border-white/5 flex flex-col gap-2">
-            <div className="flex items-center gap-2">
-              <Icon className={`w-4 h-4 ${color}`} />
-              <span className={`font-bold text-sm ${color}`}>{name}</span>
-            </div>
-            <p className="text-slate-400 text-xs leading-relaxed">{desc}</p>
-          </motion.div>
-        ))}
-      </div>
-    </motion.div>
-  );
-}
-
 // ─── Section 3: Map ───────────────────────────────────────────────────────────
 
+function MapLightbox({ open, onClose }: { open: boolean; onClose: () => void }) {
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => { document.body.style.overflow = prev; window.removeEventListener("keydown", onKey); };
+  }, [open, onClose]);
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          transition={{ duration: 0.25 }}
+          className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-sm flex flex-col"
+          onClick={onClose}
+        >
+          <div className="flex justify-end p-3 shrink-0">
+            <button
+              onClick={onClose}
+              className="chip w-10 h-10 rounded-xl flex items-center justify-center"
+              aria-label="關閉"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          {/* Scrollable zoomed board: image rendered larger than viewport so user can pan/scroll to read tiles */}
+          <div
+            className="flex-1 overflow-auto overscroll-contain"
+            style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-x pan-y pinch-zoom" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="relative w-[min(180vh,180vw)] max-w-none aspect-square mx-auto">
+              <Image
+                src="/map.png" alt="遊戲地圖（放大）" fill
+                sizes="180vh" className="object-contain select-none" draggable={false} priority
+              />
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
 function MapSection() {
+  const [zoom, setZoom] = useState(false);
   const tiles = [
-    { icon: Star, name: "光源點", desc: "抽好運卡，直接獲得光幣、動產等獎勵，或轉輪盤、抽籤、移動格數等", color: "text-amber-400", border: "border-amber-500/25", from: "from-amber-500/10" },
-    { icon: Map, name: "迷霧區", desc: "抽厄運卡，可能被扣光幣或執行懲罰", color: "text-slate-400", border: "border-slate-600/30", from: "from-slate-700/20" },
-    { icon: Landmark, name: "資本據點", desc: "可購買或升級不動產；若有獨佔隊伍需繳過路費", color: "text-cyan-400", border: "border-cyan-500/25", from: "from-cyan-500/10" },
-    { icon: Ticket, name: "大樂透登記", desc: "免費登記一個號碼，後續加購依 50×2ⁿ 計算", color: "text-rose-400", border: "border-rose-500/25", from: "from-rose-500/10" },
-    { icon: Zap, name: "巧遇點燈人", desc: "燈塔（+光幣+點數）、神秘商店、命運輪盤、大樂透開獎", color: "text-yellow-400", border: "border-yellow-500/25", from: "from-yellow-500/10" },
+    { icon: Star, name: "光源點", desc: "抽好運卡：獲得光幣、動產等獎勵，或轉輪盤、抽籤、移動格數", color: "text-amber-400", border: "border-amber-500/25", from: "from-amber-500/10" },
+    { icon: Map, name: "迷霧區", desc: "抽厄運卡：可能被扣光幣或執行懲罰", color: "text-slate-400", border: "border-slate-600/30", from: "from-slate-700/20" },
+    { icon: Landmark, name: "資本據點", desc: "可購買或升級不動產；若該區被獨佔需繳過路費", color: "text-cyan-400", border: "border-cyan-500/25", from: "from-cyan-500/10" },
+    { icon: Ticket, name: "大樂透登記", desc: "免費登記一個號碼，加購依 50×2ⁿ 計算", color: "text-rose-400", border: "border-rose-500/25", from: "from-rose-500/10" },
+    { icon: Zap, name: "巧遇點燈人", desc: "燈塔（+光幣 +點數）、神秘商店、命運輪盤、大樂透開獎", color: "text-yellow-400", border: "border-yellow-500/25", from: "from-yellow-500/10" },
   ];
 
   return (
     <motion.div variants={stagger} initial="hidden" animate="show"
       className="flex flex-col gap-4 px-4 py-8 max-w-2xl mx-auto w-full">
-      <SectionHeader chapter="Chapter 03" title="地圖規則" en="MAP & MOVEMENT" accent="text-amber-400" />
+      <SectionHeader chapter="Chapter 03" title="迷霧地圖" en="THE BOARD" accent="text-amber-400" />
 
       <motion.div variants={fogItem} className="glass rounded-2xl p-4 border border-amber-500/15">
         <p className="text-slate-300 text-sm leading-relaxed">
-          地圖共 <span className="neon-gold font-bold">36 格</span>。採用{" "}
-          <span className="text-cyan-300 font-bold">任務骰子制</span>，
-          從流動關主的小遊戲取得骰子，再到地圖處遊玩大富翁。
+          地圖共 <span className="neon-gold font-bold">36 格</span> 環繞中央燈塔，
+          四大區域各據一方。點擊地圖可<span className="text-amber-300 font-bold">放大檢視</span>每一格。
         </p>
       </motion.div>
 
+      {/* Board image — tap to zoom */}
+      <motion.button
+        variants={fogItem}
+        onClick={() => setZoom(true)}
+        className="relative w-full aspect-square rounded-2xl overflow-hidden glass border border-white/10 group"
+        aria-label="放大地圖"
+      >
+        <Image src="/map.png" alt="遊戲地圖" fill sizes="(min-width:768px) 42rem, 100vw"
+          className="object-contain select-none" draggable={false} priority />
+        <span className="absolute bottom-2 right-2 chip px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 text-xs">
+          <ZoomIn className="w-3.5 h-3.5" /> 放大
+        </span>
+      </motion.button>
+
+      {/* Tile legend */}
       <div className="grid gap-2.5">
         {tiles.map(({ icon: Icon, name, desc, color, border, from }, i) => (
           <motion.div key={i} variants={fogItem}
@@ -334,48 +324,57 @@ function MapSection() {
         ))}
       </div>
 
-
+      <MapLightbox open={zoom} onClose={() => setZoom(false)} />
     </motion.div>
   );
 }
 
 // ─── Section 4: Properties ────────────────────────────────────────────────────
 
-function PropertySection() {
-  const regions = [
-    { name: "極光金域", theme: "金融・商業・交易", text: "text-amber-400", border: "border-amber-500/30", from: "from-amber-500/10", dot: "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" },
-    { name: "靈序研究", theme: "科技・資料・通訊", text: "text-cyan-400", border: "border-cyan-500/30", from: "from-cyan-500/10", dot: "bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]" },
-    { name: "影焰工域", theme: "能源・製造・物流", text: "text-rose-400", border: "border-rose-500/30", from: "from-rose-500/10", dot: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]" },
-    { name: "晨霧棲城", theme: "住宅・醫療・教育", text: "text-emerald-400", border: "border-emerald-500/30", from: "from-emerald-500/10", dot: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" },
-  ];
+const REGION_STYLE: Record<string, { text: string; border: string; from: string; dot: string }> = {
+  AURORA:  { text: "text-amber-400",   border: "border-amber-500/30",   from: "from-amber-500/10",   dot: "bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]" },
+  SPECTRA: { text: "text-cyan-400",    border: "border-cyan-500/30",    from: "from-cyan-500/10",    dot: "bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]" },
+  EMBER:   { text: "text-rose-400",    border: "border-rose-500/30",    from: "from-rose-500/10",    dot: "bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]" },
+  HAVEN:   { text: "text-emerald-400", border: "border-emerald-500/30", from: "from-emerald-500/10", dot: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" },
+};
 
+function PropertySection() {
   const levels = [
     { label: "0 級 · 購買", cost: "初始定價", pct: 20, color: "from-slate-500 to-slate-400" },
     { label: "1 級 · 一建", cost: "初始 × 20%", pct: 40, color: "from-cyan-600 to-cyan-400" },
     { label: "2 級 · 二建", cost: "初始 × 40%", pct: 60, color: "from-emerald-600 to-emerald-400" },
     { label: "3 級 · 三建", cost: "初始 × 60%", pct: 80, color: "from-amber-600 to-amber-400" },
   ];
+  const events = [
+    { n: "01", name: "晨霧退散", up: "極光金域 ↑", down: "晨霧棲城 ↓", color: "text-amber-400", border: "border-amber-500/25", from: "from-amber-500/8" },
+    { n: "02", name: "影焰爆產", up: "影焰工域 ↑", down: "住宅教育 ↓", color: "text-rose-400", border: "border-rose-500/25", from: "from-rose-500/8", badge: "光靈啟動" },
+    { n: "03", name: "靈序突破", up: "靈序研究 ↑", down: "傳統商業 ↓", color: "text-cyan-400", border: "border-cyan-500/25", from: "from-cyan-500/8", badge: "特殊骰啟動" },
+    { n: "04", name: "棲城翻身", up: "晨霧棲城 ↑", down: "前期最強區 ↓", color: "text-emerald-400", border: "border-emerald-500/25", from: "from-emerald-500/8", badge: "政府拍賣不動產" },
+  ];
 
   return (
     <motion.div variants={stagger} initial="hidden" animate="show"
       className="flex flex-col gap-4 px-4 py-8 max-w-2xl mx-auto w-full">
-      <SectionHeader chapter="Chapter 04" title="不動產系統" en="PROPERTY SYSTEM" accent="text-emerald-400" />
+      <SectionHeader chapter="Chapter 04" title="不動產與大富翁" en="PROPERTY & MONOPOLY" accent="text-emerald-400" />
 
-      {/* Regions */}
+      {/* Regions (from REGIONS) */}
       <div className="grid grid-cols-2 gap-2.5">
-        {regions.map(({ name, theme, text, border, from, dot }) => (
-          <motion.div key={name} variants={fogItem}
-            className={`glass rounded-xl p-3.5 bg-gradient-to-br ${from} to-transparent border ${border}`}>
-            <div className="flex items-center gap-2 mb-1">
-              <div className={`w-2 h-2 rounded-full shrink-0 ${dot}`} />
-              <span className={`font-bold text-sm ${text}`}>{name}</span>
-            </div>
-            <p className="text-slate-400 text-xs">{theme}</p>
-          </motion.div>
-        ))}
+        {REGIONS.map(({ code, name, theme }) => {
+          const s = REGION_STYLE[code] ?? REGION_STYLE.AURORA;
+          return (
+            <motion.div key={code} variants={fogItem}
+              className={`glass rounded-xl p-3.5 bg-gradient-to-br ${s.from} to-transparent border ${s.border}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <div className={`w-2 h-2 rounded-full shrink-0 ${s.dot}`} />
+                <span className={`font-bold text-sm ${s.text}`}>{name}</span>
+              </div>
+              <p className="text-slate-400 text-xs">{theme}</p>
+            </motion.div>
+          );
+        })}
       </div>
 
-      {/* Upgrade costs */}
+      {/* Upgrade ladder */}
       <motion.div variants={fogItem} className="glass rounded-2xl p-4 border border-emerald-500/15">
         <p className="text-slate-400 text-xs font-mono uppercase tracking-widest mb-3">升級費用（四捨五入至 10 光幣）</p>
         <div className="space-y-3">
@@ -383,12 +382,9 @@ function PropertySection() {
             <div key={i} className="flex items-center gap-3">
               <span className="text-slate-400 text-xs w-20 shrink-0">{label}</span>
               <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${pct}%` }}
+                <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }}
                   transition={{ delay: 0.4 + i * 0.12, duration: 0.7, ease: "easeOut" }}
-                  className={`h-full bg-gradient-to-r ${color} rounded-full`}
-                />
+                  className={`h-full bg-gradient-to-r ${color} rounded-full`} />
               </div>
               <span className="text-slate-300 text-xs w-20 text-right font-mono">{cost}</span>
             </div>
@@ -396,7 +392,7 @@ function PropertySection() {
         </div>
       </motion.div>
 
-      {/* Toll */}
+      {/* Monopoly / toll */}
       <motion.div variants={fogItem}
         className="glass rounded-xl p-4 border border-amber-500/25 bg-gradient-to-r from-amber-500/10 to-transparent">
         <p className="text-amber-300 font-bold text-sm mb-1.5">獨佔隊伍 · 過路費</p>
@@ -408,39 +404,10 @@ function PropertySection() {
           不動產等級越高，計入過路費的價值也越高——蓋得越高，收得越多。
         </p>
       </motion.div>
-    </motion.div>
-  );
-}
 
-// ─── Section 5: Special Systems ───────────────────────────────────────────────
-
-function SpecialSection() {
-  const events = [
-    { n: "01", name: "晨霧退散", up: "極光金域 ↑", down: "晨霧棲城 ↓", color: "text-amber-400", border: "border-amber-500/25", from: "from-amber-500/8" },
-    { n: "02", name: "影焰爆產", up: "影焰工域 ↑", down: "住宅教育 ↓", color: "text-rose-400", border: "border-rose-500/25", from: "from-rose-500/8", badge: "光靈啟動" },
-    { n: "03", name: "靈序突破", up: "靈序研究 ↑", down: "傳統商業 ↓", color: "text-cyan-400", border: "border-cyan-500/25", from: "from-cyan-500/8", badge: "特殊骰啟動" },
-    { n: "04", name: "棲城翻身", up: "晨霧棲城 ↑", down: "前期最強區 ↓", color: "text-emerald-400", border: "border-emerald-500/25", from: "from-emerald-500/8", badge: "政府拍賣不動產" },
-  ];
-
-  const cards = [
-    { name: "購地卡", effect: "強制收購對手一塊土地", cost: 50 },
-    { name: "換地卡", effect: "與對手互換土地", cost: 20 },
-    { name: "拆屋卡", effect: "拆除對手一層建設", cost: 30 },
-    { name: "怪獸卡", effect: "摧毀對手一棟建設", cost: 70 },
-    // { name: "護盾卡", effect: "抵擋一次攻擊或過路費", cost: 25 },
-    // { name: "情蒐卡", effect: "得知指定對手資訊", cost: 15 },
-    // { name: "市場預警", effect: "知道下次事件漲跌方向", cost: 50 },
-    { name: "換屋卡", effect: "與對手交換升級等級", cost: 20 },
-  ];
-
-  return (
-    <motion.div variants={stagger} initial="hidden" animate="show"
-      className="flex flex-col gap-4 px-4 py-8 max-w-2xl mx-auto w-full">
-      <SectionHeader chapter="Chapter 05" title="特殊系統" en="SPECIAL SYSTEMS" accent="text-rose-400" />
-
-      {/* Events */}
+      {/* Market events (folded in) */}
       <motion.div variants={fogItem}>
-        <p className="text-slate-400 text-xs font-mono tracking-widest uppercase mb-2">市場事件 × 4（由主持人依時間宣告）</p>
+        <p className="text-slate-400 text-xs font-mono tracking-widest uppercase mb-2">市場事件 × 4（由主持人依時間宣告，牽動各區資產漲跌）</p>
         <div className="grid grid-cols-2 gap-2">
           {events.map(({ n, name, up, down, color, border, from, badge }) => (
             <div key={n} className={`glass rounded-xl p-3 bg-gradient-to-br ${from} to-transparent border ${border}`}>
@@ -459,22 +426,17 @@ function SpecialSection() {
           ))}
         </div>
       </motion.div>
+    </motion.div>
+  );
+}
 
-      {/* Function Cards */}
-      <motion.div variants={fogItem}>
-        <p className="text-slate-400 text-xs font-mono tracking-widest uppercase mb-2">功能卡（用卡牌點數在商店購買）</p>
-        <div className="grid grid-cols-2 gap-2">
-          {cards.map(({ name, effect, cost }) => (
-            <div key={name} className="glass rounded-xl p-2.5 border border-violet-500/15 flex items-start justify-between gap-2">
-              <div>
-                <p className="font-bold text-xs text-violet-300">{name}</p>
-                <p className="text-slate-500 text-[10px] leading-snug mt-0.5">{effect}</p>
-              </div>
-              <span className="text-violet-400 text-[10px] font-mono shrink-0">{cost}pt</span>
-            </div>
-          ))}
-        </div>
-      </motion.div>
+// ─── Section 5: Special Systems ───────────────────────────────────────────────
+
+function SpecialSection() {
+  return (
+    <motion.div variants={stagger} initial="hidden" animate="show"
+      className="flex flex-col gap-4 px-4 py-8 max-w-2xl mx-auto w-full">
+      <SectionHeader chapter="Chapter 06" title="特殊系統" en="SPECIAL SYSTEMS" accent="text-rose-400" />
 
       {/* Lottery */}
       <motion.div variants={fogItem}
@@ -485,12 +447,12 @@ function SpecialSection() {
         </div>
         <p className="text-slate-400 text-xs leading-relaxed">
           踩到登記格可免費登記一個號碼（1～50）。第二個起加購費：
-          <span className="text-rose-300 font-mono"> 50 × 2^(n-1)</span>
-          。獎金池增加兩倍！開獎格觸發時，中獎隊伍獨得整個獎金池。
+          <span className="text-rose-300 font-mono"> 50 × 2^(n-1)</span>，獎金池增加兩倍！
+          開獎格觸發時，中獎隊伍獨得整個獎金池。
         </p>
       </motion.div>
 
-      {/* Wheel of fortune */}
+      {/* Wheel */}
       <motion.div variants={fogItem}
         className="glass rounded-xl p-3.5 border border-cyan-500/20 bg-gradient-to-r from-cyan-500/8 to-transparent">
         <div className="flex items-center gap-2 mb-1.5">
@@ -500,20 +462,6 @@ function SpecialSection() {
         <p className="text-slate-400 text-xs leading-relaxed">
           在地圖關站可押注光幣轉動輪盤——轉盤決定本次投資的<span className="text-cyan-300 font-bold">倍率</span>，
           可能翻倍暴賺，也可能血本無歸。高風險高報酬？
-        </p>
-      </motion.div>
-
-      {/* Movable assets — passive effects */}
-      <motion.div variants={fogItem}
-        className="glass rounded-xl p-3.5 border border-amber-500/20 bg-gradient-to-r from-amber-500/8 to-transparent">
-        <div className="flex items-center gap-2 mb-1.5">
-          <Package className="w-4 h-4 text-amber-400" />
-          <p className="font-bold text-sm text-amber-300">動產 · 被動效果</p>
-        </div>
-        <p className="text-slate-400 text-xs leading-relaxed">
-          動產不只是收藏品——每項都自帶<span className="text-amber-300 font-bold">被動效果</span>。例如：
-          收路費加成、付路費減免、購買折扣、每輪複利或分紅、樂透加成抽成、輪盤保底等。
-          可從光源點機率獲得、從神秘商店購買、私下交易或是在拍賣中心取得。
         </p>
       </motion.div>
 
@@ -534,19 +482,159 @@ function SpecialSection() {
   );
 }
 
-// ─── Section 6: Settlement ────────────────────────────────────────────────────
+function IntroSection() {
+  const facts = [
+    { icon: Building2, label: "四大區域", value: "極光・靈序・影焰・晨霧" },
+    { icon: Coins, label: "通用貨幣", value: "光幣" },
+    { icon: TrendingUp, label: "市場機制", value: "事件驅動漲跌" },
+    { icon: Trophy, label: "勝負", value: "總資產最高者勝" },
+  ];
+  return (
+    <motion.div variants={stagger} initial="hidden" animate="show"
+      className="flex flex-col gap-4 px-4 py-8 max-w-2xl mx-auto w-full">
+      <SectionHeader chapter="Chapter 01" title="遊戲簡介" en="INTRODUCTION" accent="text-cyan-400" />
 
-function SettlementSection() {
+      <motion.div variants={fogItem} className="glass rounded-2xl p-4 border border-cyan-500/15">
+        <p className="text-slate-300 text-sm leading-relaxed">
+          《IM 大富翁：迷霧資本戰》中，你率領一支新興集團進駐迷霧城市。
+          在四大區域<span className="neon-gold font-bold"> 購買並升級資產</span>、
+          解讀<span className="text-cyan-300 font-bold"> 市場漲跌</span>、
+          蒐集情報與道具、與他隊交易結盟。
+          遊戲結束時，<span className="neon-gold font-bold">總資產</span>最高的隊伍稱霸迷霧大陸。
+        </p>
+      </motion.div>
+
+      <div className="grid grid-cols-2 gap-3">
+        {facts.map(({ icon: Icon, label, value }) => (
+          <motion.div key={label} variants={fogItem}
+            className="glass rounded-xl p-4 border border-white/5 flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <Icon className="w-4 h-4 text-cyan-400" />
+              <span className="text-slate-400 text-xs">{label}</span>
+            </div>
+            <p className="text-slate-200 text-sm font-medium">{value}</p>
+          </motion.div>
+        ))}
+      </div>
+    </motion.div>
+  );
+}
+
+// 小遊戲名稱（去掉「（vs 關主）」之類括號變體後去重，順序同 MOBILE_GAMES）
+const MINIGAME_NAMES: string[] = Array.from(
+  new Set(MOBILE_GAMES.map((g) => g.name.replace(/（[^）]*）\s*$/, "").trim()))
+);
+
+function TwoPartsSection() {
+  return (
+    <motion.div variants={stagger} initial="hidden" animate="show"
+      className="flex flex-col gap-4 px-4 py-8 max-w-2xl mx-auto w-full">
+      <SectionHeader chapter="Chapter 02" title="兩大環節" en="HOW IT FLOWS" accent="text-purple-400" />
+
+      <motion.div variants={fogItem} className="glass rounded-2xl p-4 border border-purple-500/15">
+        <p className="text-slate-300 text-sm leading-relaxed">
+          遊戲分為兩大環節：先在<span className="text-purple-300 font-bold"> 流動關卡 </span>玩小遊戲贏得
+          <span className="text-purple-300 font-bold"> 骰子</span>，再用骰子在
+          <span className="text-cyan-300 font-bold"> 大富翁地圖 </span>上移動、觸發各格效果。
+        </p>
+      </motion.div>
+
+      {/* Part A — minigame → dice */}
+      <motion.div variants={fogItem}
+        className="glass rounded-xl p-4 border border-purple-500/25 bg-gradient-to-r from-purple-500/8 to-transparent">
+        <div className="flex items-center gap-2 mb-2">
+          <Dices className="w-4 h-4 text-purple-400" />
+          <p className="font-bold text-sm text-purple-300">環節一 · 小遊戲換骰子</p>
+        </div>
+        <p className="text-slate-400 text-xs leading-relaxed mb-3">
+          找<span className="text-purple-300 font-bold">流動關主</span>挑戰小遊戲，過關贏得骰子。
+          骰子可<span className="text-purple-300 font-bold">累積</span>使用——沒有骰子就無法在地圖上移動。
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {MINIGAME_NAMES.map((name) => (
+            <span key={name}
+              className="text-[11px] text-slate-300 glass px-2.5 py-1 rounded-full border border-purple-500/15">
+              {name}
+            </span>
+          ))}
+        </div>
+      </motion.div>
+
+      {/* Part B — monopoly */}
+      <motion.div variants={fogItem}
+        className="glass rounded-xl p-4 border border-cyan-500/25 bg-gradient-to-r from-cyan-500/8 to-transparent">
+        <div className="flex items-center gap-2 mb-2">
+          <Map className="w-4 h-4 text-cyan-400" />
+          <p className="font-bold text-sm text-cyan-300">環節二 · 大富翁地圖</p>
+        </div>
+        <p className="text-slate-400 text-xs leading-relaxed">
+          用骰子在 36 格地圖上前進，每停留一格就觸發該格效果：購買 / 升級不動產、抽好運或厄運卡、
+          登記大樂透、巧遇點燈人等。地圖與各格細節見下一頁。
+        </p>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function AssetsSection() {
+  const cards = FUNCTION_CARDS.filter((c) => c.defaultStock > 0);
+  return (
+    <motion.div variants={stagger} initial="hidden" animate="show"
+      className="flex flex-col gap-4 px-4 py-8 max-w-2xl mx-auto w-full">
+      <SectionHeader chapter="Chapter 05" title="資產與卡牌" en="ASSETS & CARDS" accent="text-rose-400" />
+
+      {/* 動產 — passive effects */}
+      <motion.div variants={fogItem}
+        className="glass rounded-xl p-3.5 border border-amber-500/20 bg-gradient-to-r from-amber-500/8 to-transparent">
+        <div className="flex items-center gap-2 mb-1.5">
+          <Package className="w-4 h-4 text-amber-400" />
+          <p className="font-bold text-sm text-amber-300">動產 · 被動效果（S / A / B / C 級）</p>
+        </div>
+        <p className="text-slate-400 text-xs leading-relaxed">
+          動產不只是收藏品——每項都自帶<span className="text-amber-300 font-bold">被動效果</span>，例如：
+          收路費加成、付路費減免、購買折扣、每輪複利或分紅、樂透加成抽成、輪盤保底等。
+        </p>
+        <p className="text-slate-400 text-xs leading-relaxed mt-1.5">
+          取得方式：<span className="text-amber-300 font-bold">光源點機率獲得</span>、
+          神秘商店購買、隊間交易、或在政府拍賣中得標。
+        </p>
+      </motion.div>
+
+      {/* 功能卡 — from FUNCTION_CARDS */}
+      <motion.div variants={fogItem}>
+        <p className="text-slate-400 text-xs font-mono tracking-widest uppercase mb-2">功能卡（在神秘商店用卡牌點數購買）</p>
+        <div className="grid grid-cols-2 gap-2">
+          {cards.map(({ type, effect, cost }) => (
+            <div key={type} className="glass rounded-xl p-2.5 border border-violet-500/15 flex items-start justify-between gap-2">
+              <div>
+                <p className="font-bold text-xs text-violet-300">{type}</p>
+                <p className="text-slate-500 text-[10px] leading-snug mt-0.5">{effect}</p>
+              </div>
+              <span className="text-violet-400 text-[10px] font-mono shrink-0">{cost}pt</span>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+
+      <motion.div variants={fogItem}
+        className="glass rounded-xl p-3 border border-slate-700/30 flex items-center gap-2">
+        <Sword className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+        <p className="text-slate-400 text-[11px] leading-relaxed">
+          功能卡是主動進攻手段，瞄準對手的土地與建設；卡牌點數可玩小遊戲或過燈塔取得。
+        </p>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function WinSection() {
   const formula = [
     { text: "現金光幣", color: "text-yellow-300", glow: "shadow-[0_0_14px_rgba(253,224,71,0.35)]", border: "border-yellow-500/30" },
     { text: "＋", color: "text-slate-500", border: "" },
     { text: "不動產市值", color: "text-cyan-300", glow: "shadow-[0_0_14px_rgba(34,211,238,0.35)]", border: "border-cyan-500/30" },
     { text: "＋", color: "text-slate-500", border: "" },
-    // { text: "動產市值", color: "text-emerald-300", glow: "shadow-[0_0_14px_rgba(52,211,153,0.35)]", border: "border-emerald-500/30" },
-    // { text: "＋", color: "text-slate-500", border: "" },
     { text: "特殊加成", color: "text-rose-300", glow: "shadow-[0_0_14px_rgba(251,113,133,0.35)]", border: "border-rose-500/30" },
   ];
-
   const rules = [
     "蓋房子、成為獨佔大富翁、發大財",
     "主持人擁有最終裁決權",
@@ -555,28 +643,24 @@ function SettlementSection() {
   return (
     <motion.div variants={stagger} initial="hidden" animate="show"
       className="flex flex-col gap-4 px-4 py-8 max-w-2xl mx-auto w-full">
-      <SectionHeader chapter="Chapter 06" title="結算方式" en="FINAL SETTLEMENT" accent="text-yellow-400" />
+      <SectionHeader chapter="Chapter 07" title="如何獲勝" en="HOW TO WIN" accent="text-yellow-400" />
 
-      {/* Formula */}
       <motion.div variants={fogItem}
         className="glass rounded-2xl p-5 border border-yellow-500/20 bg-gradient-to-br from-yellow-500/8 to-amber-500/5 text-center">
         <p className="text-slate-400 text-xs font-mono tracking-widest uppercase mb-4">總資產計算公式</p>
         <div className="flex flex-wrap items-center justify-center gap-2">
           {formula.map(({ text, color, glow, border }, i) => (
-            <motion.span
-              key={i}
+            <motion.span key={i}
               initial={{ opacity: 0, scale: 0.7, filter: "blur(8px)" }}
               animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
               transition={{ delay: 0.3 + i * 0.1, type: "spring", stiffness: 250, damping: 20 }}
-              className={`font-bold text-sm ${color} ${glow || ""} ${border ? `glass border ${border} px-2.5 py-1.5 rounded-lg` : ""}`}
-            >
+              className={`font-bold text-sm ${color} ${glow || ""} ${border ? `glass border ${border} px-2.5 py-1.5 rounded-lg` : ""}`}>
               {text}
             </motion.span>
           ))}
         </div>
       </motion.div>
 
-      {/* Key rules */}
       <motion.div variants={fogItem}>
         <p className="text-slate-400 text-xs font-mono tracking-widest uppercase mb-2">現場執行原則</p>
         <div className="space-y-2">
@@ -590,31 +674,30 @@ function SettlementSection() {
         </div>
       </motion.div>
 
-      {/* Final */}
       <motion.div variants={fogItem} className="glass rounded-2xl p-5 border border-cyan-500/20 text-center">
         <motion.p
           animate={{ opacity: [0.7, 1, 0.7], textShadow: ["0 0 8px rgba(34,211,238,0.3)", "0 0 24px rgba(34,211,238,0.8)", "0 0 8px rgba(34,211,238,0.3)"] }}
           transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
-          className="neon-cyan font-black text-xl"
-        >
+          className="neon-cyan font-black text-xl">
           祝各隊旗開得勝！
         </motion.p>
-        {/* <p className="text-slate-500 text-xs mt-1.5">記得到交易所登記，口頭不算數！</p> */}
       </motion.div>
     </motion.div>
   );
 }
+// MapSection, PropertySection, SpecialSection: keep existing implementations for now (rewritten in later tasks)
 
 // ─── Section Config ───────────────────────────────────────────────────────────
 
 const SECTIONS = [
   { id: 0, label: "序章", component: HeroSection },
-  { id: 1, label: "目標", component: ObjectiveSection },
-  { id: 2, label: "資源", component: ResourceSection },
+  { id: 1, label: "簡介", component: IntroSection },
+  { id: 2, label: "兩大環節", component: TwoPartsSection },
   { id: 3, label: "地圖", component: MapSection },
   { id: 4, label: "不動產", component: PropertySection },
-  { id: 5, label: "特殊", component: SpecialSection },
-  { id: 6, label: "結算", component: SettlementSection },
+  { id: 5, label: "資產卡牌", component: AssetsSection },
+  { id: 6, label: "特殊", component: SpecialSection },
+  { id: 7, label: "如何獲勝", component: WinSection },
 ] as const;
 
 // ─── Main Export ──────────────────────────────────────────────────────────────
