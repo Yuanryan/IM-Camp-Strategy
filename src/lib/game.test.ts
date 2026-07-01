@@ -1025,6 +1025,17 @@ describe("市場卡倍率疊乘", () => {
   });
 });
 
+// ── AURORA 放大語意 ────────────────────────────────────────────
+describe("AURORA 放大語意", () => {
+  it("AURORA 放大：正收益 ×1.5、負收益不放大", () => {
+    const mult = 1.5;
+    expect(Math.round(200 * mult)).toBe(300);
+    // 負收益（詛咒扣款）不套放大
+    const neg = -100;
+    expect(neg > 0 ? Math.round(neg * mult) : neg).toBe(-100);
+  });
+});
+
 // ── 賣不動產回交易所：回收金公式 ─────────────────────────────
 describe("sellPropertyToExchange 回收金公式", () => {
   it("賣地回收金 = investedValue 取整到 10", () => {

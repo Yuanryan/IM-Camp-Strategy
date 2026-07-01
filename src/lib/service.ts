@@ -1873,15 +1873,42 @@ export async function distributeRoundIncome(params: { teamId: number; byToken?: 
     const results: { teamId: number; income: number }[] = [];
     for (const [teamId, { total, ids }] of incomeMap) {
       // total 可為負（淨扣款）或 0（收益被詛咒抵銷）。為 0 時不動光幣 / 不記帳，但仍消耗道具次數。
-      if (total !== 0) {
-        await tx.team.update({ where: { id: teamId }, data: { coins: { increment: total } } });
-        await logLedger(tx, { teamId, kind: "coins", delta: total, note: total >= 0 ? "每輪動產收益" : "每輪動產收支（含詛咒扣款）", byToken });
+      let payout = total;
+      if (total > 0) {
+        const auroraMono = await teamMonopolizesRegion(tx, teamId, "AURORA");
+        if (auroraMono) payout = Math.round(total * state.auroraMultiplier);
+      }
+      if (payout !== 0) {
+        await tx.team.update({ where: { id: teamId }, data: { coins: { increment: payout } } });
+        await logLedger(tx, { teamId, kind: "coins", delta: payout, note: payout >= 0 ? "每輪動產收益" : "每輪動產收支（含詛咒扣款）", byToken });
       }
       await decrementUses(tx, ids);
-      results.push({ teamId, income: total });
+      results.push({ teamId, income: payout });
     }
     // 消耗有次數的提醒（與發放收益同一次按鈕）
     if (reminderUsedIds.length) await decrementUses(tx, reminderUsedIds);
+
+    // ── 不動產進階：AURORA×1.5 已於上方套用動產收益；此處補房收 / SPECTRA / HAVEN flush ──
+    const isAurora = await teamMonopolizesRegion(tx, teamId, "AURORA");
+    const hLive = havenLiveMultFor(state, teamId, Date.now());
+    const myProps = await tx.property.findMany({ where: { ownerTeamId: teamId } });
+    let houseTotal = 0;
+    for (const p of myProps) {
+      const cv = currentValue(p, activeEvents, state.event4Penalty, { havenLiveMult: hLive });
+      let inc = houseIncome(cv, p.level, [state.houseIncomeL1, state.houseIncomeL2, state.houseIncomeL3]);
+      if (isAurora && inc > 0) inc = Math.round(inc * state.auroraMultiplier);
+      houseTotal += inc;
+    }
+    if (houseTotal > 0) {
+      await tx.team.update({ where: { id: teamId }, data: { coins: { increment: houseTotal } } });
+      await logLedger(tx, { teamId, kind: "coins", delta: houseTotal, note: "房產營收", byToken });
+    }
+    if (await teamMonopolizesRegion(tx, teamId, "SPECTRA")) {
+      await tx.team.update({ where: { id: teamId }, data: { cardPoints: { increment: state.spectraCardPoints } } });
+      await logLedger(tx, { teamId, kind: "cardPoints", delta: state.spectraCardPoints, note: "獨佔靈序：卡牌點數", byToken });
+    }
+    await flushHavenAppreciation(tx, await getState(tx), Date.now());
+
     return { ok: true, results, remindersTicked: reminderUsedIds.length };
   });
 }
