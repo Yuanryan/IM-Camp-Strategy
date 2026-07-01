@@ -40,9 +40,11 @@ const RANK_TIER_CLASS: Record<ProjectionRankTier, string> = {
 export function ProjectionArenaDashboard({
   snap,
   lotteryAnimating,
+  previousPropertyCurrentValues,
 }: {
   snap: Snapshot;
   lotteryAnimating?: boolean;
+  previousPropertyCurrentValues?: Record<number, number>;
 }) {
   const ranking = [...snap.teams].sort((a, b) => b.netWorth - a.netWorth);
   return (
@@ -64,7 +66,10 @@ export function ProjectionArenaDashboard({
             <ArenaLeaderboard ranking={ranking} />
           </aside>
 
-          <RegionArena snap={snap} />
+          <RegionArena
+            snap={snap}
+            previousPropertyCurrentValues={previousPropertyCurrentValues}
+          />
         </main>
       </div>
     </div>
@@ -371,7 +376,7 @@ function JackpotCard({
     <section className="projection-jackpot projection-panel relative overflow-hidden rounded-[1.35rem] border-emerald-300/25 px-4 py-3">
       <JackpotBallCanvas balls={displayBalls} />
       <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" aria-hidden="true" />
-      <div className="relative z-10 flex h-full items-center justify-between gap-3">
+      <div className="projection-jackpot-content relative z-10 flex h-full items-end justify-between gap-3 pb-1">
         <div>
           <div className="flex items-center gap-2 text-xs font-black tracking-[0.2em] text-emerald-200/80">
             <Ticket className="h-4 w-4" />
@@ -393,7 +398,13 @@ function JackpotCard({
   );
 }
 
-function RegionArena({ snap }: { snap: Snapshot }) {
+function RegionArena({
+  snap,
+  previousPropertyCurrentValues,
+}: {
+  snap: Snapshot;
+  previousPropertyCurrentValues?: Record<number, number>;
+}) {
   return (
     <section
       aria-label="四區資產競技場"
@@ -423,16 +434,13 @@ function RegionArena({ snap }: { snap: Snapshot }) {
               } as CSSProperties
             }
           >
-            <div className="relative z-10 mb-2 flex min-h-[3.25rem] items-center justify-between gap-3 border-b border-white/10 pb-2">
+            <div className="relative z-10 mb-1.5 flex min-h-[2.55rem] items-center justify-between gap-3 border-b border-white/10 pb-1.5">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className={`h-2.5 w-2.5 rounded-full ${ui.dot}`} />
-                  <h2 className={`truncate text-lg font-black ${ui.text}`}>
+                  <span className={`h-3 w-3 rounded-full ${ui.dot}`} />
+                  <h2 className={`truncate text-[clamp(1.25rem,2.1vw,1.65rem)] font-black leading-none ${ui.text}`}>
                     {region.name}
                   </h2>
-                </div>
-                <div className="mt-0.5 truncate text-[0.62rem] font-bold tracking-[0.1em] text-slate-500">
-                  {region.theme}
                 </div>
               </div>
 
@@ -451,7 +459,10 @@ function RegionArena({ snap }: { snap: Snapshot }) {
                 gridTemplateRows: `repeat(${Math.max(properties.length, 1)}, minmax(0, 1fr))`,
               }}
             >
-              {properties.map((property) => {
+              {properties.map((property, propertyIndex) => {
+                const previousCurrentValue =
+                  previousPropertyCurrentValues?.[property.id] ??
+                  property.currentValue;
                 const isWhiteOwner = property.ownerColorName === "白";
                 const ownerTagStyle: CSSProperties = {
                   borderColor: `${property.ownerColorRing ?? property.ownerColor ?? "#7dd3fc"}${isWhiteOwner ? "" : "99"}`,
@@ -467,14 +478,24 @@ function RegionArena({ snap }: { snap: Snapshot }) {
                 return (
                   <li
                     key={property.id}
-                    className={`grid min-h-0 grid-cols-[minmax(0,1fr)_5rem] items-center gap-2 rounded-lg border px-2.5 ${
+                    className={`projection-property-row ${
+                      controlled ? "projection-monopoly-property-row" : ""
+                    } grid min-h-0 grid-cols-[minmax(0,1fr)_5.6rem] items-center gap-2 rounded-lg border px-2.5 ${
                       property.ownerTeamId
                         ? "border-white/10 bg-black/35"
                         : "border-white/[0.04] bg-black/15 text-slate-400"
                     }`}
+                    style={
+                      controlled
+                        ? ({
+                            "--projection-row-index": propertyIndex,
+                            "--projection-row-delay": `${propertyIndex * 180}ms`,
+                          } as CSSProperties)
+                        : undefined
+                    }
                   >
-                    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.35rem_11.5rem] items-center gap-1.5">
-                      <span className="min-w-0 truncate text-[0.92rem] font-bold leading-none">
+                    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.45rem_11.5rem] items-center gap-3">
+                      <span className="min-w-0 truncate text-[clamp(1rem,1.45vw,1.22rem)] font-black leading-none">
                         {property.name}
                       </span>
                       <span className="flex justify-center">
@@ -485,7 +506,7 @@ function RegionArena({ snap }: { snap: Snapshot }) {
                       <span className="flex min-w-0 justify-start">
                         {property.ownerName ? (
                           <span
-                            className="min-w-0 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[0.62rem] font-black leading-none"
+                            className="projection-owner-tag min-w-0 whitespace-nowrap rounded-lg border px-2.5 py-1 text-[0.82rem] font-black leading-none"
                             title={`${property.ownerName}（${property.ownerColorName ?? "小隊色"}）`}
                             style={ownerTagStyle}
                           >
@@ -499,17 +520,20 @@ function RegionArena({ snap }: { snap: Snapshot }) {
                         <PriceTag
                           current={property.investedValue}
                           base={property.basePrice}
-                          className="block text-base font-black tabular-nums"
+                          trendValue={property.currentValue}
+                          trendBase={previousCurrentValue}
+                          hideTrendIcon
+                          className="block text-[clamp(1.12rem,1.8vw,1.45rem)] font-black tabular-nums"
                         />
-                        <span className="mt-0.5 block text-[0.6rem] font-bold tabular-nums text-slate-500">
-                          現價 {property.currentValue}
-                        </span>
                       </div>
                     ) : (
                       <PriceTag
                         current={property.currentValue}
                         base={property.basePrice}
-                        className="block w-full text-right text-base font-black leading-none tabular-nums"
+                        trendValue={property.currentValue}
+                        trendBase={previousCurrentValue}
+                        hideTrendIcon
+                        className="block w-full text-right text-[clamp(1.12rem,1.8vw,1.45rem)] font-black leading-none tabular-nums"
                       />
                     )}
                   </li>
@@ -538,31 +562,36 @@ function DominanceBadge({
 }) {
   if (!teamName) {
     return (
-      <div className="shrink-0 rounded-xl border border-white/10 bg-black/20 px-3 py-1.5 text-right">
-        <div className="text-[0.6rem] font-black tracking-[0.18em] text-slate-500">
+      <div className="projection-dominance-idle projection-dominance-badge-compact shrink-0 rounded-full border border-white/10 bg-black/20 px-3 py-1.5">
+        <span className="text-[0.62rem] font-black tracking-[0.18em] text-slate-500">
           區域狀態
-        </div>
-        <div className="text-xs font-bold text-slate-300">競逐中</div>
+        </span>
+        <span className="mx-2 text-slate-600">·</span>
+        <span className="text-xs font-black text-slate-300">競逐中</span>
       </div>
     );
   }
 
   return (
-    <div className="projection-dominance-badge shrink-0 rounded-xl border px-3 py-1.5 text-right">
-      <div className="flex items-center justify-end gap-1.5">
-        <Crown className={`h-4 w-4 ${accentClass}`} />
-        <span className="text-sm font-black text-white">{teamName} 獨佔</span>
-      </div>
-      <div className="mt-0.5 text-[0.65rem] font-bold text-slate-300">
-        過路費{" "}
+    <div className="projection-dominance-badge projection-dominance-badge-compact shrink-0 rounded-full border px-3 py-1.5">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <Crown className={`h-4 w-4 shrink-0 ${accentClass}`} />
+        <span className="max-w-[12rem] truncate text-sm font-black text-white">
+          {teamName}
+        </span>
+      </span>
+      <span className="mx-2 h-4 w-px shrink-0 bg-white/15" aria-hidden="true" />
+      <span className="whitespace-nowrap text-[0.7rem] font-black text-slate-300">
+        過路費
         <AnimatedNum
           value={toll}
-          className={`ml-1 text-base font-black ${accentClass}`}
+          className={`ml-1 text-lg font-black leading-none ${accentClass}`}
         />
-      </div>
-      <div className={`mt-0.5 text-[0.65rem] font-black ${accentClass}`}>
+      </span>
+      <span className="mx-2 h-4 w-px shrink-0 bg-white/15" aria-hidden="true" />
+      <span className={`whitespace-nowrap text-[0.72rem] font-black ${accentClass}`}>
         {monopolyEffectText(effect, settings)}
-      </div>
+      </span>
     </div>
   );
 }
@@ -572,14 +601,14 @@ function ProjectionLevelLights({ level }: { level: number }) {
   return (
     <span
       data-level-tier={tier}
-      className="projection-level-lights inline-flex shrink-0 items-center gap-1"
+      className="projection-level-lights inline-flex shrink-0 items-center gap-1.5"
       title={`資產等級 ${level}`}
     >
       {[1, 2, 3].map((step) => (
         <span
           key={step}
           data-active={step <= level ? "true" : "false"}
-          className="projection-level-light h-1.5 w-1.5 rounded-full"
+          className="projection-level-light projection-level-light-large h-2.5 w-2.5 rounded-full"
         />
       ))}
     </span>

@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useReducer,
   useRef,
   useState,
@@ -39,6 +40,9 @@ import type { Snapshot } from "@/lib/snapshot";
 
 export function ProjectionView() {
   const { snap, error } = useSnapshot(2000, "/api/public/snapshot");
+  const previousPropertyCurrentValues = usePreviousPropertyCurrentValues(
+    snap ?? null,
+  );
   const { activeAnimation, completeActiveAnimation } =
     useProjectionAnimationQueue(snap ?? null);
 
@@ -54,7 +58,11 @@ export function ProjectionView() {
 
   return (
     <>
-      <ProjectionArenaDashboard snap={snap} lotteryAnimating={activeAnimation?.kind === "lottery"} />
+      <ProjectionArenaDashboard
+        snap={snap}
+        lotteryAnimating={activeAnimation?.kind === "lottery"}
+        previousPropertyCurrentValues={previousPropertyCurrentValues}
+      />
 
       <HammerImagePreloader />
 
@@ -91,6 +99,37 @@ export function ProjectionView() {
         ) : null}
       </AnimatePresence>
     </>
+  );
+}
+
+function usePreviousPropertyCurrentValues(snapshot: Snapshot | null) {
+  const previous = useRef<Record<number, number> | undefined>(undefined);
+  const lastSnapshotKey = useRef<string | null>(null);
+  const [baseline, setBaseline] = useState<Record<number, number> | undefined>(
+    undefined,
+  );
+  const snapshotKey = snapshot
+    ? snapshot.properties
+        .map((property) => `${property.id}:${property.currentValue}`)
+        .join("|")
+    : null;
+
+  useLayoutEffect(() => {
+    if (!snapshot || !snapshotKey || snapshotKey === lastSnapshotKey.current) {
+      return;
+    }
+
+    setBaseline(previous.current);
+    previous.current = buildPropertyCurrentValueMap(snapshot);
+    lastSnapshotKey.current = snapshotKey;
+  }, [snapshot, snapshotKey]);
+
+  return baseline;
+}
+
+function buildPropertyCurrentValueMap(snapshot: Snapshot) {
+  return Object.fromEntries(
+    snapshot.properties.map((property) => [property.id, property.currentValue]),
   );
 }
 
