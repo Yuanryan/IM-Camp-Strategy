@@ -40,6 +40,7 @@ export function AdminView() {
       <PropertyEditor snap={snap} onChange={mutate} />
       <CardEditor />
       <ShopItemEditor />
+      <AdvancedSettingsEditor snap={snap} onChange={mutate} />
       <ItemEditor snap={snap} />
       <LedgerCard />
     </div>
@@ -684,6 +685,109 @@ function ItemEditor({ snap }: { snap: Snapshot }) {
           ))}
         </div>
       )}
+    </Card>
+  );
+}
+
+function AdvancedSettingsEditor({ snap, onChange }: { snap: Snapshot; onChange: () => void | Promise<unknown> }) {
+  const s = snap.settings;
+  const [auroraMultiplier, setAuroraMultiplier] = useState(s.auroraMultiplier);
+  const [spectraCardPoints, setSpectraCardPoints] = useState(s.spectraCardPoints);
+  const [havenApprIntervalMs, setHavenApprIntervalMs] = useState(s.havenApprIntervalMs);
+  const [havenApprRate, setHavenApprRate] = useState(s.havenApprRate);
+  const [houseIncomeL1, setHouseIncomeL1] = useState(s.houseIncomeRates[0]);
+  const [houseIncomeL2, setHouseIncomeL2] = useState(s.houseIncomeRates[1]);
+  const [houseIncomeL3, setHouseIncomeL3] = useState(s.houseIncomeRates[2]);
+  const [cardRegionUpMult, setCardRegionUpMult] = useState(s.cardRegionUpMult);
+  const [cardRegionDownMult, setCardRegionDownMult] = useState(s.cardRegionDownMult);
+  const [cardBuildingUpMult, setCardBuildingUpMult] = useState(s.cardBuildingUpMult);
+  const [cardBuildingDownMult, setCardBuildingDownMult] = useState(s.cardBuildingDownMult);
+
+  return (
+    <Card title="不動產進階參數">
+      <p className="mb-3 text-xs text-slate-400">
+        調整各區獨佔效果、地價漲跌倍率等進階設定。儲存後立即生效。
+      </p>
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">AURORA 光幣倍率（auroraMultiplier）</div>
+          <input type="number" step="0.1" inputMode="decimal" value={auroraMultiplier}
+            onChange={(e) => setAuroraMultiplier(Number(e.target.value) || 0)} className="fld w-28" />
+        </label>
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">SPECTRA 每回合卡點（spectraCardPoints）</div>
+          <input type="number" step="1" inputMode="numeric" value={spectraCardPoints}
+            onChange={(e) => setSpectraCardPoints(Number(e.target.value) || 0)} className="fld w-28" />
+        </label>
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">HAVEN 漲幅間隔 ms（havenApprIntervalMs）</div>
+          <input type="number" step="1000" inputMode="numeric" value={havenApprIntervalMs}
+            onChange={(e) => setHavenApprIntervalMs(Number(e.target.value) || 0)} className="fld w-32" />
+        </label>
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">HAVEN 漲幅率（havenApprRate）</div>
+          <input type="number" step="0.001" inputMode="decimal" value={havenApprRate}
+            onChange={(e) => setHavenApprRate(Number(e.target.value) || 0)} className="fld w-28" />
+        </label>
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">1 級房租率（houseIncomeL1）</div>
+          <input type="number" step="0.005" inputMode="decimal" value={houseIncomeL1}
+            onChange={(e) => setHouseIncomeL1(Number(e.target.value) || 0)} className="fld w-24" />
+        </label>
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">2 級房租率（houseIncomeL2）</div>
+          <input type="number" step="0.005" inputMode="decimal" value={houseIncomeL2}
+            onChange={(e) => setHouseIncomeL2(Number(e.target.value) || 0)} className="fld w-24" />
+        </label>
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">3 級房租率（houseIncomeL3）</div>
+          <input type="number" step="0.005" inputMode="decimal" value={houseIncomeL3}
+            onChange={(e) => setHouseIncomeL3(Number(e.target.value) || 0)} className="fld w-24" />
+        </label>
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">卡片升區倍率（cardRegionUpMult）</div>
+          <input type="number" step="0.05" inputMode="decimal" value={cardRegionUpMult}
+            onChange={(e) => setCardRegionUpMult(Number(e.target.value) || 0)} className="fld w-24" />
+        </label>
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">卡片降區倍率（cardRegionDownMult）</div>
+          <input type="number" step="0.05" inputMode="decimal" value={cardRegionDownMult}
+            onChange={(e) => setCardRegionDownMult(Number(e.target.value) || 0)} className="fld w-24" />
+        </label>
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">卡片升建倍率（cardBuildingUpMult）</div>
+          <input type="number" step="0.05" inputMode="decimal" value={cardBuildingUpMult}
+            onChange={(e) => setCardBuildingUpMult(Number(e.target.value) || 0)} className="fld w-24" />
+        </label>
+        <label className="text-xs text-slate-400">
+          <div className="mb-1">卡片降建倍率（cardBuildingDownMult）</div>
+          <input type="number" step="0.05" inputMode="decimal" value={cardBuildingDownMult}
+            onChange={(e) => setCardBuildingDownMult(Number(e.target.value) || 0)} className="fld w-24" />
+        </label>
+      </div>
+      <div className="mt-3">
+        <ActionButton
+          label="儲存進階參數"
+          className="btn-emerald"
+          onAction={async () => {
+            await postJson("/api/admin/settings", {
+              auroraMultiplier,
+              spectraCardPoints,
+              havenApprIntervalMs,
+              havenApprRate,
+              houseIncomeL1,
+              houseIncomeL2,
+              houseIncomeL3,
+              cardRegionUpMult,
+              cardRegionDownMult,
+              cardBuildingUpMult,
+              cardBuildingDownMult,
+            });
+            await onChange();
+            return "進階參數已儲存";
+          }}
+        />
+      </div>
     </Card>
   );
 }

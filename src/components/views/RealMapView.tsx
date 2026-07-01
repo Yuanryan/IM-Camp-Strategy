@@ -41,7 +41,18 @@ import {
   type Freebie,
   type RegionCode,
   type UndoRecipe,
+  type MonopolyEffect,
 } from "@/lib/game";
+
+// 獨佔效果的地圖徽章 emoji（空間有限，只顯示 emoji）。
+function monopolyEffectEmoji(effect: MonopolyEffect): string {
+  switch (effect) {
+    case "COIN_1_5X":     return "💰";
+    case "CARD_POINTS":   return "🃏";
+    case "UPGRADE_BOOST": return "🏗";
+    case "APPRECIATION":  return "📈";
+  }
+}
 import {
   MapPin,
   ChevronLeft,
@@ -902,6 +913,16 @@ export function RealMapView({
                     style={{ background: monoColor, color: monoTextColor, fontSize: "1.7cqmin", padding: "0.3cqmin 0.7cqmin", borderRadius: "1cqmin" }}
                   >
                     過路{tollAmt}
+                  </span>
+                )}
+                {/* 獨佔效果 emoji 徽章：資產格且該區有任何獨佔（含自己）才顯示。*/}
+                {!showOriginal && ri?.monopolyTeamId != null && (
+                  <span
+                    className="pointer-events-none absolute bottom-0 left-1/2 z-10 -translate-x-1/2 leading-none"
+                    style={{ fontSize: "1.8cqmin" }}
+                    title={monopolyEffectEmoji(ri.monopolyEffect)}
+                  >
+                    {monopolyEffectEmoji(ri.monopolyEffect)}
                   </span>
                 )}
                 {!showOriginal && occupants.length > 0 && (
