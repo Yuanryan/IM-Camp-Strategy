@@ -14,9 +14,13 @@ import {
   TASK_GOOD_CARDS,
   CURSE_CARDS,
   TOLL_RATE,
+  havenAppreciationMult,
+  parseMonopolySince,
+  REGION_MONOPOLY_EFFECT,
   type RegionCode,
   type TaskKind as TaskKindT,
   type ObjectiveState,
+  type MonopolyEffect,
 } from "./game";
 import { hasAuctionStarted } from "./auction-animation";
 import {
@@ -95,6 +99,7 @@ export type RegionView = {
   monopolyTeamId: number | null;
   monopolyTeamName: string | null;
   toll: number; // 過路費（已含四捨五入到 10）
+  monopolyEffect: MonopolyEffect; // 該區獨佔被動效果類型
 };
 
 export type AuctionLotView = {
@@ -145,6 +150,17 @@ export type Snapshot = {
   properties: PropertyView[];
   regions: RegionView[];
   auction: AuctionSnapshot;
+  settings: {
+    auroraMultiplier: number;
+    spectraCardPoints: number;
+    havenApprIntervalMs: number;
+    havenApprRate: number;
+    houseIncomeRates: [number, number, number];
+    cardRegionUpMult: number;
+    cardRegionDownMult: number;
+    cardBuildingUpMult: number;
+    cardBuildingDownMult: number;
+  };
 };
 
 // findMonopoly 已移至 game.ts（snapshot 與 service 共用單一事實來源），由 import 取得。
@@ -196,6 +212,14 @@ export async function getSnapshot(): Promise<Snapshot> {
   const auctionStarted = hasAuctionStarted(eventLots.map((lot) => lot.status));
   const queuedLotCount = eventLots.filter((lot) => lot.status === "DRAFT").length;
 
+  const now = Date.now();
+  const monoSince = parseMonopolySince(state?.monopolySince ?? "");
+  const havenOwner = monoSince.HAVEN ?? null;
+  const havenLiveOf = (ownerTeamId: number | null): number =>
+    havenOwner && ownerTeamId === havenOwner.teamId
+      ? havenAppreciationMult(havenOwner.since, now, state?.havenApprIntervalMs ?? 60000, state?.havenApprRate ?? 0.01)
+      : 1;
+
   const propViews: PropertyView[] = properties.map((p) => ({
     id: p.id,
     name: p.name,
@@ -210,9 +234,9 @@ export async function getSnapshot(): Promise<Snapshot> {
     ownerColorName: p.ownerTeamId ? (teamColor.get(p.ownerTeamId)?.name ?? null) : null,
     ownerColorText: p.ownerTeamId ? (teamColor.get(p.ownerTeamId)?.text ?? null) : null,
     ownerColorRing: p.ownerTeamId ? (teamColor.get(p.ownerTeamId)?.ring ?? null) : null,
-    currentValue: currentValue(p, activeEvents, event4Penalty),
-    investedValue: investedValue(p, activeEvents, event4Penalty),
-    leveledValue: leveledValue(p, activeEvents, event4Penalty),
+    currentValue: currentValue(p, activeEvents, event4Penalty, { havenLiveMult: havenLiveOf(p.ownerTeamId) }),
+    investedValue: investedValue(p, activeEvents, event4Penalty, { havenLiveMult: havenLiveOf(p.ownerTeamId) }),
+    leveledValue: leveledValue(p, activeEvents, event4Penalty, { havenLiveMult: havenLiveOf(p.ownerTeamId) }),
   }));
 
   // 各隊動產效果（按隊伍分組，不含 hiddenValue）
@@ -369,6 +393,7 @@ export async function getSnapshot(): Promise<Snapshot> {
       monopolyTeamId,
       monopolyTeamName: monopolyTeamId ? (teamName.get(monopolyTeamId) ?? null) : null,
       toll,
+      monopolyEffect: REGION_MONOPOLY_EFFECT[r.code as RegionCode],
     };
   });
 
@@ -433,5 +458,16 @@ export async function getSnapshot(): Promise<Snapshot> {
     properties: propViews,
     regions: regionViews,
     auction,
+    settings: {
+      auroraMultiplier: state?.auroraMultiplier ?? 1.5,
+      spectraCardPoints: state?.spectraCardPoints ?? 10,
+      havenApprIntervalMs: state?.havenApprIntervalMs ?? 60000,
+      havenApprRate: state?.havenApprRate ?? 0.01,
+      houseIncomeRates: [state?.houseIncomeL1 ?? 0.03, state?.houseIncomeL2 ?? 0.05, state?.houseIncomeL3 ?? 0.08] as [number, number, number],
+      cardRegionUpMult: state?.cardRegionUpMult ?? 1.3,
+      cardRegionDownMult: state?.cardRegionDownMult ?? 0.75,
+      cardBuildingUpMult: state?.cardBuildingUpMult ?? 1.3,
+      cardBuildingDownMult: state?.cardBuildingDownMult ?? 0.75,
+    },
   };
 }
