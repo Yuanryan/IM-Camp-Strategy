@@ -262,6 +262,32 @@ export function leveledValue(
   return currentValue(prop, activeEvents, event4Penalty, opts) * (1 + LEVEL_VALUE_BONUS * prop.level);
 }
 
+// ── 區域獨佔被動效果對應（每區專屬一個）──
+export type MonopolyEffect = "COIN_1_5X" | "CARD_POINTS" | "UPGRADE_BOOST" | "APPRECIATION";
+export const REGION_MONOPOLY_EFFECT: Record<RegionCode, MonopolyEffect> = {
+  AURORA: "COIN_1_5X",
+  SPECTRA: "CARD_POINTS",
+  EMBER: "UPGRADE_BOOST",
+  HAVEN: "APPRECIATION",
+};
+
+// HAVEN 慢慢漲：線性即時倍率。since 為該隊開始獨佔 HAVEN 的 epochMs。
+export function havenAppreciationMult(
+  sinceEpochMs: number, now: number, intervalMs: number, rate: number,
+): number {
+  if (!sinceEpochMs || now <= sinceEpochMs || intervalMs <= 0) return 1;
+  const units = Math.floor((now - sinceEpochMs) / intervalMs);
+  return 1 + units * rate;
+}
+
+// 1/2/3 房每回合被動營收（光幣）：依現值 × 級別費率，四捨五入到個位。level0 不發。
+export function houseIncome(
+  currentVal: number, level: number, rates: readonly [number, number, number],
+): number {
+  if (level < 1 || level > 3) return 0;
+  return Math.round(currentVal * rates[level - 1]);
+}
+
 // 大樂透加購費：50 × 2^(已登記號碼數 - 1)；第一個免費
 export function lotteryFee(alreadyOwnedCount: number): number {
   if (alreadyOwnedCount <= 0) return 0;

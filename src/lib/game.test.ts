@@ -54,6 +54,9 @@ import {
   pickTaskCard,
   evalObjectiveProgress,
   findMonopoly,
+  REGION_MONOPOLY_EFFECT,
+  havenAppreciationMult,
+  houseIncome,
   type ObjectiveBaseline,
   type ObjectiveState,
 } from "./game";
@@ -946,5 +949,37 @@ describe("findMonopoly", () => {
   it("空 / 無主回 null", () => {
     expect(findMonopoly([])).toBeNull();
     expect(findMonopoly([{ ownerTeamId: null, level: 3 }])).toBeNull();
+  });
+});
+
+// ── 區域獨佔效果對應表 ─────────────────────────────────────────
+describe("REGION_MONOPOLY_EFFECT", () => {
+  it("REGION_MONOPOLY_EFFECT 四區對應", () => {
+    expect(REGION_MONOPOLY_EFFECT.AURORA).toBe("COIN_1_5X");
+    expect(REGION_MONOPOLY_EFFECT.SPECTRA).toBe("CARD_POINTS");
+    expect(REGION_MONOPOLY_EFFECT.EMBER).toBe("UPGRADE_BOOST");
+    expect(REGION_MONOPOLY_EFFECT.HAVEN).toBe("APPRECIATION");
+  });
+});
+
+// ── HAVEN 漲幅倍率（線性即時）───────────────────────────────────
+describe("havenAppreciationMult", () => {
+  it("havenAppreciationMult 線性：每 60000ms +0.01", () => {
+    const since = 1_000_000;
+    // 過 180 分鐘 = 180 單位 → 1 + 180×0.01 = 2.8
+    expect(havenAppreciationMult(since, since + 180 * 60000, 60000, 0.01)).toBeCloseTo(2.8, 6);
+    // 未滿一單位 → 1
+    expect(havenAppreciationMult(since, since + 30000, 60000, 0.01)).toBe(1);
+    // since 無效（0）→ 1
+    expect(havenAppreciationMult(0, since, 60000, 0.01)).toBe(1);
+  });
+});
+
+// ── 房收計算（級別費率）──────────────────────────────────────
+describe("houseIncome", () => {
+  it("houseIncome 依級別費率、level0 不發", () => {
+    expect(houseIncome(1000, 0, [0.03, 0.05, 0.08])).toBe(0);
+    expect(houseIncome(1000, 1, [0.03, 0.05, 0.08])).toBe(30);
+    expect(houseIncome(1234, 3, [0.03, 0.05, 0.08])).toBe(99); // 1234×0.08=98.72→99
   });
 });
