@@ -159,9 +159,17 @@ export function parseActiveEvents(csv: string): number[] {
 
 // 計算單一不動產現值
 export function currentValue(
-  prop: { basePrice: number; region: string; type: string },
+  prop: {
+    basePrice: number;
+    region: string;
+    type: string;
+    cardRegionMult?: number;
+    cardBuildingMult?: number;
+    monopolyBonusMult?: number;
+  },
   activeEvents: number[],
   event4Penalty?: string | null,
+  opts?: { havenLiveMult?: number },
 ): number {
   let v = prop.basePrice;
   for (const idx of activeEvents) {
@@ -175,6 +183,10 @@ export function currentValue(
       v *= ev.hostPenaltyMult;
     }
   }
+  v *= prop.cardRegionMult ?? 1;
+  v *= prop.cardBuildingMult ?? 1;
+  v *= prop.monopolyBonusMult ?? 1;
+  v *= opts?.havenLiveMult ?? 1;
   return Math.round(v);
 }
 
@@ -215,13 +227,23 @@ export function investedPrincipalMult(level: number): number {
 // 結果≈該隊實際投入的光幣（升級＝買價同等對待，無 k 加成），且會隨事件漲跌，
 // 故「買在高點、事件回跌」會虧損 —— 不動產最終市值受事件影響（符合企畫書）。
 export function investedValue(
-  prop: { basePrice: number; region: string; type: string; level: number },
+  prop: {
+    basePrice: number; region: string; type: string; level: number;
+    cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number;
+  },
   activeEvents: number[],
   event4Penalty?: string | null,
+  opts?: { havenLiveMult?: number },
 ): number {
-  const eventMult =
-    currentValue({ basePrice: 1000, region: prop.region, type: prop.type }, activeEvents, event4Penalty) / 1000;
-  return Math.round(prop.basePrice * investedPrincipalMult(prop.level) * eventMult);
+  // 取「事件 + 永久倍率 + 即時層」的總乘數（以 base=1000 正規化），再乘 base × 本金倍率。
+  const mult =
+    currentValue(
+      { basePrice: 1000, region: prop.region, type: prop.type,
+        cardRegionMult: prop.cardRegionMult, cardBuildingMult: prop.cardBuildingMult,
+        monopolyBonusMult: prop.monopolyBonusMult },
+      activeEvents, event4Penalty, opts,
+    ) / 1000;
+  return Math.round(prop.basePrice * investedPrincipalMult(prop.level) * mult);
 }
 
 // ── 過路費用「升級加成市值」（仍用 k=0.5，過路費＝蓋房的主要回報）──────────
@@ -229,11 +251,46 @@ export function investedValue(
 // leveledValue = currentValue ×（1 + LEVEL_VALUE_BONUS × level）。
 export const LEVEL_VALUE_BONUS = 0.5;
 export function leveledValue(
-  prop: { basePrice: number; region: string; type: string; level: number },
+  prop: {
+    basePrice: number; region: string; type: string; level: number;
+    cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number;
+  },
   activeEvents: number[],
   event4Penalty?: string | null,
+  opts?: { havenLiveMult?: number },
 ): number {
-  return currentValue(prop, activeEvents, event4Penalty) * (1 + LEVEL_VALUE_BONUS * prop.level);
+  return currentValue(prop, activeEvents, event4Penalty, opts) * (1 + LEVEL_VALUE_BONUS * prop.level);
+}
+
+// ── 區域獨佔被動效果對應（每區專屬一個）──
+export type MonopolyEffect = "COIN_1_5X" | "CARD_POINTS" | "UPGRADE_BOOST" | "APPRECIATION";
+export const REGION_MONOPOLY_EFFECT: Record<RegionCode, MonopolyEffect> = {
+  AURORA: "COIN_1_5X",
+  SPECTRA: "CARD_POINTS",
+  EMBER: "UPGRADE_BOOST",
+  HAVEN: "APPRECIATION",
+};
+
+// HAVEN 慢慢漲：線性即時倍率。since 為該隊開始獨佔 HAVEN 的 epochMs。
+export function havenAppreciationMult(
+  sinceEpochMs: number, now: number, intervalMs: number, rate: number,
+): number {
+  if (sinceEpochMs <= 0 || now <= sinceEpochMs || intervalMs <= 0) return 1;
+  const units = Math.floor((now - sinceEpochMs) / intervalMs);
+  return 1 + units * rate;
+}
+
+// 1/2/3 房每回合被動營收（光幣）：依現值 × 級別費率，四捨五入到個位。level0 不發。
+export function houseIncome(
+  currentVal: number, level: number, rates: readonly [number, number, number],
+): number {
+  if (level < 1 || level > 3) return 0;
+  return Math.round(currentVal * rates[level - 1]);
+}
+
+// 純疊乘：供 service 疊卡牌倍率用。
+export function applyCardRegionMult(current: number, factor: number): number {
+  return current * factor;
 }
 
 // 大樂透加購費：50 × 2^(已登記號碼數 - 1)；第一個免費
@@ -883,6 +940,10 @@ export const FUNCTION_CARDS: {
   { type: "拆屋卡", effect: "拆除對手一層房屋（降一級）", cost: 40, defaultStock: 5 },
   { type: "怪獸卡", effect: "摧毀對手一棟房屋，對手將失去該土地", cost: 90, defaultStock: 3 },
   { type: "市場預警卡", effect: "得知下一次事件前某區漲跌方向", cost: 50, defaultStock: 0 }, // 庫存 0＝暫時停用
+  { type: "紅卡", effect: "選定一區，整區不動產大漲", cost: 60, defaultStock: 4 },
+  { type: "黑卡", effect: "選定一區，整區不動產大跌", cost: 60, defaultStock: 4 },
+  { type: "鬧鬼卡", effect: "選定一棟房子，該棟現值下跌", cost: 40, defaultStock: 4 },
+  { type: "土地公卡", effect: "選定一棟房子，該棟現值上漲", cost: 40, defaultStock: 4 },
 ];
 
 // 發放獎勵 / 懲罰的快捷預設（資料化，單一來源；前端共用元件 RewardButtons 讀取）
@@ -891,9 +952,11 @@ export const FUNCTION_CARDS: {
 export type UndoRecipe = {
   label: string;
   ledgerIds: number[];
-  property?: { id: number; ownerTeamId: number | null; level: number };
+  property?: { id: number; ownerTeamId: number | null; level: number;
+    cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number };
   // 一次影響多塊不動產時（換地 / 換屋）逐筆還原；與 property 單筆並存。
-  properties?: { id: number; ownerTeamId: number | null; level: number }[];
+  properties?: { id: number; ownerTeamId: number | null; level: number;
+    cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number }[];
   // 撤銷時需刪除的 TeamItem（如好運卡骰到動產時發出的那張）
   itemIds?: number[];
   // 撤銷大樂透登記：刪除該 LotteryNumber 列並回補獎金池
@@ -1342,4 +1405,26 @@ export function squareHint(sq: BoardSquare): string {
     default:
       return "";
   }
+}
+
+// monopolySince CSV：region:teamId:epochMs，多筆逗號分隔。
+export function parseMonopolySince(csv: string): Record<string, { teamId: number; since: number }> {
+  const out: Record<string, { teamId: number; since: number }> = {};
+  if (!csv) return out;
+  for (const part of csv.split(",")) {
+    const [region, t, s] = part.split(":");
+    const teamId = Number(t), since = Number(s);
+    if (!region || !Number.isFinite(teamId) || !Number.isFinite(since)) continue;
+    out[region] = { teamId, since };
+  }
+  return out;
+}
+
+export function serializeMonopolySince(
+  map: Record<string, { teamId: number; since: number }>,
+): string {
+  return Object.keys(map)
+    .sort()
+    .map((r) => `${r}:${map[r].teamId}:${map[r].since}`)
+    .join(",");
 }

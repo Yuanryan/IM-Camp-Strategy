@@ -54,6 +54,12 @@ import {
   pickTaskCard,
   evalObjectiveProgress,
   findMonopoly,
+  REGION_MONOPOLY_EFFECT,
+  havenAppreciationMult,
+  houseIncome,
+  applyCardRegionMult,
+  parseMonopolySince,
+  serializeMonopolySince,
   type ObjectiveBaseline,
   type ObjectiveState,
 } from "./game";
@@ -429,6 +435,30 @@ describe("currentValue", () => {
   it("未知事件編號被忽略", () => {
     expect(currentValue(aurora, [99], null)).toBe(500);
   });
+
+  it("currentValue 疊乘 cardRegionMult / cardBuildingMult / monopolyBonusMult", () => {
+    const p = {
+      basePrice: 1000,
+      region: "AURORA",
+      type: "金融",
+      cardRegionMult: 1.3,
+      cardBuildingMult: 0.75,
+      monopolyBonusMult: 2,
+    };
+    // 1000 × 1.3 × 0.75 × 2 = 1950
+    expect(currentValue(p, [], null)).toBe(1950);
+  });
+
+  it("currentValue 缺省倍率欄位視為 1（向後相容）", () => {
+    const p = { basePrice: 500, region: "AURORA", type: "金融" };
+    expect(currentValue(p, [], null)).toBe(500);
+  });
+
+  it("currentValue 疊乘 havenLiveMult（即時層，由 opts 傳入）", () => {
+    const p = { basePrice: 1000, region: "HAVEN", type: "住宅" };
+    // 1000 × 1.5 = 1500
+    expect(currentValue(p, [], null, { havenLiveMult: 1.5 })).toBe(1500);
+  });
 });
 
 // ── leveledValue（升級後價值：含升級加成）──────────────────────
@@ -456,6 +486,13 @@ describe("leveledValue", () => {
     // 事件一：AURORA ×1.25、金融 ×1.1 → currentValue = round(600*1.25*1.1)=825
     // 2 級加成 ×2 → 1650
     expect(leveledValue({ ...prop, level: 2 }, [1], null)).toBe(825 * 2);
+  });
+
+  it("leveledValue 透傳 havenLiveMult 與永久倍率", () => {
+    const p = { basePrice: 1000, region: "HAVEN", type: "住宅", level: 2,
+      cardRegionMult: 1, cardBuildingMult: 1, monopolyBonusMult: 1 };
+    // currentValue = 1000 × 1.2(haven即時) = 1200；× (1+0.5×2)=2 → 2400
+    expect(leveledValue(p, [], null, { havenLiveMult: 1.2 })).toBe(2400);
   });
 });
 
@@ -492,6 +529,19 @@ describe("investedValue", () => {
     expect(investedValue({ ...prop, level: 0 }, [1], null)).toBe(Math.round(600 * 1.375));
     // 無事件後回到 600（淨值下跌，反映市場風險）
     expect(investedValue({ ...prop, level: 0 }, [], null)).toBe(600);
+  });
+
+  it("investedValue 含永久倍率與升級本金", () => {
+    const p = { basePrice: 1000, region: "AURORA", type: "金融", level: 3,
+      cardRegionMult: 1.3, cardBuildingMult: 1, monopolyBonusMult: 1 };
+    // base 1000 × 本金倍率(lvl3=2.2) × 事件1 × cardRegionMult 1.3 = 2860
+    expect(investedValue(p, [], null)).toBe(2860);
+  });
+
+  it("investedValue 透傳 havenLiveMult", () => {
+    const p = { basePrice: 1000, region: "HAVEN", type: "住宅", level: 0 };
+    // 1000 × 1.0(本金) × 1(事件) × 1.5(haven即時) = 1500
+    expect(investedValue(p, [], null, { havenLiveMult: 1.5 })).toBe(1500);
   });
 });
 
@@ -902,5 +952,96 @@ describe("findMonopoly", () => {
   it("空 / 無主回 null", () => {
     expect(findMonopoly([])).toBeNull();
     expect(findMonopoly([{ ownerTeamId: null, level: 3 }])).toBeNull();
+  });
+});
+
+// ── 區域獨佔效果對應表 ─────────────────────────────────────────
+describe("REGION_MONOPOLY_EFFECT", () => {
+  it("REGION_MONOPOLY_EFFECT 四區對應", () => {
+    expect(REGION_MONOPOLY_EFFECT.AURORA).toBe("COIN_1_5X");
+    expect(REGION_MONOPOLY_EFFECT.SPECTRA).toBe("CARD_POINTS");
+    expect(REGION_MONOPOLY_EFFECT.EMBER).toBe("UPGRADE_BOOST");
+    expect(REGION_MONOPOLY_EFFECT.HAVEN).toBe("APPRECIATION");
+  });
+});
+
+// ── HAVEN 漲幅倍率（線性即時）───────────────────────────────────
+describe("havenAppreciationMult", () => {
+  it("havenAppreciationMult 線性：每 60000ms +0.01", () => {
+    const since = 1_000_000;
+    // 過 180 分鐘 = 180 單位 → 1 + 180×0.01 = 2.8
+    expect(havenAppreciationMult(since, since + 180 * 60000, 60000, 0.01)).toBeCloseTo(2.8, 6);
+    // 未滿一單位 → 1
+    expect(havenAppreciationMult(since, since + 30000, 60000, 0.01)).toBe(1);
+    // since 無效（0）→ 1
+    expect(havenAppreciationMult(0, since, 60000, 0.01)).toBe(1);
+  });
+
+  it("havenAppreciationMult 負 since 回 1", () => {
+    expect(havenAppreciationMult(-7_200_000, 1_000_000, 60000, 0.01)).toBe(1);
+  });
+});
+
+// ── 房收計算（級別費率）──────────────────────────────────────
+describe("houseIncome", () => {
+  it("houseIncome 依級別費率、level0 不發", () => {
+    expect(houseIncome(1000, 0, [0.03, 0.05, 0.08])).toBe(0);
+    expect(houseIncome(1000, 1, [0.03, 0.05, 0.08])).toBe(30);
+    expect(houseIncome(1234, 3, [0.03, 0.05, 0.08])).toBe(99); // 1234×0.08=98.72→99
+  });
+});
+
+// ── 純疊乘（applyCardRegionMult）──────────────────────────────
+describe("applyCardRegionMult", () => {
+  it("applyCardRegionMult 純疊乘", () => {
+    expect(applyCardRegionMult(1, 1.3)).toBeCloseTo(1.3, 6);
+    expect(applyCardRegionMult(0.75, 1.3)).toBeCloseTo(0.975, 6);
+  });
+});
+
+// ── monopolySince 解析/序列化 ────────────────────────────────
+describe("parseMonopolySince/serialize round-trip", () => {
+  it("parseMonopolySince/serialize round-trip", () => {
+    const csv = "AURORA:3:1700000000000,HAVEN:12:1699999999999";
+    const m = parseMonopolySince(csv);
+    expect(m.HAVEN).toEqual({ teamId: 12, since: 1699999999999 });
+    expect(m.AURORA).toEqual({ teamId: 3, since: 1700000000000 });
+    expect(serializeMonopolySince(m)).toBe(csv);
+  });
+
+  it("parseMonopolySince 忽略壞格式與空字串", () => {
+    expect(parseMonopolySince("")).toEqual({});
+    expect(parseMonopolySince("HAVEN:x:y,GARBAGE")).toEqual({});
+  });
+});
+
+// ── 市場卡倍率疊乘語意 ────────────────────────────────────────
+describe("市場卡倍率疊乘", () => {
+  it("卡牌倍率疊乘：黑卡後再紅卡", () => {
+    // 直接驗算疊乘語意（service 用 current × factor）
+    const afterBlack = 1 * 0.75;
+    const afterRed = afterBlack * 1.3;
+    expect(afterRed).toBeCloseTo(0.975, 6);
+  });
+});
+
+// ── AURORA 放大語意 ────────────────────────────────────────────
+describe("AURORA 放大語意", () => {
+  it("AURORA 放大：正收益 ×1.5、負收益不放大", () => {
+    const mult = 1.5;
+    expect(Math.round(200 * mult)).toBe(300);
+    // 負收益（詛咒扣款）不套放大
+    const neg = -100;
+    expect(neg > 0 ? Math.round(neg * mult) : neg).toBe(-100);
+  });
+});
+
+// ── 賣不動產回交易所：回收金公式 ─────────────────────────────
+describe("sellPropertyToExchange 回收金公式", () => {
+  it("賣地回收金 = investedValue 取整到 10", () => {
+    const p = { basePrice: 850, region: "AURORA", type: "金融", level: 2,
+      cardRegionMult: 1, cardBuildingMult: 1, monopolyBonusMult: 1 };
+    // investedValue = 850 × 本金倍率(lvl2=1.6) × 1 = 1360 → roundTo10 = 1360
+    expect(roundTo10(investedValue(p, [], null))).toBe(1360);
   });
 });

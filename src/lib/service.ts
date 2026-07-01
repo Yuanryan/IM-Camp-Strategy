@@ -23,6 +23,7 @@ import {
   FREE_WHEEL_STAKE,
   GIFT_VOUCHER_NAME,
   currentValue,
+  investedValue,
   leveledValue,
   lotteryFee,
   parseActiveEvents,
@@ -43,6 +44,11 @@ import {
   MAX_OPEN_TASKS,
   findMonopoly,
   evalObjectiveProgress,
+  havenAppreciationMult,
+  parseMonopolySince,
+  serializeMonopolySince,
+  REGION_MONOPOLY_EFFECT,
+  houseIncome,
   type EffectType,
   type RegionCode,
   type UndoRecipe,
@@ -315,19 +321,21 @@ export async function applyFreeWheel(params: { teamId: number; byToken?: string 
     const reward = applyWheelBonus(baseReward, bonusEffect.delta);
     const bonusUsedIds = reward > baseReward ? bonusEffect.usedIds : [];
 
-    if (reward > 0) {
-      await tx.team.update({ where: { id: teamId }, data: { coins: { increment: reward } } });
+    // AURORA 加成：免費輪盤為銀行發放，可直接放大（非隊對隊轉移）
+    const finalRewardFreeWheel = await withAuroraBonus(tx, teamId, reward);
+    if (finalRewardFreeWheel > 0) {
+      await tx.team.update({ where: { id: teamId }, data: { coins: { increment: finalRewardFreeWheel } } });
     }
     await decrementUses(tx, [...noZeroUsedIds, ...bonusUsedIds]);
     const lid = await logLedger(tx, {
       teamId,
       kind: "wheel",
-      delta: reward,
+      delta: finalRewardFreeWheel,
       note: `好運卡 命運眷顧（免費輪盤 ×${mult}${hasNoZero ? "・保底" : ""}）`,
       byToken,
     });
     const undo: UndoRecipe = { label: `命運眷顧 ×${mult}`, ledgerIds: [lid] };
-    return { ok: true, mult, stake: FREE_WHEEL_STAKE, reward, undo };
+    return { ok: true, mult, stake: FREE_WHEEL_STAKE, reward: finalRewardFreeWheel, undo };
   });
 }
 
@@ -351,8 +359,11 @@ export async function buyProperty(params: {
     if (!team) throw new Error("找不到小隊");
     if (team.coins < price) throw new Error("光幣不足");
     await tx.team.update({ where: { id: teamId }, data: { coins: { decrement: price } } });
-    await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: teamId, level: 0 } });
+    const emberBoost = await teamMonopolizesRegion(tx, teamId, "EMBER");
+    const newLevel = emberBoost ? 1 : 0;
+    await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: teamId, level: newLevel } });
     await decrementUses(tx, shopEffect.usedIds);
+    await reconcileMonopolySince(tx, Date.now());
     const lid = await logLedger(tx, {
       teamId,
       kind: "property",
@@ -391,13 +402,17 @@ export async function upgradeProperty(params: {
     if (!team) throw new Error("找不到持有小隊");
     if (team.coins < fee) throw new Error("光幣不足");
     await tx.team.update({ where: { id: team.id }, data: { coins: { decrement: fee } } });
-    await tx.property.update({ where: { id: propertyId }, data: { level: { increment: 1 } } });
+    const emberBoost = await teamMonopolizesRegion(tx, prop.ownerTeamId, "EMBER");
+    const step = emberBoost ? 2 : 1;
+    const targetLevel = Math.min(3, prop.level + step);
+    await tx.property.update({ where: { id: propertyId }, data: { level: targetLevel } });
     await decrementUses(tx, shopEffect.usedIds);
+    await reconcileMonopolySince(tx, Date.now());
     const lid = await logLedger(tx, {
       teamId: team.id,
       kind: "property",
       delta: -fee,
-      note: `升級 ${prop.name} → ${prop.level + 1}級${discount ? `（折抵${discount}）` : ""}`,
+      note: `升級 ${prop.name} → ${targetLevel}級${discount ? `（折抵${discount}）` : ""}`,
       byToken,
     });
     // prop.level 是升級前的等級 → 撤銷即降回此等級
@@ -406,7 +421,7 @@ export async function upgradeProperty(params: {
       ledgerIds: [lid],
       property: { id: propertyId, ownerTeamId: prop.ownerTeamId, level: prop.level },
     };
-    return { ok: true, fee, newLevel: prop.level + 1, undo };
+    return { ok: true, fee, newLevel: targetLevel, undo };
   });
 }
 
@@ -443,6 +458,54 @@ export async function transferProperty(params: {
       property: { id: propertyId, ownerTeamId: fromTeamId, level: prop.level },
     };
     return { ok: true, undo };
+  });
+}
+
+// ── 不動產：賣回交易所（回收 investedValue，取整到 10）─────────────────────────────
+// 賣前先 flush HAVEN 漲幅到 monopolyBonusMult（確保回收金含漲幅）。
+// 地變無主 level0，但三個倍率保留不重置（地帶著行情換手，防洗 debuff）。
+export async function sellPropertyToExchange(params: { propertyId: number; byToken?: string }) {
+  const { propertyId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const now = Date.now();
+    const prop0 = await tx.property.findUnique({ where: { id: propertyId } });
+    if (!prop0) throw new Error("找不到不動產");
+    if (prop0.ownerTeamId == null) throw new Error("該不動產尚未售出，無法賣回");
+    const ownerId = prop0.ownerTeamId;
+
+    // 賣前 flush HAVEN 漲幅（若賣方為 HAVEN 獨佔隊，把即時漲幅鎖進所有房 monopolyBonusMult）
+    const stateBefore = await getState(tx);
+    await flushHavenAppreciation(tx, stateBefore, now);
+
+    // 重讀該地（monopolyBonusMult 可能剛被 flush 更新）
+    const prop = await tx.property.findUnique({ where: { id: propertyId } });
+    if (!prop) throw new Error("找不到不動產");
+    const state = await getState(tx);
+    const payout = roundTo10(investedValue(prop, parseActiveEvents(state.activeEvents), state.event4Penalty));
+
+    await tx.team.update({ where: { id: ownerId }, data: { coins: { increment: payout } } });
+    await tx.property.update({
+      where: { id: propertyId },
+      data: { ownerTeamId: null, level: 0 }, // 倍率保留不重置
+    });
+    const lid = await logLedger(tx, {
+      teamId: ownerId, kind: "property", delta: payout, note: `賣回交易所 ${prop.name}`, byToken,
+    });
+
+    // 賣地改變持有結構 → 重算獨佔（含 HAVEN 換人 flush）
+    await reconcileMonopolySince(tx, now);
+
+    const undo: UndoRecipe = {
+      label: `賣回 ${prop.name}`,
+      ledgerIds: [lid],
+      property: {
+        id: propertyId, ownerTeamId: ownerId, level: prop.level,
+        cardRegionMult: prop.cardRegionMult,
+        cardBuildingMult: prop.cardBuildingMult,
+        monopolyBonusMult: prop.monopolyBonusMult,
+      },
+    };
+    return { ok: true, payout, undo };
   });
 }
 
@@ -491,6 +554,7 @@ export async function cardSeizeLand(params: { propertyId: number; toTeamId: numb
     await logAttack(tx, fromTeamId, `⚔ ${buyer.name} 用購地卡強制收購你的「${prop.name}」（補償 ${compensation}）`, byToken);
     await logCardUse(tx, toTeamId, `購地卡 → 隊 #${fromTeamId} 的「${prop.name}」`, byToken);
     await restockCard(tx, "購地卡");
+    await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `購地卡 ${prop.name}`,
       ledgerIds,
@@ -518,6 +582,7 @@ export async function cardSwapLand(params: { propertyAId: number; propertyBId: n
     await logAttack(tx, b.ownerTeamId, `⚔ ${attacker?.name ?? "對手"} 用換地卡把你的「${b.name}」換成了「${a.name}」`, byToken);
     await logCardUse(tx, a.ownerTeamId, `換地卡：${a.name} ⇄ ${b.name}`, byToken);
     await restockCard(tx, "換地卡");
+    await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `換地卡 ${a.name} ⇄ ${b.name}`,
       ledgerIds: [lid],
@@ -548,6 +613,7 @@ export async function cardSwapHouse(params: { propertyAId: number; propertyBId: 
     await logAttack(tx, b.ownerTeamId, `⚔ ${attacker?.name ?? "對手"} 用換屋卡把你的「${b.name}」等級換成 ${a.level} 級`, byToken);
     await logCardUse(tx, a.ownerTeamId, `換屋卡：${a.name} ⇄ ${b.name}`, byToken);
     await restockCard(tx, "換屋卡");
+    await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `換屋卡 ${a.name} ⇄ ${b.name}`,
       ledgerIds: [lid],
@@ -581,6 +647,7 @@ export async function cardDemolish(params: { propertyId: number; byTeamId?: numb
     await logAttack(tx, prop.ownerTeamId, `⚔ ${atk ? `${atk} 用拆屋卡把` : ""}你的「${prop.name}」${atk ? "降為" : "被拆屋卡降為"} ${prop.level - 1} 級`, byToken);
     await logCardUse(tx, byTeamId, `拆屋卡 → 「${prop.name}」降級`, byToken);
     await restockCard(tx, "拆屋卡");
+    await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `拆屋卡 ${prop.name}`,
       ledgerIds: [lid],
@@ -604,11 +671,68 @@ export async function cardMonster(params: { propertyId: number; byTeamId?: numbe
     await logAttack(tx, fromTeamId, `⚔ ${atk ? `${atk} 用怪獸卡摧毀了你的` : "你的"}「${prop.name}」，你失去這塊地了`, byToken);
     await logCardUse(tx, byTeamId, `怪獸卡 → 摧毀「${prop.name}」`, byToken);
     await restockCard(tx, "怪獸卡");
+    await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `怪獸卡 ${prop.name}`,
       ledgerIds: [lid],
       property: { id: propertyId, ownerTeamId: fromTeamId, level: prop.level },
     };
+    return { ok: true, undo };
+  });
+}
+
+// ── 市場卡：紅/黑（整區永久倍率）、鬧鬼/土地公（單棟永久倍率）──
+// 倍率永久疊乘在 cardRegionMult / cardBuildingMult，可互相抵消。可打自己、含無主地。
+export async function applyMarketCard(params: {
+  kind: "RED" | "BLACK" | "HAUNT" | "LANDGOD";
+  region?: RegionCode;
+  propertyId?: number;
+  byTeamId?: number;
+  byToken?: string;
+}) {
+  const { kind, region, propertyId, byTeamId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const state = await getState(tx);
+    const now = Date.now();
+    const ledgerIds: number[] = [];
+    const undoProps: { id: number; ownerTeamId: number | null; level: number;
+      cardRegionMult: number; cardBuildingMult: number; monopolyBonusMult: number }[] = [];
+
+    if (kind === "RED" || kind === "BLACK") {
+      if (!region) throw new Error("紅/黑卡需選定區域");
+      const factor = kind === "RED" ? state.cardRegionUpMult : state.cardRegionDownMult;
+      const props = await tx.property.findMany({ where: { region } });
+      if (props.length === 0) throw new Error("該區無不動產");
+      for (const p of props) {
+        undoProps.push({ id: p.id, ownerTeamId: p.ownerTeamId, level: p.level,
+          cardRegionMult: p.cardRegionMult, cardBuildingMult: p.cardBuildingMult, monopolyBonusMult: p.monopolyBonusMult });
+        await tx.property.update({ where: { id: p.id }, data: { cardRegionMult: p.cardRegionMult * factor } });
+      }
+      const cardName = kind === "RED" ? "紅卡" : "黑卡";
+      ledgerIds.push(await logLedger(tx, { kind: "system", delta: 0,
+        note: `${cardName}：${REGION_NAME[region]} 整區 ×${factor}`, byToken }));
+      await restockCard(tx, cardName);
+      await logCardUse(tx, byTeamId, `${cardName} → ${REGION_NAME[region]}`, byToken);
+    } else {
+      if (propertyId == null) throw new Error("鬧鬼/土地公卡需選定房屋");
+      const p = await tx.property.findUnique({ where: { id: propertyId } });
+      if (!p) throw new Error("找不到不動產");
+      const factor = kind === "LANDGOD" ? state.cardBuildingUpMult : state.cardBuildingDownMult;
+      undoProps.push({ id: p.id, ownerTeamId: p.ownerTeamId, level: p.level,
+        cardRegionMult: p.cardRegionMult, cardBuildingMult: p.cardBuildingMult, monopolyBonusMult: p.monopolyBonusMult });
+      await tx.property.update({ where: { id: p.id }, data: { cardBuildingMult: p.cardBuildingMult * factor } });
+      const cardName = kind === "LANDGOD" ? "土地公卡" : "鬧鬼卡";
+      ledgerIds.push(await logLedger(tx, { kind: "system", delta: 0,
+        note: `${cardName}：${p.name} ×${factor}`, byToken }));
+      await restockCard(tx, cardName);
+      await logCardUse(tx, byTeamId, `${cardName} → ${p.name}`, byToken);
+      if (kind === "HAUNT" && p.ownerTeamId != null) {
+        await logAttack(tx, p.ownerTeamId, `⚔ 你的「${p.name}」被鬧鬼卡打跌`, byToken);
+      }
+    }
+
+    // 倍率改變可能影響 HAVEN 現值計算，但不改持有結構；仍重算以防獨佔門檻受 level 無關。此處毋須，但安全起見略過。
+    const undo: UndoRecipe = { label: `市場卡 ${kind}`, ledgerIds, properties: undoProps };
     return { ok: true, undo };
   });
 }
@@ -676,6 +800,16 @@ export async function payToll(params: {
     const l1 = await logLedger(tx, { teamId: payerTeamId, kind: "coins", delta: -toll, note: noteBase,        byToken });
     const l2 = await logLedger(tx, { teamId: monopolyId,  kind: "coins", delta: toll,  note: `收${noteBase}`, byToken });
     const ledgerIds = [l1, l2];
+
+    // AURORA 獨佔加成：收款方若獨佔 AURORA，由銀行補發加成（付款方仍付原 toll，守恆不破）
+    const state2 = await getState(tx);
+    if (await teamMonopolizesRegion(tx, monopolyId, "AURORA")) {
+      const bonus = Math.round(toll * (state2.auroraMultiplier - 1));
+      if (bonus > 0) {
+        await tx.team.update({ where: { id: monopolyId }, data: { coins: { increment: bonus } } });
+        ledgerIds.push(await logLedger(tx, { teamId: monopolyId, kind: "coins", delta: bonus, note: `獨佔極光加成 過路費`, byToken }));
+      }
+    }
 
     // 全場稅收：TAX_COLLECTOR 效果（永久型，不計入 decrementUses）
     const allItems = await tx.teamItem.findMany({
@@ -1119,9 +1253,14 @@ export async function setPhase(params: { phase: string }) {
 }
 
 export async function settle() {
-  return prisma.gameState.update({
-    where: { id: 1 },
-    data: { phase: "SETTLED", settledAt: new Date() },
+  return prisma.$transaction(async (tx) => {
+    // 結算前 flush HAVEN 漲幅，確保結算淨值含最終 HAVEN 加成
+    const state = await getState(tx);
+    await flushHavenAppreciation(tx, state, Date.now());
+    return tx.gameState.update({
+      where: { id: 1 },
+      data: { phase: "SETTLED", settledAt: new Date() },
+    });
   });
 }
 
@@ -1197,6 +1336,27 @@ export async function adminSetShopItem(params: {
   return prisma.movableAsset.update({ where: { id: assetId }, data });
 }
 
+// 不動產進階系統可調參數（admin）。只更新有給的欄位。
+export async function adminSetAdvancedSettings(params: {
+  auroraMultiplier?: number; spectraCardPoints?: number;
+  havenApprIntervalMs?: number; havenApprRate?: number;
+  houseIncomeL1?: number; houseIncomeL2?: number; houseIncomeL3?: number;
+  cardRegionUpMult?: number; cardRegionDownMult?: number;
+  cardBuildingUpMult?: number; cardBuildingDownMult?: number;
+}) {
+  const data: Record<string, number> = {};
+  const numKeys = [
+    "auroraMultiplier","spectraCardPoints","havenApprIntervalMs","havenApprRate",
+    "houseIncomeL1","houseIncomeL2","houseIncomeL3",
+    "cardRegionUpMult","cardRegionDownMult","cardBuildingUpMult","cardBuildingDownMult",
+  ] as const;
+  for (const k of numKeys) {
+    const v = (params as Record<string, number | undefined>)[k];
+    if (typeof v === "number" && Number.isFinite(v)) data[k] = Math.max(0, v);
+  }
+  return prisma.gameState.update({ where: { id: 1 }, data });
+}
+
 // ── 稽核：沖銷一筆 ledger（光幣 / 卡牌點數可自動回沖）────────
 export async function reverseLedger(params: { ledgerId: number; byToken?: string }) {
   const { ledgerId, byToken } = params;
@@ -1248,7 +1408,8 @@ async function _applyGoodCardTx(
     wheelUsedIds = [wheelOnCardItem.id];
   }
 
-  const finalReward = Math.max(0, afterBonus);
+  // AURORA 加成：好運卡/詛咒補償為銀行發放，可直接放大（非隊對隊轉移）
+  const finalReward = Math.max(0, await withAuroraBonus(tx, teamId, afterBonus));
   await decrementUses(tx, [...bonusEffect.usedIds, ...wheelUsedIds]);
   const noteWithWheel = wheelMult !== null ? `${note}（輪盤 ×${wheelMult}）` : note;
 
@@ -1296,6 +1457,59 @@ export async function applyBadCard(params: {
 
 // ── 好運卡「任務目標型」：抽卡登記 → 回合結算自動評估發獎 ──────────────
 
+type GameStateRow = Awaited<ReturnType<typeof getState>>;
+
+// 若 teamId 為目前 HAVEN 獨佔隊，回其即時漲幅倍率，否則 1。
+function havenLiveMultFor(state: GameStateRow, teamId: number | null, now: number): number {
+  if (teamId == null) return 1;
+  const since = parseMonopolySince(state.monopolySince).HAVEN;
+  if (!since || since.teamId !== teamId) return 1;
+  return havenAppreciationMult(since.since, now, state.havenApprIntervalMs, state.havenApprRate);
+}
+
+// 把 HAVEN 獨佔隊當前即時漲幅永久併入其所有不動產 monopolyBonusMult，並重設 since=now。
+async function flushHavenAppreciation(tx: Tx, state: GameStateRow, now: number): Promise<void> {
+  const map = parseMonopolySince(state.monopolySince);
+  const h = map.HAVEN;
+  if (!h) return;
+  const mult = havenAppreciationMult(h.since, now, state.havenApprIntervalMs, state.havenApprRate);
+  if (mult > 1) {
+    const props = await tx.property.findMany({ where: { ownerTeamId: h.teamId } });
+    for (const p of props) {
+      await tx.property.update({
+        where: { id: p.id },
+        data: { monopolyBonusMult: p.monopolyBonusMult * mult },
+      });
+    }
+  }
+  map.HAVEN = { teamId: h.teamId, since: now };
+  await tx.gameState.update({ where: { id: 1 }, data: { monopolySince: serializeMonopolySince(map) } });
+}
+
+// 重算各區獨佔隊；HAVEN 換人先 flush 舊隊，再寫新隊 since=now。
+async function reconcileMonopolySince(tx: Tx, now: number): Promise<void> {
+  const state = await getState(tx);
+  const map = parseMonopolySince(state.monopolySince);
+  const allProps = await tx.property.findMany({
+    select: { id: true, region: true, ownerTeamId: true, level: true },
+  });
+  const havenProps = allProps.filter((p) => p.region === "HAVEN");
+  const newHavenOwner = findMonopoly(havenProps);
+  const prev = map.HAVEN;
+  if (prev && prev.teamId !== newHavenOwner) {
+    // 換人（或變無人）：先 flush 舊隊已累積漲幅
+    await flushHavenAppreciation(tx, state, now);
+  }
+  // flushHavenAppreciation 可能已改 map（重設 since），重讀最新
+  const fresh = parseMonopolySince((await getState(tx)).monopolySince);
+  if (newHavenOwner == null) {
+    delete fresh.HAVEN;
+  } else if (!fresh.HAVEN || fresh.HAVEN.teamId !== newHavenOwner) {
+    fresh.HAVEN = { teamId: newHavenOwner, since: now };
+  }
+  await tx.gameState.update({ where: { id: 1 }, data: { monopolySince: serializeMonopolySince(fresh) } });
+}
+
 // 某隊「目前」已獨佔的區碼集合（用 game.findMonopoly 單一事實來源）。
 async function queryTeamMonopolyRegions(tx: Tx, teamId: number): Promise<RegionCode[]> {
   const props = await tx.property.findMany({ select: { region: true, ownerTeamId: true, level: true } });
@@ -1305,6 +1519,23 @@ async function queryTeamMonopolyRegions(tx: Tx, teamId: number): Promise<RegionC
     if (findMonopoly(regionProps) === teamId) out.push(r.code);
   }
   return out;
+}
+
+// 該隊是否獨佔某區（EMBER 升級加速等即時判定用）。
+async function teamMonopolizesRegion(tx: Tx, teamId: number, region: RegionCode): Promise<boolean> {
+  const regionProps = await tx.property.findMany({
+    where: { region }, select: { ownerTeamId: true, level: true },
+  });
+  return findMonopoly(regionProps) === teamId;
+}
+
+// AURORA 獨佔加成：銀行發放的正入帳 × auroraMultiplier；非銀行（隊對隊轉移）或負入帳不套。
+async function withAuroraBonus(tx: Tx, teamId: number, amount: number): Promise<number> {
+  if (amount <= 0) return amount;
+  const state = await getState(tx);
+  return (await teamMonopolizesRegion(tx, teamId, "AURORA"))
+    ? Math.round(amount * state.auroraMultiplier)
+    : amount;
 }
 
 // 某隊「目前」的任務各項計數 / 狀態。targetRegion 有給時，propertyCount 僅計該區（供 BUY_LAND 用）。
@@ -1499,6 +1730,8 @@ export async function applyMobileReward(params: {
       }
     }
 
+    // AURORA 加成：流動關發獎為銀行發放，可直接放大（非隊對隊轉移）
+    finalCoins = await withAuroraBonus(tx, teamId, finalCoins);
     if (team.coins + finalCoins < 0) throw new Error("光幣不足");
     if (team.cardPoints + cardPoints < 0) throw new Error("卡牌點數不足");
     await tx.team.update({
@@ -1695,15 +1928,42 @@ export async function distributeRoundIncome(params: { teamId: number; byToken?: 
     const results: { teamId: number; income: number }[] = [];
     for (const [teamId, { total, ids }] of incomeMap) {
       // total 可為負（淨扣款）或 0（收益被詛咒抵銷）。為 0 時不動光幣 / 不記帳，但仍消耗道具次數。
-      if (total !== 0) {
-        await tx.team.update({ where: { id: teamId }, data: { coins: { increment: total } } });
-        await logLedger(tx, { teamId, kind: "coins", delta: total, note: total >= 0 ? "每輪動產收益" : "每輪動產收支（含詛咒扣款）", byToken });
+      let payout = total;
+      if (total > 0) {
+        const auroraMono = await teamMonopolizesRegion(tx, teamId, "AURORA");
+        if (auroraMono) payout = Math.round(total * state.auroraMultiplier);
+      }
+      if (payout !== 0) {
+        await tx.team.update({ where: { id: teamId }, data: { coins: { increment: payout } } });
+        await logLedger(tx, { teamId, kind: "coins", delta: payout, note: payout >= 0 ? "每輪動產收益" : "每輪動產收支（含詛咒扣款）", byToken });
       }
       await decrementUses(tx, ids);
-      results.push({ teamId, income: total });
+      results.push({ teamId, income: payout });
     }
     // 消耗有次數的提醒（與發放收益同一次按鈕）
     if (reminderUsedIds.length) await decrementUses(tx, reminderUsedIds);
+
+    // ── 不動產進階：AURORA×1.5 已於上方套用動產收益；此處補房收 / SPECTRA / HAVEN flush ──
+    const isAurora = await teamMonopolizesRegion(tx, teamId, "AURORA");
+    const hLive = havenLiveMultFor(state, teamId, Date.now());
+    const myProps = await tx.property.findMany({ where: { ownerTeamId: teamId } });
+    let houseTotal = 0;
+    for (const p of myProps) {
+      const cv = currentValue(p, activeEvents, state.event4Penalty, { havenLiveMult: hLive });
+      let inc = houseIncome(cv, p.level, [state.houseIncomeL1, state.houseIncomeL2, state.houseIncomeL3]);
+      if (isAurora && inc > 0) inc = Math.round(inc * state.auroraMultiplier);
+      houseTotal += inc;
+    }
+    if (houseTotal > 0) {
+      await tx.team.update({ where: { id: teamId }, data: { coins: { increment: houseTotal } } });
+      await logLedger(tx, { teamId, kind: "coins", delta: houseTotal, note: "房產營收", byToken });
+    }
+    if (await teamMonopolizesRegion(tx, teamId, "SPECTRA")) {
+      await tx.team.update({ where: { id: teamId }, data: { cardPoints: { increment: state.spectraCardPoints } } });
+      await logLedger(tx, { teamId, kind: "cardPoints", delta: state.spectraCardPoints, note: "獨佔靈序：卡牌點數", byToken });
+    }
+    await flushHavenAppreciation(tx, await getState(tx), Date.now());
+
     return { ok: true, results, remindersTicked: reminderUsedIds.length };
   });
 }
@@ -1716,8 +1976,10 @@ const UNDO_WINDOW_MS = 30_000;
 
 export async function undoAction(params: {
   ledgerIds: number[];
-  property?: { id: number; ownerTeamId: number | null; level: number };
-  properties?: { id: number; ownerTeamId: number | null; level: number }[];
+  property?: { id: number; ownerTeamId: number | null; level: number;
+    cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number };
+  properties?: { id: number; ownerTeamId: number | null; level: number;
+    cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number }[];
   itemIds?: number[];
   lotteryNumberId?: number;
   lotteryPoolRevert?: number;
@@ -1764,9 +2026,17 @@ export async function undoAction(params: {
       if (!Number.isInteger(p.id)) continue;
       await tx.property.update({
         where: { id: p.id },
-        data: { ownerTeamId: p.ownerTeamId ?? null, level: p.level },
+        data: {
+          ownerTeamId: p.ownerTeamId ?? null,
+          level: p.level,
+          ...(p.cardRegionMult !== undefined ? { cardRegionMult: p.cardRegionMult } : {}),
+          ...(p.cardBuildingMult !== undefined ? { cardBuildingMult: p.cardBuildingMult } : {}),
+          ...(p.monopolyBonusMult !== undefined ? { monopolyBonusMult: p.monopolyBonusMult } : {}),
+        },
       });
     }
+
+    if (toRestore.length) await reconcileMonopolySince(tx, Date.now());
 
     // 動產：刪除撤銷對象發出的 TeamItem（如好運卡骰到動產）
     const itemsToDelete = [...new Set((itemIds ?? []).filter((n) => Number.isInteger(n)))];

@@ -13,7 +13,17 @@ import { RealMapView } from "@/components/views/RealMapView";
 import { ScrollLock } from "@/components/ui/scroll-lock";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, EventBanner, HudTabs, TeamItemBadges, FloatingDesc } from "@/components/ui";
-import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, EffectType, ITEM_GRADE_COLORS, stackEffects, applyToll, FREEBIE_TAB, type Freebie, type UndoRecipe } from "@/lib/game";
+import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, EffectType, ITEM_GRADE_COLORS, stackEffects, applyToll, FREEBIE_TAB, type MonopolyEffect, type Freebie, type UndoRecipe } from "@/lib/game";
+
+// 獨佔效果中文徽章文字（spectraCardPoints 需從 settings 取得）。
+function monopolyEffectLabel(effect: MonopolyEffect, spectraCardPoints: number): string {
+  switch (effect) {
+    case "COIN_1_5X":    return "💰 光幣 ×1.5";
+    case "CARD_POINTS":  return `🃏 每回合 +${spectraCardPoints} 卡點`;
+    case "UPGRADE_BOOST": return "🏗 升級加速";
+    case "APPRECIATION": return "📈 不動產慢慢漲";
+  }
+}
 import { Map, CircleDollarSign, LoaderPinwheel, Building2, Store, Gamepad2 } from "lucide-react";
 
 // 可作為「回合操作」的分頁（地圖落地會導向、完成後把金流併回階段 2）。
@@ -279,6 +289,9 @@ export function MapView() {
                       <>
                         <div className="truncate text-sm font-semibold text-slate-100">
                           {ri!.monopolyTeamName}
+                        </div>
+                        <div className="mt-0.5 inline-block rounded border border-white/15 bg-white/8 px-1.5 py-0.5 text-[10px] font-medium text-slate-300">
+                          {monopolyEffectLabel(ri!.monopolyEffect, snap.settings.spectraCardPoints)}
                         </div>
                         <div className="text-xs text-slate-400">
                           需付{" "}
