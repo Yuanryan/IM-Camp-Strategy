@@ -115,9 +115,11 @@ export function ExchangeView({
           {props.map((p) => {
             // 採用受事件影響的現價（currentValue），與後端 buyProperty / upgradeProperty 一致
             const fee = upgradeFee(p.currentValue, p.level);
+            // 購買計價：未開發地用 currentValue；已開發地（賣回後保留 level）用 investedValue，與後端 buyProperty 一致。
+            const buyMarket = p.level > 0 ? roundTo10(p.investedValue) : p.currentValue;
             // 購買：用選定隊（買方）的折扣；升級：用持有隊的折扣（與後端一致）
-            const buyBase = Math.max(0, p.currentValue - discount);
-            const buyPrice = applyShopPrice(p.currentValue - discount, shopDeltaFor(team === "" ? null : team));
+            const buyBase = Math.max(0, buyMarket - discount);
+            const buyPrice = applyShopPrice(buyMarket - discount, shopDeltaFor(team === "" ? null : team));
             const upgradeBase = fee != null ? Math.max(0, fee - discount) : null;
             const upgradePrice = fee != null ? applyShopPrice(fee - discount, shopDeltaFor(p.ownerTeamId)) : null;
             const ui = REGION_UI[region as keyof typeof REGION_UI];
@@ -132,10 +134,11 @@ export function ExchangeView({
                       <div className={`text-xs font-medium ${ui.text}`}>{p.type}</div>
                     </div>
                     <div className="shrink-0 text-right leading-tight">
-                      {p.ownerTeamId != null ? (
+                      {p.ownerTeamId != null || p.level > 0 ? (
+                        // 有主＝持有現值/賣回值；無主但已開發（賣回保留 level）＝承接買價，兩者皆為 investedValue。
                         <>
                           <PriceTag current={roundTo10(p.investedValue)} base={p.basePrice} />
-                          <div className="text-[11px] text-slate-500">持有現值・賣回值</div>
+                          <div className="text-[11px] text-slate-500">{p.ownerTeamId != null ? "持有現值・賣回值" : "承接價（含開發）"}</div>
                         </>
                       ) : (
                         <>
@@ -150,6 +153,13 @@ export function ExchangeView({
                     {p.ownerName ? (
                       <>
                         <span className="truncate text-slate-300">{p.ownerName}</span>
+                        <LevelDots level={p.level} />
+                        <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${ui.chipBg}`}>{LEVEL_TAG[p.level]}</span>
+                      </>
+                    ) : p.level > 0 ? (
+                      // 無主但已開發（賣回保留等級）：標「未售出」並顯示保留的等級，讓關主看出承接的是幾級房。
+                      <>
+                        <span className="text-slate-500">未售出</span>
                         <LevelDots level={p.level} />
                         <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${ui.chipBg}`}>{LEVEL_TAG[p.level]}</span>
                       </>

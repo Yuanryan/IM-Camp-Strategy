@@ -352,7 +352,12 @@ export async function buyProperty(params: {
     if (!prop) throw new Error("找不到不動產");
     if (prop.ownerTeamId != null) throw new Error("該不動產已被購買");
     const state = await getState(tx);
-    const marketValue = currentValue(prop, parseActiveEvents(state.activeEvents), state.event4Penalty);
+    // 買價：未開發地（level0，含全新地）用 currentValue（市場基準價，同升級計價）；
+    // 已開發地（賣回後保留 level 掛在場上）用 investedValue（含本金倍率），與賣家當初收到的口徑對稱，
+    // 買家承接現有等級、付對應開發後的價（不因換手洗掉等級或套利）。
+    const marketValue = prop.level > 0
+      ? investedValue(prop, parseActiveEvents(state.activeEvents), state.event4Penalty)
+      : currentValue(prop, parseActiveEvents(state.activeEvents), state.event4Penalty);
     const shopEffect = await loadActiveEffects(tx, teamId, "SHOP_PRICE");
     const price = applyShopPrice(marketValue - discount, shopEffect.delta);
     const team = await tx.team.findUnique({ where: { id: teamId } });
@@ -365,8 +370,10 @@ export async function buyProperty(params: {
     if (await teamMonopolizesRegion(tx, teamId, "HAVEN")) {
       await flushHavenAppreciation(tx, state, Date.now());
     }
+    // 買家承接該地現有等級（賣回保留的 level）；EMBER 獨佔者額外 +1 級免費（升級加速），上限 3。
+    // 全新未開發地 level0：EMBER→1（同現行），無 EMBER→0。
     const emberBoost = await teamMonopolizesRegion(tx, teamId, "EMBER");
-    const newLevel = emberBoost ? 1 : 0;
+    const newLevel = Math.min(3, prop.level + (emberBoost ? 1 : 0));
     await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: teamId, level: newLevel } });
     await decrementUses(tx, shopEffect.usedIds);
     await reconcileMonopolySince(tx, Date.now());
@@ -377,11 +384,11 @@ export async function buyProperty(params: {
       note: `購買 ${prop.name}${discount ? `（折抵${discount}）` : ""}`,
       byToken,
     });
-    // 購買的前提就是無主、level 0 → 撤銷即還原成無主
+    // 撤銷還原成「買前」狀態：無主 + 買前的等級（賣回可能保留 level>0），非一律 0。
     const undo: UndoRecipe = {
       label: `購買 ${prop.name}`,
       ledgerIds: [lid],
-      property: { id: propertyId, ownerTeamId: null, level: 0 },
+      property: { id: propertyId, ownerTeamId: null, level: prop.level },
     };
     return { ok: true, price, undo };
   });
