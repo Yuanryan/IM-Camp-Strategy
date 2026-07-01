@@ -359,6 +359,12 @@ export async function buyProperty(params: {
     if (!team) throw new Error("找不到小隊");
     if (team.coins < price) throw new Error("光幣不足");
     await tx.team.update({ where: { id: teamId }, data: { coins: { decrement: price } } });
+    // HAVEN flush-on-buy：買方若為 HAVEN 獨佔隊，先把既有房的即時漲幅鎖進 monopolyBonusMult
+    // 並重設 monopolySince=now，避免新買的地回溯套到已累積的漲幅（新地從 1.0× 起算）。
+    // 必須在設定新地 owner 之前，否則新地會被含進 flush 迴圈。
+    if (await teamMonopolizesRegion(tx, teamId, "HAVEN")) {
+      await flushHavenAppreciation(tx, state, Date.now());
+    }
     const emberBoost = await teamMonopolizesRegion(tx, teamId, "EMBER");
     const newLevel = emberBoost ? 1 : 0;
     await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: teamId, level: newLevel } });
@@ -1958,13 +1964,21 @@ export async function distributeRoundIncome(params: { teamId: number; byToken?: 
       await tx.team.update({ where: { id: teamId }, data: { coins: { increment: houseTotal } } });
       await logLedger(tx, { teamId, kind: "coins", delta: houseTotal, note: "房產營收", byToken });
     }
+    let spectraGranted = 0;
     if (await teamMonopolizesRegion(tx, teamId, "SPECTRA")) {
-      await tx.team.update({ where: { id: teamId }, data: { cardPoints: { increment: state.spectraCardPoints } } });
-      await logLedger(tx, { teamId, kind: "cardPoints", delta: state.spectraCardPoints, note: "獨佔靈序：卡牌點數", byToken });
+      spectraGranted = state.spectraCardPoints;
+      await tx.team.update({ where: { id: teamId }, data: { cardPoints: { increment: spectraGranted } } });
+      await logLedger(tx, { teamId, kind: "cardPoints", delta: spectraGranted, note: "獨佔靈序：卡牌點數", byToken });
     }
     await flushHavenAppreciation(tx, await getState(tx), Date.now());
 
-    return { ok: true, results, remindersTicked: reminderUsedIds.length };
+    return {
+      ok: true,
+      results,
+      remindersTicked: reminderUsedIds.length,
+      houseIncome: houseTotal,
+      cardPoints: spectraGranted,
+    };
   });
 }
 
