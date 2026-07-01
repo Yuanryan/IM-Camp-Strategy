@@ -490,9 +490,10 @@ export async function sellPropertyToExchange(params: { propertyId: number; byTok
     const payout = roundTo10(investedValue(prop, parseActiveEvents(state.activeEvents), state.event4Penalty));
 
     await tx.team.update({ where: { id: ownerId }, data: { coins: { increment: payout } } });
+    // 保留等級及倍率，不改變 level，只移除持有者
     await tx.property.update({
       where: { id: propertyId },
-      data: { ownerTeamId: null, level: 0 }, // 倍率保留不重置
+      data: { ownerTeamId: null }, // 等級與倍率保留不重置
     });
     const lid = await logLedger(tx, {
       teamId: ownerId, kind: "property", delta: payout, note: `賣回交易所 ${prop.name}`, byToken,
@@ -1474,17 +1475,21 @@ function havenLiveMultFor(state: GameStateRow, teamId: number | null, now: numbe
 }
 
 // 把 HAVEN 獨佔隊當前即時漲幅永久併入其所有不動產 monopolyBonusMult，並重設 since=now。
+// 線性累加：把「本次即時漲幅增量」(mult−1) 加進 monopolyBonusMult，而非相乘。
+// 這樣跨多次 flush 的漲幅是線性累加（1→1.05→1.11），非乘法複利（1→1.05→1.113），
+// 符合企畫「每 N 分鐘 +rate 線性」原意。currentValue 仍以乘法把 monopolyBonusMult 疊入現值。
 async function flushHavenAppreciation(tx: Tx, state: GameStateRow, now: number): Promise<void> {
   const map = parseMonopolySince(state.monopolySince);
   const h = map.HAVEN;
   if (!h) return;
   const mult = havenAppreciationMult(h.since, now, state.havenApprIntervalMs, state.havenApprRate);
   if (mult > 1) {
+    const gain = mult - 1; // 本次週期的線性漲幅增量
     const props = await tx.property.findMany({ where: { ownerTeamId: h.teamId } });
     for (const p of props) {
       await tx.property.update({
         where: { id: p.id },
-        data: { monopolyBonusMult: p.monopolyBonusMult * mult },
+        data: { monopolyBonusMult: p.monopolyBonusMult + gain },
       });
     }
   }

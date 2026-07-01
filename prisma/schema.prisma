@@ -181,7 +181,7 @@ model GameState {
   event4Penalty String? // 事件四「前次漲最多區域」由主持人選定
   // ── 不動產進階系統可調參數（admin 可調）──
   auroraMultiplier     Float  @default(1.5)   // AURORA 獨佔：光幣收益倍率
-  spectraCardPoints    Int    @default(10)    // SPECTRA 獨佔：每回合卡牌點數
+  spectraCardPoints    Int    @default(20)    // SPECTRA 獨佔：每回合卡牌點數
   havenApprIntervalMs  Int    @default(60000) // HAVEN 慢慢漲：時間單位（毫秒）
   havenApprRate        Float  @default(0.01)  // HAVEN 慢慢漲：每單位漲幅
   houseIncomeL1        Float  @default(0.03)  // 1 級房每回合營收費率
