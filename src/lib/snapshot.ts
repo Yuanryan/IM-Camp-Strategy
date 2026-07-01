@@ -91,6 +91,7 @@ export type TeamView = {
   items: ActiveItemView[];
   recentAttacks: string[]; // 最近被功能卡攻擊的通知訊息（時間窗內，新到舊）；小隊頁警示橫幅用
   objectives: ObjectiveView[]; // 進行中的好運卡任務目標（含進度）
+  monopolyRegions: RegionCode[]; // 該隊目前獨佔的區碼（供頁面顯示獨佔被動徽章）
 };
 
 export type RegionView = {
@@ -372,6 +373,7 @@ export async function getSnapshot(): Promise<Snapshot> {
       items,
       recentAttacks: attacksByTeam.get(t.id) ?? [],
       objectives: objectivesByTeam(t.id),
+      monopolyRegions: monopolyByTeam.get(t.id) ?? [],
     };
   });
 
