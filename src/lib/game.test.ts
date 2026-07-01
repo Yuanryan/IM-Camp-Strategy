@@ -57,6 +57,7 @@ import {
   REGION_MONOPOLY_EFFECT,
   havenAppreciationMult,
   houseIncome,
+  applyCardRegionMult,
   type ObjectiveBaseline,
   type ObjectiveState,
 } from "./game";
@@ -973,6 +974,10 @@ describe("havenAppreciationMult", () => {
     // since 無效（0）→ 1
     expect(havenAppreciationMult(0, since, 60000, 0.01)).toBe(1);
   });
+
+  it("havenAppreciationMult 負 since 回 1", () => {
+    expect(havenAppreciationMult(-7_200_000, 1_000_000, 60000, 0.01)).toBe(1);
+  });
 });
 
 // ── 房收計算（級別費率）──────────────────────────────────────
@@ -981,5 +986,13 @@ describe("houseIncome", () => {
     expect(houseIncome(1000, 0, [0.03, 0.05, 0.08])).toBe(0);
     expect(houseIncome(1000, 1, [0.03, 0.05, 0.08])).toBe(30);
     expect(houseIncome(1234, 3, [0.03, 0.05, 0.08])).toBe(99); // 1234×0.08=98.72→99
+  });
+});
+
+// ── 純疊乘（applyCardRegionMult）──────────────────────────────
+describe("applyCardRegionMult", () => {
+  it("applyCardRegionMult 純疊乘", () => {
+    expect(applyCardRegionMult(1, 1.3)).toBeCloseTo(1.3, 6);
+    expect(applyCardRegionMult(0.75, 1.3)).toBeCloseTo(0.975, 6);
   });
 });

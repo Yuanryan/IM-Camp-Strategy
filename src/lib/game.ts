@@ -275,7 +275,7 @@ export const REGION_MONOPOLY_EFFECT: Record<RegionCode, MonopolyEffect> = {
 export function havenAppreciationMult(
   sinceEpochMs: number, now: number, intervalMs: number, rate: number,
 ): number {
-  if (!sinceEpochMs || now <= sinceEpochMs || intervalMs <= 0) return 1;
+  if (sinceEpochMs <= 0 || now <= sinceEpochMs || intervalMs <= 0) return 1;
   const units = Math.floor((now - sinceEpochMs) / intervalMs);
   return 1 + units * rate;
 }
@@ -286,6 +286,11 @@ export function houseIncome(
 ): number {
   if (level < 1 || level > 3) return 0;
   return Math.round(currentVal * rates[level - 1]);
+}
+
+// 純疊乘：供 service 疊卡牌倍率用。
+export function applyCardRegionMult(current: number, factor: number): number {
+  return current * factor;
 }
 
 // 大樂透加購費：50 × 2^(已登記號碼數 - 1)；第一個免費
