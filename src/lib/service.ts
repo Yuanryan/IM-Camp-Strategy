@@ -43,6 +43,11 @@ import {
   MAX_OPEN_TASKS,
   findMonopoly,
   evalObjectiveProgress,
+  havenAppreciationMult,
+  parseMonopolySince,
+  serializeMonopolySince,
+  REGION_MONOPOLY_EFFECT,
+  houseIncome,
   type EffectType,
   type RegionCode,
   type UndoRecipe,
@@ -1295,6 +1300,59 @@ export async function applyBadCard(params: {
 }
 
 // ── 好運卡「任務目標型」：抽卡登記 → 回合結算自動評估發獎 ──────────────
+
+type GameStateRow = Awaited<ReturnType<typeof getState>>;
+
+// 若 teamId 為目前 HAVEN 獨佔隊，回其即時漲幅倍率，否則 1。
+function havenLiveMultFor(state: GameStateRow, teamId: number | null, now: number): number {
+  if (teamId == null) return 1;
+  const since = parseMonopolySince(state.monopolySince).HAVEN;
+  if (!since || since.teamId !== teamId) return 1;
+  return havenAppreciationMult(since.since, now, state.havenApprIntervalMs, state.havenApprRate);
+}
+
+// 把 HAVEN 獨佔隊當前即時漲幅永久併入其所有不動產 monopolyBonusMult，並重設 since=now。
+async function flushHavenAppreciation(tx: Tx, state: GameStateRow, now: number): Promise<void> {
+  const map = parseMonopolySince(state.monopolySince);
+  const h = map.HAVEN;
+  if (!h) return;
+  const mult = havenAppreciationMult(h.since, now, state.havenApprIntervalMs, state.havenApprRate);
+  if (mult > 1) {
+    const props = await tx.property.findMany({ where: { ownerTeamId: h.teamId } });
+    for (const p of props) {
+      await tx.property.update({
+        where: { id: p.id },
+        data: { monopolyBonusMult: p.monopolyBonusMult * mult },
+      });
+    }
+  }
+  map.HAVEN = { teamId: h.teamId, since: now };
+  await tx.gameState.update({ where: { id: 1 }, data: { monopolySince: serializeMonopolySince(map) } });
+}
+
+// 重算各區獨佔隊；HAVEN 換人先 flush 舊隊，再寫新隊 since=now。
+async function reconcileMonopolySince(tx: Tx, now: number): Promise<void> {
+  const state = await getState(tx);
+  const map = parseMonopolySince(state.monopolySince);
+  const allProps = await tx.property.findMany({
+    select: { id: true, region: true, ownerTeamId: true, level: true },
+  });
+  const havenProps = allProps.filter((p) => p.region === "HAVEN");
+  const newHavenOwner = findMonopoly(havenProps);
+  const prev = map.HAVEN;
+  if (prev && prev.teamId !== newHavenOwner) {
+    // 換人（或變無人）：先 flush 舊隊已累積漲幅
+    await flushHavenAppreciation(tx, state, now);
+  }
+  // flushHavenAppreciation 可能已改 map（重設 since），重讀最新
+  const fresh = parseMonopolySince((await getState(tx)).monopolySince);
+  if (newHavenOwner == null) {
+    delete fresh.HAVEN;
+  } else if (!fresh.HAVEN || fresh.HAVEN.teamId !== newHavenOwner) {
+    fresh.HAVEN = { teamId: newHavenOwner, since: now };
+  }
+  await tx.gameState.update({ where: { id: 1 }, data: { monopolySince: serializeMonopolySince(fresh) } });
+}
 
 // 某隊「目前」已獨佔的區碼集合（用 game.findMonopoly 單一事實來源）。
 async function queryTeamMonopolyRegions(tx: Tx, teamId: number): Promise<RegionCode[]> {
