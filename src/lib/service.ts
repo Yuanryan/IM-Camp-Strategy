@@ -357,8 +357,11 @@ export async function buyProperty(params: {
     if (!team) throw new Error("找不到小隊");
     if (team.coins < price) throw new Error("光幣不足");
     await tx.team.update({ where: { id: teamId }, data: { coins: { decrement: price } } });
-    await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: teamId, level: 0 } });
+    const emberBoost = await teamMonopolizesRegion(tx, teamId, "EMBER");
+    const newLevel = emberBoost ? 1 : 0;
+    await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: teamId, level: newLevel } });
     await decrementUses(tx, shopEffect.usedIds);
+    await reconcileMonopolySince(tx, Date.now());
     const lid = await logLedger(tx, {
       teamId,
       kind: "property",
@@ -397,13 +400,17 @@ export async function upgradeProperty(params: {
     if (!team) throw new Error("找不到持有小隊");
     if (team.coins < fee) throw new Error("光幣不足");
     await tx.team.update({ where: { id: team.id }, data: { coins: { decrement: fee } } });
-    await tx.property.update({ where: { id: propertyId }, data: { level: { increment: 1 } } });
+    const emberBoost = await teamMonopolizesRegion(tx, prop.ownerTeamId, "EMBER");
+    const step = emberBoost ? 2 : 1;
+    const targetLevel = Math.min(3, prop.level + step);
+    await tx.property.update({ where: { id: propertyId }, data: { level: targetLevel } });
     await decrementUses(tx, shopEffect.usedIds);
+    await reconcileMonopolySince(tx, Date.now());
     const lid = await logLedger(tx, {
       teamId: team.id,
       kind: "property",
       delta: -fee,
-      note: `升級 ${prop.name} → ${prop.level + 1}級${discount ? `（折抵${discount}）` : ""}`,
+      note: `升級 ${prop.name} → ${targetLevel}級${discount ? `（折抵${discount}）` : ""}`,
       byToken,
     });
     // prop.level 是升級前的等級 → 撤銷即降回此等級
@@ -412,7 +419,7 @@ export async function upgradeProperty(params: {
       ledgerIds: [lid],
       property: { id: propertyId, ownerTeamId: prop.ownerTeamId, level: prop.level },
     };
-    return { ok: true, fee, newLevel: prop.level + 1, undo };
+    return { ok: true, fee, newLevel: targetLevel, undo };
   });
 }
 
@@ -1468,6 +1475,14 @@ async function queryTeamMonopolyRegions(tx: Tx, teamId: number): Promise<RegionC
     if (findMonopoly(regionProps) === teamId) out.push(r.code);
   }
   return out;
+}
+
+// 該隊是否獨佔某區（EMBER 升級加速等即時判定用）。
+async function teamMonopolizesRegion(tx: Tx, teamId: number, region: RegionCode): Promise<boolean> {
+  const regionProps = await tx.property.findMany({
+    where: { region }, select: { ownerTeamId: true, level: true },
+  });
+  return findMonopoly(regionProps) === teamId;
 }
 
 // 某隊「目前」的任務各項計數 / 狀態。targetRegion 有給時，propertyCount 僅計該區（供 BUY_LAND 用）。
