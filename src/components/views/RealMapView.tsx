@@ -41,18 +41,8 @@ import {
   type Freebie,
   type RegionCode,
   type UndoRecipe,
-  type MonopolyEffect,
 } from "@/lib/game";
 
-// 獨佔效果的地圖徽章 emoji（空間有限，只顯示 emoji）。
-function monopolyEffectEmoji(effect: MonopolyEffect): string {
-  switch (effect) {
-    case "COIN_1_5X":     return "💰";
-    case "CARD_POINTS":   return "🃏";
-    case "UPGRADE_BOOST": return "🏗";
-    case "APPRECIATION":  return "📈";
-  }
-}
 import {
   MapPin,
   ChevronLeft,
@@ -555,15 +545,20 @@ export function RealMapView({
       });
       const target = r.landed as BoardSquare;
 
-      // 擲骰前進＝該隊一回合 → 自動結算每輪收益（僅當該隊持有相關道具，否則 API 會報錯）。
+      // 擲骰前進＝該隊一回合 → 自動結算每輪收益。房收 / SPECTRA 卡點不依賴動產道具，
+      // 且與動產收益同一次 API 結算，故只要 doSettle 就呼叫（無相關道具時後端回空 results）。
       let roundIncome = 0;
-      if (doSettle && (cur.items ?? []).some((i) => ROUND_GATE_TYPES.includes(i.effectType))) {
+      let houseIncome = 0;
+      let spectraPoints = 0;
+      if (doSettle) {
         try {
           const s = await postJson("/api/host/round-income", { teamId: team });
           roundIncome = (s.results ?? []).reduce(
             (acc: number, x: { income: number }) => acc + (x.income ?? 0),
             0,
           );
+          houseIncome = s.houseIncome ?? 0;
+          spectraPoints = s.cardPoints ?? 0;
         } catch {
           /* 無收益 / 提醒道具等情況忽略 */
         }
@@ -658,6 +653,13 @@ export function RealMapView({
           if (incomeItems.length > 0 || roundIncome !== 0) {
             rows.push({ label: "回合收益", amount: roundIncome, items: incomeItems, breakdown });
           }
+          // 不動產進階：獨佔 SPECTRA 卡點 / 1-3 房被動營收（後端已入帳，此處列出供關主檢視）。
+          if (houseIncome > 0) {
+            rows.push({ label: "房產營收", amount: houseIncome });
+          }
+          if (spectraPoints > 0) {
+            rows.push({ label: "獨佔靈序：卡牌點數", amount: 0, cardPoints: spectraPoints });
+          }
         }
         if (tollPaid > 0) {
           // 過路費減免來源：本隊套用到該區的 TOLL_PAID 道具（讓關主看出為何金額被打折）。
@@ -670,6 +672,8 @@ export function RealMapView({
         setResult({ rows, undo: rows.length ? undo : undefined, noSettle: payload.noSettle });
         const bits: string[] = [];
         if (roundIncome > 0) bits.push(`回合收益 +${roundIncome}`);
+        if (houseIncome > 0) bits.push(`房產營收 +${houseIncome}`);
+        if (spectraPoints > 0) bits.push(`卡點 +${spectraPoints}`);
         if (tollPaid > 0) bits.push(`付過路費 -${tollPaid}`);
         if (r.passedStart) bits.push("過起點 +收益");
         if (bits.length) toast(`${cur.name}・${bits.join("・")}`, "ok", undo);
@@ -915,16 +919,7 @@ export function RealMapView({
                     過路{tollAmt}
                   </span>
                 )}
-                {/* 獨佔效果 emoji 徽章：資產格且該區有任何獨佔（含自己）才顯示。*/}
-                {!showOriginal && ri?.monopolyTeamId != null && (
-                  <span
-                    className="pointer-events-none absolute bottom-0 left-1/2 z-10 -translate-x-1/2 leading-none"
-                    style={{ fontSize: "1.8cqmin" }}
-                    title={monopolyEffectEmoji(ri.monopolyEffect)}
-                  >
-                    {monopolyEffectEmoji(ri.monopolyEffect)}
-                  </span>
-                )}
+                {/* 獨佔效果指示移至投影頁（DominanceBadge 文字標籤），棋盤不再顯示 emoji。*/}
                 {!showOriginal && occupants.length > 0 && (
                   <span className="pointer-events-none absolute inset-0">
                     {occupants.map((o, i) => {
@@ -1507,9 +1502,11 @@ function PhaseResult({
                       +{r.cardPoints}pt
                     </span>
                   )}
-                  <span className={`font-mono font-extrabold tabular-nums ${r.amount > 0 ? "text-emerald-400" : "text-rose-400"}`}>
-                    {r.amount > 0 ? `+${r.amount}` : r.amount}
-                  </span>
+                  {r.amount !== 0 && (
+                    <span className={`font-mono font-extrabold tabular-nums ${r.amount > 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                      {r.amount > 0 ? `+${r.amount}` : r.amount}
+                    </span>
+                  )}
                 </span>
               </div>
               {/* 逐項拆分：回合收益按來源動產一條一條列出（左側 grade 徽章 + 右側該筆貢獻光幣）。*/}
