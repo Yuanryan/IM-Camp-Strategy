@@ -1038,11 +1038,8 @@ export function RealMapView({
         style={{ width: phaseBoxW ?? undefined }}
         className="flex w-[330px] shrink-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-2.5 backdrop-blur-xl xl:w-[360px] max-lg:!w-full max-lg:h-auto max-lg:overflow-visible"
       >
-        {cardPanelOpen ? (
-          <CardUsePanel defaultTeamId={team} onClose={() => setCardPanelOpen(false)} />
-        ) : (
-        <>
-        {/* 手機版入口：桌機改走左緣垂直按鈕（見面板外側），此處僅小螢幕顯示。*/}
+        {/* 手機版入口：桌機改走左緣垂直按鈕（見面板外側），此處僅小螢幕顯示。
+            功能卡現以懸浮托盤（覆蓋棋盤）呈現，桌機 / 手機皆由 cardPanelOpen 控制，面板不再佔用側欄。*/}
         <button
           type="button"
           onClick={() => setCardPanelOpen(true)}
@@ -1408,8 +1405,6 @@ export function RealMapView({
         </div>
         </div>
         </div>
-        </>
-        )}
       </aside>
 
       {/* 左緣「功能卡」入口：風格對齊階段切換箭頭，固定在較高處避免與其重疊。
@@ -1461,8 +1456,62 @@ export function RealMapView({
         </button>
       )}
       </div>
+
+      {/* 功能卡懸浮托盤：從右緣滑出、延伸至棋盤中段，背後棋盤上暗色遮罩（點擊 / Esc 關閉）。
+          錨定在本列（rowRef，relative）上，桌機覆蓋約 2/3 寬、手機幾乎全寬，給卡面與選標更寬的呼吸空間。*/}
+      <CardTray open={cardPanelOpen} onClose={() => setCardPanelOpen(false)}>
+        <CardUsePanel defaultTeamId={team} onClose={() => setCardPanelOpen(false)} />
+      </CardTray>
     </div>
     </div>
+  );
+}
+
+// 功能卡懸浮托盤：右緣滑出、覆蓋棋盤中段的浮層。開啟時棋盤上落一層可點關閉的暗色遮罩，
+// 托盤本身自右向左滑入、左緣一道紫色接縫光暈（呼應功能卡的紫色識別）。Esc 或點遮罩即關閉。
+function CardTray({ open, onClose, children }: { open: boolean; onClose: () => void; children: ReactNode }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  return (
+    <>
+      {/* 棋盤遮罩：只蓋在本列範圍內（非全螢幕），淡入 + 模糊，點擊關閉。*/}
+      <div
+        aria-hidden={!open}
+        onClick={onClose}
+        className={`absolute inset-0 z-30 bg-slate-950/55 backdrop-blur-[2px] transition-opacity duration-300 max-lg:hidden ${
+          open ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
+      />
+      {/* 手機遮罩：桌機用上方棋盤內遮罩，手機改全螢幕暗底（托盤下方為 fixed 全螢幕）。*/}
+      <div
+        aria-hidden={!open}
+        onClick={onClose}
+        className={`fixed inset-0 z-30 bg-slate-950/80 backdrop-blur-sm transition-opacity duration-300 lg:hidden ${
+          open ? "opacity-100" : "pointer-events-none opacity-0"
+        }`}
+      />
+      {/* 托盤：桌機右緣錨定於本列、約 2/3 寬（上限 760px）並自右滑出；手機為全螢幕 sheet。*/}
+      <div
+        role="dialog"
+        aria-label="功能卡"
+        aria-modal="true"
+        className={`z-40 flex flex-col overflow-hidden border border-violet-400/25 bg-[#0E1626]/95 p-3 shadow-[0_24px_80px_-12px_rgba(0,0,0,0.7)] backdrop-blur-xl transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] lg:absolute lg:inset-y-0 lg:right-0 lg:w-[min(920px,84%)] lg:rounded-2xl max-lg:fixed max-lg:inset-0 ${
+          open ? "translate-x-0" : "pointer-events-none translate-x-[calc(100%+2rem)]"
+        }`}
+      >
+        {/* 左緣紫色接縫光暈：標記托盤「自此滑出」的那道縫。*/}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 left-0 w-px bg-gradient-to-b from-transparent via-violet-400/70 to-transparent shadow-[0_0_18px_2px_rgba(167,139,250,0.45)]"
+        />
+        {children}
+      </div>
+    </>
   );
 }
 
