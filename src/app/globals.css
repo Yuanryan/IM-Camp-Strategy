@@ -35,13 +35,99 @@ body {
   overscroll-behavior-y: none;
 }
 
-.system-ambient-canvas {
+.system-ambient-background {
   position: fixed;
   inset: 0;
   z-index: 0;
   width: 100%;
   height: 100%;
+  overflow: hidden;
   pointer-events: none;
+  contain: paint;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(34, 211, 238, 0.13), transparent 33%),
+    radial-gradient(circle at 88% 82%, rgba(251, 191, 36, 0.11), transparent 35%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.45), rgba(2, 6, 23, 0.9) 56%, rgba(15, 23, 42, 0.36));
+}
+
+.system-ambient-layer {
+  position: absolute;
+  width: 58vmax;
+  height: 58vmax;
+  border-radius: 9999px;
+  opacity: 0.42;
+  mix-blend-mode: screen;
+  transform: translate3d(0, 0, 0);
+  will-change: transform, opacity;
+}
+
+.system-ambient-layer-cyan {
+  top: -24vmax;
+  left: -18vmax;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.23), rgba(34, 211, 238, 0.08) 38%, transparent 68%);
+  animation: systemAmbientDriftA 42s ease-in-out infinite;
+}
+
+.system-ambient-layer-gold {
+  right: -22vmax;
+  bottom: -24vmax;
+  background: radial-gradient(circle, rgba(251, 191, 36, 0.2), rgba(245, 158, 11, 0.07) 42%, transparent 70%);
+  animation: systemAmbientDriftB 48s ease-in-out infinite;
+}
+
+.system-ambient-layer-emerald {
+  top: 36%;
+  left: 25%;
+  width: 44vmax;
+  height: 44vmax;
+  background: radial-gradient(circle, rgba(52, 211, 153, 0.13), rgba(52, 211, 153, 0.045) 45%, transparent 72%);
+  animation: systemAmbientDriftC 56s ease-in-out infinite;
+}
+
+@keyframes systemAmbientDriftA {
+  0%,
+  100% {
+    opacity: 0.34;
+    transform: translate3d(-2%, -1%, 0) scale(1);
+  }
+  50% {
+    opacity: 0.48;
+    transform: translate3d(14%, 9%, 0) scale(1.08);
+  }
+}
+
+@keyframes systemAmbientDriftB {
+  0%,
+  100% {
+    opacity: 0.32;
+    transform: translate3d(2%, 1%, 0) scale(1.02);
+  }
+  50% {
+    opacity: 0.46;
+    transform: translate3d(-12%, -8%, 0) scale(1.1);
+  }
+}
+
+@keyframes systemAmbientDriftC {
+  0%,
+  100% {
+    opacity: 0.18;
+    transform: translate3d(-6%, 5%, 0) scale(0.96);
+  }
+  50% {
+    opacity: 0.32;
+    transform: translate3d(10%, -7%, 0) scale(1.12);
+  }
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .system-ambient-layer {
+    opacity: 0.28;
+  }
+
+  .system-ambient-layer-emerald {
+    display: none;
+  }
 }
 
 .system-content-shell {
@@ -786,6 +872,42 @@ input[type="number"] {
     0 0 18px rgba(var(--region-glow), 0.26);
 }
 
+.projection-dominance-badge-compact {
+  display: inline-flex;
+  max-width: min(34rem, 56vw);
+  align-items: center;
+  justify-content: flex-end;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+}
+
+.projection-dominance-idle {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.projection-monopoly-property-row {
+  animation: projectionMonopolyRowPulse 3.4s ease-in-out infinite;
+  animation-delay: var(--projection-row-delay, 0ms);
+  will-change: background-color, border-color, box-shadow;
+}
+
+@keyframes projectionMonopolyRowPulse {
+  0%,
+  100% {
+    border-color: rgba(255, 255, 255, 0.1);
+    background-color: rgba(0, 0, 0, 0.35);
+    box-shadow: none;
+  }
+
+  42% {
+    border-color: rgba(var(--region-glow), 0.6);
+    background-color: rgba(var(--region-glow), 0.12);
+    box-shadow:
+      inset 0 0 18px rgba(var(--region-glow), 0.08),
+      0 0 14px rgba(var(--region-glow), 0.2);
+  }
+}
+
 .projection-level-light {
   border: 1px solid rgba(100, 116, 139, 0.38);
   background: rgba(51, 65, 85, 0.72);
@@ -860,6 +982,7 @@ input[type="number"] {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .system-ambient-layer,
   .projection-region-card::before,
   .projection-level-lights[data-level-tier="max"]
     .projection-level-light[data-active="true"],
@@ -869,7 +992,18 @@ input[type="number"] {
   .projection-rank-silver,
   .projection-rank-silver .projection-rank-badge,
   .projection-rank-bronze::after,
+  .projection-monopoly-property-row,
   .projection-region-controlled {
     animation: none;
+  }
+
+  .projection-monopoly-property-row {
+    will-change: auto;
+  }
+
+  .system-ambient-layer {
+    opacity: 0.22;
+    transform: none;
+    will-change: auto;
   }
 }
