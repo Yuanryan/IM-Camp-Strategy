@@ -158,7 +158,7 @@ level 0 不發
 - 賣前先 flush HAVEN 漲幅（若該屋主是 HAVEN 獨佔隊）→ 確保 `monopolyBonusMult` 已含最新漲幅。
 - 回收金 = `investedValue`（含買價 + 升級本金 × 事件 × 卡牌倍率 × HAVEN 漲幅），四捨五入到 10。
 - 屋主 `coins += 回收金`，記 ledger。
-- 該不動產變回無主：`ownerTeamId=null, level=0`，且 `cardRegionMult / cardBuildingMult / monopolyBonusMult` **全部重置回 1**（下一個買家買到乾淨的地）。
+- 該不動產變回無主：`ownerTeamId=null, level=0`。**倍率欄位全部保留不重置**（`cardRegionMult / cardBuildingMult / monopolyBonusMult` 跟著地走）：地的行情不因換手而重置，符合市場直覺，也防止「賣地洗掉黑卡/鬧鬼詛咒」。下一個買家買到含漲跌的地（買價 currentValue 也跟著高/低），HAVEN 漲出來的 monopolyBonusMult 視為該地既成行情由新買家繼承。
 - **不套用** AURORA ×1.5。
 - 賣地後重新維護 `monopolySince`（各區可能因此換獨佔隊）。
 - 由 EXCHANGE 角色執行；回傳 UndoRecipe（含該不動產原狀態：owner/level/三個倍率）可撤銷。
@@ -210,3 +210,4 @@ API：併入現有交易所功能卡 route，授權 EXCHANGE + ADMIN。
 - HAVEN 漲該隊全部不動產、失去獨佔不消失、即時顯示 + 四時機鎖定、線性、admin 可調速率與間隔。
 - 房收依現值百分比、四捨五入到個位、合進每回合結算。
 - 卡牌倍率疊最底層 currentValue（連帶影響過路費/結算/賣價），可打自己、含無主地。
+- 賣地給交易所後倍率全部保留（不重置）：地帶著行情換手，防止賣地洗掉 debuff。
