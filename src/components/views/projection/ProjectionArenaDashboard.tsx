@@ -14,7 +14,7 @@ import {
 import { AnimatedNum, PriceTag } from "@/components/ui";
 import { FullscreenButton } from "@/components/ui/fullscreen-button";
 import { JackpotBallCanvas, type JackpotBallDef } from "./JackpotBallCanvas";
-import { REGIONS, REGION_UI, type RegionCode } from "@/lib/game";
+import { REGIONS, REGION_UI, REGION_MONOPOLY_EFFECT, monopolyEffectText, type MonopolyEffect, type RegionCode } from "@/lib/game";
 import {
   getProjectionLevelTier,
   getProjectionRankTier,
@@ -439,6 +439,8 @@ function RegionArena({ snap }: { snap: Snapshot }) {
               <DominanceBadge
                 teamName={regionState?.monopolyTeamName ?? null}
                 toll={regionState?.toll ?? 0}
+                effect={REGION_MONOPOLY_EFFECT[region.code]}
+                settings={snap.settings}
                 accentClass={ui.text}
               />
             </div>
@@ -492,11 +494,24 @@ function RegionArena({ snap }: { snap: Snapshot }) {
                         ) : null}
                       </span>
                     </div>
-                    <PriceTag
-                      current={property.currentValue}
-                      base={property.basePrice}
-                      className="block w-full text-right text-base font-black leading-none tabular-nums"
-                    />
+                    {property.ownerTeamId != null ? (
+                      <div className="w-full text-right leading-none">
+                        <PriceTag
+                          current={property.investedValue}
+                          base={property.basePrice}
+                          className="block text-base font-black tabular-nums"
+                        />
+                        <span className="mt-0.5 block text-[0.6rem] font-bold tabular-nums text-slate-500">
+                          現價 {property.currentValue}
+                        </span>
+                      </div>
+                    ) : (
+                      <PriceTag
+                        current={property.currentValue}
+                        base={property.basePrice}
+                        className="block w-full text-right text-base font-black leading-none tabular-nums"
+                      />
+                    )}
                   </li>
                 );
               })}
@@ -511,10 +526,14 @@ function RegionArena({ snap }: { snap: Snapshot }) {
 function DominanceBadge({
   teamName,
   toll,
+  effect,
+  settings,
   accentClass,
 }: {
   teamName: string | null;
   toll: number;
+  effect: MonopolyEffect;
+  settings: { auroraMultiplier: number; spectraCardPoints: number };
   accentClass: string;
 }) {
   if (!teamName) {
@@ -540,6 +559,9 @@ function DominanceBadge({
           value={toll}
           className={`ml-1 text-base font-black ${accentClass}`}
         />
+      </div>
+      <div className={`mt-0.5 text-[0.65rem] font-black ${accentClass}`}>
+        {monopolyEffectText(effect, settings)}
       </div>
     </div>
   );
