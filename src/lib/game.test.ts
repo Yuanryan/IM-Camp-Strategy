@@ -60,6 +60,7 @@ import {
   applyCardRegionMult,
   parseMonopolySince,
   serializeMonopolySince,
+  monopolyEffectText,
   type ObjectiveBaseline,
   type ObjectiveState,
 } from "./game";
@@ -1043,5 +1044,23 @@ describe("sellPropertyToExchange 回收金公式", () => {
       cardRegionMult: 1, cardBuildingMult: 1, monopolyBonusMult: 1 };
     // investedValue = 850 × 本金倍率(lvl2=1.6) × 1 = 1360 → roundTo10 = 1360
     expect(roundTo10(investedValue(p, [], null))).toBe(1360);
+  });
+});
+
+describe("monopolyEffectText", () => {
+  const opts = { auroraMultiplier: 1.5, spectraCardPoints: 10 };
+  it("四種效果皆回無 emoji 中文字", () => {
+    expect(monopolyEffectText("COIN_1_5X", opts)).toBe("光幣 ×1.5");
+    expect(monopolyEffectText("CARD_POINTS", opts)).toBe("每回合 +10 卡點");
+    expect(monopolyEffectText("UPGRADE_BOOST", opts)).toBe("升級加速");
+    expect(monopolyEffectText("APPRECIATION", opts)).toBe("不動產增值");
+  });
+  it("光幣倍率依 auroraMultiplier 動態顯示", () => {
+    expect(monopolyEffectText("COIN_1_5X", { auroraMultiplier: 2, spectraCardPoints: 10 }))
+      .toBe("光幣 ×2");
+  });
+  it("卡點依 spectraCardPoints 動態顯示", () => {
+    expect(monopolyEffectText("CARD_POINTS", { auroraMultiplier: 1.5, spectraCardPoints: 25 }))
+      .toBe("每回合 +25 卡點");
   });
 });

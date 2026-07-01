@@ -271,6 +271,19 @@ export const REGION_MONOPOLY_EFFECT: Record<RegionCode, MonopolyEffect> = {
   HAVEN: "APPRECIATION",
 };
 
+// 獨佔被動效果的中文顯示字（無 emoji；投影與頁面徽章共用）。
+export function monopolyEffectText(
+  effect: MonopolyEffect,
+  opts: { auroraMultiplier: number; spectraCardPoints: number },
+): string {
+  switch (effect) {
+    case "COIN_1_5X":     return `光幣 ×${opts.auroraMultiplier}`;
+    case "CARD_POINTS":   return `每回合 +${opts.spectraCardPoints} 卡點`;
+    case "UPGRADE_BOOST": return "升級加速";
+    case "APPRECIATION":  return "不動產增值";
+  }
+}
+
 // HAVEN 慢慢漲：線性即時倍率。since 為該隊開始獨佔 HAVEN 的 epochMs。
 export function havenAppreciationMult(
   sinceEpochMs: number, now: number, intervalMs: number, rate: number,

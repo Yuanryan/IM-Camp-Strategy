@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback, type ReactNode } from "react"
 import { createPortal } from "react-dom";
 import { useMotionValue, animate } from "framer-motion";
 import { RadioTower, Gavel, ChevronDown, Swords } from "lucide-react";
-import { EVENTS, EffectType, ITEM_GRADE_COLORS, GRADE_ORDER, movementMode, movementActionLabel } from "@/lib/game";
+import { EVENTS, EffectType, ITEM_GRADE_COLORS, GRADE_ORDER, movementMode, movementActionLabel, REGION_MONOPOLY_EFFECT, REGION_NAME, monopolyEffectText, type MonopolyEffect, type RegionCode } from "@/lib/game";
 import type { ActiveItemView, AuctionSnapshot } from "@/lib/snapshot";
 
 // 等寬霓虹數字
@@ -342,6 +342,33 @@ export function TeamItemBadges({
             <FloatingDesc>{item.description}</FloatingDesc>
           )}
         </div>
+      ))}
+    </div>
+  );
+}
+
+// 獨佔被動效果徽章（比照 item badge 視覺）：只顯示 effects 白名單內的區。
+export function MonopolyBadges({
+  regions,
+  effects,
+  settings,
+}: {
+  regions: RegionCode[];
+  effects: readonly MonopolyEffect[];
+  settings: { auroraMultiplier: number; spectraCardPoints: number };
+}) {
+  const shown = regions.filter((r) => (effects as MonopolyEffect[]).includes(REGION_MONOPOLY_EFFECT[r]));
+  if (shown.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {shown.map((r) => (
+        <span
+          key={r}
+          className="inline-flex items-center gap-1 rounded-lg border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-xs font-medium text-amber-200"
+        >
+          <span className="font-bold opacity-70">{REGION_NAME[r]}</span>
+          <span>{monopolyEffectText(REGION_MONOPOLY_EFFECT[r], settings)}</span>
+        </span>
       ))}
     </div>
   );
