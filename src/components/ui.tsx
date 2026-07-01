@@ -105,12 +105,14 @@ export function PhaseDots({
   count = 3,
   reachable = phase,
   color = "#22d3ee",
+  ringColor = color,
   onJump,
 }: {
   phase: number;
   count?: number;
   reachable?: number;
   color?: string;
+  ringColor?: string;
   onJump?: (p: number) => void;
 }) {
   return (
@@ -130,10 +132,18 @@ export function PhaseDots({
             className="group flex items-center justify-center p-1 disabled:cursor-not-allowed"
           >
             <span
-              style={active ? { background: color, boxShadow: `0 0 8px ${color}` } : undefined}
+              style={
+                active
+                  ? {
+                      background: color,
+                      borderColor: ringColor,
+                      boxShadow: `0 0 8px ${ringColor}`,
+                    }
+                  : undefined
+              }
               className={`block rounded-full transition-all ${
                 active
-                  ? "h-2.5 w-5"
+                  ? "h-2.5 w-5 border"
                   : locked
                     ? "h-2 w-2 bg-slate-700"
                     : "h-2 w-2 bg-slate-500 group-hover:bg-slate-300"
@@ -151,18 +161,26 @@ export function PriceTag({
   current,
   base,
   className = "",
+  hideTrendIcon = false,
+  trendValue,
+  trendBase,
 }: {
   current: number;
   base: number;
   className?: string;
+  hideTrendIcon?: boolean;
+  trendValue?: number;
+  trendBase?: number;
 }) {
-  const up = current > base;
-  const down = current < base;
+  const comparisonValue = trendValue ?? current;
+  const comparisonBase = trendBase ?? base;
+  const up = comparisonValue > comparisonBase;
+  const down = comparisonValue < comparisonBase;
   return (
     <span className={`num font-bold ${className} ${up ? "text-emerald-400 drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]" : down ? "text-rose-400" : "text-slate-100"}`}>
       {current}
-      {up && <span className="ml-0.5 text-emerald-400">▲</span>}
-      {down && <span className="ml-0.5 text-rose-500">▼</span>}
+      {!hideTrendIcon && up && <span className="ml-0.5 text-emerald-400">▲</span>}
+      {!hideTrendIcon && down && <span className="ml-0.5 text-rose-500">▼</span>}
     </span>
   );
 }
