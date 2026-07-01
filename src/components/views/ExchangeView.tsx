@@ -5,7 +5,7 @@ import { useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/cl
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, PriceTag, LevelDots, EventBanner, TeamItemBadges, HudTabs, TurnCompleteBar } from "@/components/ui";
 import { REGIONS, REGION_UI, EffectType, upgradeFee, applyShopPrice, stackEffects, roundTo10, type UndoRecipe } from "@/lib/game";
-import { Building2, Sword } from "lucide-react";
+import { Building2, Sword, TrendingUp } from "lucide-react";
 
 const LEVEL_TAG = ["0級", "1級", "2級", "3級"];
 
@@ -13,6 +13,7 @@ const LEVEL_TAG = ["0級", "1級", "2級", "3級"];
 type PropView = {
   id: number; name: string; region: string; level: number;
   ownerTeamId: number | null; ownerName: string | null; basePrice: number;
+  currentValue: number; investedValue: number;
 };
 
 // 按鈕價格標籤：有動產折扣時，原價刪除線顯示在右側
@@ -43,7 +44,7 @@ export function ExchangeView({
   onComplete?: (delta: number) => void;
 } = {}) {
   const { snap, mutate } = useSnapshot(2500);
-  const [tab, setTab] = useState<"props" | "cards">("props");
+  const [tab, setTab] = useState<"props" | "cards" | "market">("props");
   // 受控（由 MapView 共用 team）或自管（/exchange 獨立頁）
   const [teamInner, setTeamInner] = useState<number | "">("");
   const team = teamProp ?? teamInner;
@@ -87,6 +88,7 @@ export function ExchangeView({
         tabs={[
           ["props", "不動產", <Building2 key="p" className="h-4 w-4" />],
           ["cards", "功能卡", <Sword key="c" className="h-4 w-4" />],
+          ["market", "市場卡", <TrendingUp key="m" className="h-4 w-4" />],
         ] as const}
       />
 
@@ -112,6 +114,7 @@ export function ExchangeView({
       </StickyTeam>
 
       {tab === "cards" && <CardActions properties={snap.properties} teams={teams} actorTeam={team} act={act} />}
+      {tab === "market" && <MarketCardActions properties={snap.properties} teams={teams} actorTeam={team} act={act} settings={snap.settings} />}
 
       {/* 不動產列表 */}
       {tab === "props" && (
@@ -187,6 +190,13 @@ export function ExchangeView({
                     {p.ownerTeamId != null && p.ownerTeamId !== team && (
                       <ActionButton label="已售出" className="w-full chip" disabled
                         onAction={() => Promise.resolve()} />
+                    )}
+                    {p.ownerTeamId === team && (
+                      <ActionButton
+                        label={<>賣回交易所（+<Num>{roundTo10(p.investedValue)}</Num>）</>}
+                        className="w-full btn-rose"
+                        confirmText={`確定賣回 ${p.name}？\n賣價：${roundTo10(p.investedValue)} 光幣（投入本金現值）`}
+                        onAction={() => act(() => postJson("/api/exchange/card", { action: "sellProperty", propertyId: p.id }), `已賣回 ${p.name}`)} />
                     )}
                   </div>
                 </div>
@@ -375,6 +385,139 @@ function CardActions({
           <ActionButton label={actorBlocked ? "詛咒中・無法出卡" : `執行 ${meta.name}`} className="btn-emerald"
             disabled={actorBlocked}
             onAction={run} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ── 市場卡分頁 ──────────────────────────────────────────────
+type MarketKind = "red" | "black" | "haunt" | "landgod";
+const MARKET_CARD_META: {
+  key: MarketKind;
+  name: string;
+  desc: string;
+  picker: "region" | "property";
+  multKey: "cardRegionUpMult" | "cardRegionDownMult" | "cardBuildingUpMult" | "cardBuildingDownMult";
+  multLabel: string;
+  accent: "rose" | "cyan";
+}[] = [
+  { key: "red",     name: "紅卡",   desc: "整區不動產現值上漲",       picker: "region",   multKey: "cardRegionUpMult",    multLabel: "漲幅",   accent: "rose" },
+  { key: "black",   name: "黑卡",   desc: "整區不動產現值下跌",       picker: "region",   multKey: "cardRegionDownMult",  multLabel: "跌幅",   accent: "cyan" },
+  { key: "landgod", name: "土地公卡", desc: "單棟不動產現值上漲",    picker: "property", multKey: "cardBuildingUpMult",  multLabel: "漲幅",   accent: "rose" },
+  { key: "haunt",   name: "鬧鬼卡", desc: "單棟不動產現值下跌",       picker: "property", multKey: "cardBuildingDownMult", multLabel: "跌幅",   accent: "cyan" },
+];
+
+function MarketCardActions({
+  properties, teams, actorTeam, act, settings,
+}: {
+  properties: PropView[];
+  teams: { id: number; name: string; coins: number; items?: { effectType: string }[] }[];
+  actorTeam: number | "";
+  act: ActFn;
+  settings: {
+    cardRegionUpMult: number;
+    cardRegionDownMult: number;
+    cardBuildingUpMult: number;
+    cardBuildingDownMult: number;
+  };
+}) {
+  const [card, setCard] = useState<MarketKind | "">("");
+  const [selRegion, setSelRegion] = useState<string>("AURORA");
+  const [selProp, setSelProp] = useState<number | "">(""); // 目標不動產
+  const meta = MARKET_CARD_META.find((m) => m.key === card);
+
+  const reset = () => { setSelRegion("AURORA"); setSelProp(""); };
+
+  const run = async () => {
+    if (!card || !meta) return "請先選卡片";
+    if (meta.picker === "region") {
+      return act(
+        () => postJson("/api/exchange/card", {
+          action: card,
+          region: selRegion,
+          ...(actorTeam !== "" ? { byTeamId: actorTeam } : {}),
+        }),
+        `已執行 ${meta.name}（${REGIONS.find((r) => r.code === selRegion)?.name ?? selRegion}）`,
+      ).then((r) => { reset(); return r; });
+    }
+    // picker === "property"
+    if (selProp === "") return "請先選目標不動產";
+    const pname = properties.find((p) => p.id === selProp)?.name ?? "";
+    return act(
+      () => postJson("/api/exchange/card", {
+        action: card,
+        propertyId: selProp,
+        ...(actorTeam !== "" ? { byTeamId: actorTeam } : {}),
+      }),
+      `已執行 ${meta.name}（${pname}）`,
+    ).then((r) => { reset(); return r; });
+  };
+
+  const allOwned = properties.filter((p) => p.ownerTeamId != null);
+
+  return (
+    <Card title="市場卡效果">
+      <p className="mb-3 text-xs text-amber-300/80">⚠ 關主收到卡牌後再執行</p>
+
+      {/* 選卡 */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        {MARKET_CARD_META.map((m) => (
+          <button key={m.key} onClick={() => { setCard(m.key); reset(); }}
+            className={`rounded-lg px-3 py-2 text-sm font-medium transition ${
+              card === m.key ? "bg-white/10 text-cyan-300 ring-1 ring-cyan-400/40" : "chip"
+            }`}>
+            {m.name}
+          </button>
+        ))}
+      </div>
+
+      {!meta ? (
+        <p className="text-sm text-slate-400">請選擇一張市場卡。</p>
+      ) : (
+        <div className="space-y-3">
+          {/* 說明 + 效果幅度 */}
+          <div className="flex flex-wrap items-baseline gap-3">
+            <p className="text-sm text-slate-300">{meta.desc}</p>
+            <span className="shrink-0 rounded-md bg-white/10 px-2.5 py-1 text-xs font-bold text-cyan-300">
+              {meta.multLabel}：×{settings[meta.multKey].toFixed(2)}
+            </span>
+          </div>
+
+          {/* 區域選擇（紅卡 / 黑卡） */}
+          {meta.picker === "region" && (
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+              <div className="mb-2 text-xs font-medium text-slate-300">選擇目標區域</div>
+              <div className="flex flex-wrap gap-2">
+                {REGIONS.map((r) => {
+                  const ui = REGION_UI[r.code as keyof typeof REGION_UI];
+                  const sel = selRegion === r.code;
+                  return (
+                    <button key={r.code} onClick={() => setSelRegion(r.code)}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                        sel ? `bg-white/10 ${ui.text} ring-1 ${ui.border}` : "chip"
+                      }`}>
+                      {r.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 不動產選擇（鬧鬼卡 / 土地公卡） */}
+          {meta.picker === "property" && (
+            <PropertyGrid
+              label="選擇目標不動產"
+              accent={meta.accent}
+              base={allOwned}
+              value={selProp}
+              onChange={setSelProp}
+              teams={teams}
+            />
+          )}
+
+          <ActionButton label={`執行 ${meta.name}`} className="btn-emerald" onAction={run} />
         </div>
       )}
     </Card>
