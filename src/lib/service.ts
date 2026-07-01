@@ -321,19 +321,21 @@ export async function applyFreeWheel(params: { teamId: number; byToken?: string 
     const reward = applyWheelBonus(baseReward, bonusEffect.delta);
     const bonusUsedIds = reward > baseReward ? bonusEffect.usedIds : [];
 
-    if (reward > 0) {
-      await tx.team.update({ where: { id: teamId }, data: { coins: { increment: reward } } });
+    // AURORA 加成：免費輪盤為銀行發放，可直接放大（非隊對隊轉移）
+    const finalRewardFreeWheel = await withAuroraBonus(tx, teamId, reward);
+    if (finalRewardFreeWheel > 0) {
+      await tx.team.update({ where: { id: teamId }, data: { coins: { increment: finalRewardFreeWheel } } });
     }
     await decrementUses(tx, [...noZeroUsedIds, ...bonusUsedIds]);
     const lid = await logLedger(tx, {
       teamId,
       kind: "wheel",
-      delta: reward,
+      delta: finalRewardFreeWheel,
       note: `好運卡 命運眷顧（免費輪盤 ×${mult}${hasNoZero ? "・保底" : ""}）`,
       byToken,
     });
     const undo: UndoRecipe = { label: `命運眷顧 ×${mult}`, ledgerIds: [lid] };
-    return { ok: true, mult, stake: FREE_WHEEL_STAKE, reward, undo };
+    return { ok: true, mult, stake: FREE_WHEEL_STAKE, reward: finalRewardFreeWheel, undo };
   });
 }
 
@@ -794,6 +796,16 @@ export async function payToll(params: {
     const l2 = await logLedger(tx, { teamId: monopolyId,  kind: "coins", delta: toll,  note: `收${noteBase}`, byToken });
     const ledgerIds = [l1, l2];
 
+    // AURORA 獨佔加成：收款方若獨佔 AURORA，由銀行補發加成（付款方仍付原 toll，守恆不破）
+    const state2 = await getState(tx);
+    if (await teamMonopolizesRegion(tx, monopolyId, "AURORA")) {
+      const bonus = Math.round(toll * (state2.auroraMultiplier - 1));
+      if (bonus > 0) {
+        await tx.team.update({ where: { id: monopolyId }, data: { coins: { increment: bonus } } });
+        ledgerIds.push(await logLedger(tx, { teamId: monopolyId, kind: "coins", delta: bonus, note: `獨佔極光加成 過路費`, byToken }));
+      }
+    }
+
     // 全場稅收：TAX_COLLECTOR 效果（永久型，不計入 decrementUses）
     const allItems = await tx.teamItem.findMany({
       where: { ...ACTIVE_ITEM, asset: { effectType: "TAX_COLLECTOR" } },
@@ -1236,9 +1248,14 @@ export async function setPhase(params: { phase: string }) {
 }
 
 export async function settle() {
-  return prisma.gameState.update({
-    where: { id: 1 },
-    data: { phase: "SETTLED", settledAt: new Date() },
+  return prisma.$transaction(async (tx) => {
+    // 結算前 flush HAVEN 漲幅，確保結算淨值含最終 HAVEN 加成
+    const state = await getState(tx);
+    await flushHavenAppreciation(tx, state, Date.now());
+    return tx.gameState.update({
+      where: { id: 1 },
+      data: { phase: "SETTLED", settledAt: new Date() },
+    });
   });
 }
 
@@ -1365,7 +1382,8 @@ async function _applyGoodCardTx(
     wheelUsedIds = [wheelOnCardItem.id];
   }
 
-  const finalReward = Math.max(0, afterBonus);
+  // AURORA 加成：好運卡/詛咒補償為銀行發放，可直接放大（非隊對隊轉移）
+  const finalReward = Math.max(0, await withAuroraBonus(tx, teamId, afterBonus));
   await decrementUses(tx, [...bonusEffect.usedIds, ...wheelUsedIds]);
   const noteWithWheel = wheelMult !== null ? `${note}（輪盤 ×${wheelMult}）` : note;
 
@@ -1483,6 +1501,15 @@ async function teamMonopolizesRegion(tx: Tx, teamId: number, region: RegionCode)
     where: { region }, select: { ownerTeamId: true, level: true },
   });
   return findMonopoly(regionProps) === teamId;
+}
+
+// AURORA 獨佔加成：銀行發放的正入帳 × auroraMultiplier；非銀行（隊對隊轉移）或負入帳不套。
+async function withAuroraBonus(tx: Tx, teamId: number, amount: number): Promise<number> {
+  if (amount <= 0) return amount;
+  const state = await getState(tx);
+  return (await teamMonopolizesRegion(tx, teamId, "AURORA"))
+    ? Math.round(amount * state.auroraMultiplier)
+    : amount;
 }
 
 // 某隊「目前」的任務各項計數 / 狀態。targetRegion 有給時，propertyCount 僅計該區（供 BUY_LAND 用）。
@@ -1677,6 +1704,8 @@ export async function applyMobileReward(params: {
       }
     }
 
+    // AURORA 加成：流動關發獎為銀行發放，可直接放大（非隊對隊轉移）
+    finalCoins = await withAuroraBonus(tx, teamId, finalCoins);
     if (team.coins + finalCoins < 0) throw new Error("光幣不足");
     if (team.cardPoints + cardPoints < 0) throw new Error("卡牌點數不足");
     await tx.team.update({
