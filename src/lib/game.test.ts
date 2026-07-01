@@ -1014,3 +1014,13 @@ describe("parseMonopolySince/serialize round-trip", () => {
     expect(parseMonopolySince("HAVEN:x:y,GARBAGE")).toEqual({});
   });
 });
+
+// ── 賣不動產回交易所：回收金公式 ─────────────────────────────
+describe("sellPropertyToExchange 回收金公式", () => {
+  it("賣地回收金 = investedValue 取整到 10", () => {
+    const p = { basePrice: 850, region: "AURORA", type: "金融", level: 2,
+      cardRegionMult: 1, cardBuildingMult: 1, monopolyBonusMult: 1 };
+    // investedValue = 850 × 本金倍率(lvl2=1.6) × 1 = 1360 → roundTo10 = 1360
+    expect(roundTo10(investedValue(p, [], null))).toBe(1360);
+  });
+});

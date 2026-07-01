@@ -948,9 +948,11 @@ export const FUNCTION_CARDS: {
 export type UndoRecipe = {
   label: string;
   ledgerIds: number[];
-  property?: { id: number; ownerTeamId: number | null; level: number };
+  property?: { id: number; ownerTeamId: number | null; level: number;
+    cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number };
   // 一次影響多塊不動產時（換地 / 換屋）逐筆還原；與 property 單筆並存。
-  properties?: { id: number; ownerTeamId: number | null; level: number }[];
+  properties?: { id: number; ownerTeamId: number | null; level: number;
+    cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number }[];
   // 撤銷時需刪除的 TeamItem（如好運卡骰到動產時發出的那張）
   itemIds?: number[];
   // 撤銷大樂透登記：刪除該 LotteryNumber 列並回補獎金池

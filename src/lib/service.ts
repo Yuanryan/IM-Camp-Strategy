@@ -23,6 +23,7 @@ import {
   FREE_WHEEL_STAKE,
   GIFT_VOUCHER_NAME,
   currentValue,
+  investedValue,
   leveledValue,
   lotteryFee,
   parseActiveEvents,
@@ -448,6 +449,54 @@ export async function transferProperty(params: {
       property: { id: propertyId, ownerTeamId: fromTeamId, level: prop.level },
     };
     return { ok: true, undo };
+  });
+}
+
+// ── 不動產：賣回交易所（回收 investedValue，取整到 10）─────────────────────────────
+// 賣前先 flush HAVEN 漲幅到 monopolyBonusMult（確保回收金含漲幅）。
+// 地變無主 level0，但三個倍率保留不重置（地帶著行情換手，防洗 debuff）。
+export async function sellPropertyToExchange(params: { propertyId: number; byToken?: string }) {
+  const { propertyId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const now = Date.now();
+    const prop0 = await tx.property.findUnique({ where: { id: propertyId } });
+    if (!prop0) throw new Error("找不到不動產");
+    if (prop0.ownerTeamId == null) throw new Error("該不動產尚未售出，無法賣回");
+    const ownerId = prop0.ownerTeamId;
+
+    // 賣前 flush HAVEN 漲幅（若賣方為 HAVEN 獨佔隊，把即時漲幅鎖進所有房 monopolyBonusMult）
+    const stateBefore = await getState(tx);
+    await flushHavenAppreciation(tx, stateBefore, now);
+
+    // 重讀該地（monopolyBonusMult 可能剛被 flush 更新）
+    const prop = await tx.property.findUnique({ where: { id: propertyId } });
+    if (!prop) throw new Error("找不到不動產");
+    const state = await getState(tx);
+    const payout = roundTo10(investedValue(prop, parseActiveEvents(state.activeEvents), state.event4Penalty));
+
+    await tx.team.update({ where: { id: ownerId }, data: { coins: { increment: payout } } });
+    await tx.property.update({
+      where: { id: propertyId },
+      data: { ownerTeamId: null, level: 0 }, // 倍率保留不重置
+    });
+    const lid = await logLedger(tx, {
+      teamId: ownerId, kind: "property", delta: payout, note: `賣回交易所 ${prop.name}`, byToken,
+    });
+
+    // 賣地改變持有結構 → 重算獨佔（含 HAVEN 換人 flush）
+    await reconcileMonopolySince(tx, now);
+
+    const undo: UndoRecipe = {
+      label: `賣回 ${prop.name}`,
+      ledgerIds: [lid],
+      property: {
+        id: propertyId, ownerTeamId: ownerId, level: prop.level,
+        cardRegionMult: prop.cardRegionMult,
+        cardBuildingMult: prop.cardBuildingMult,
+        monopolyBonusMult: prop.monopolyBonusMult,
+      },
+    };
+    return { ok: true, payout, undo };
   });
 }
 
@@ -1774,8 +1823,10 @@ const UNDO_WINDOW_MS = 30_000;
 
 export async function undoAction(params: {
   ledgerIds: number[];
-  property?: { id: number; ownerTeamId: number | null; level: number };
-  properties?: { id: number; ownerTeamId: number | null; level: number }[];
+  property?: { id: number; ownerTeamId: number | null; level: number;
+    cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number };
+  properties?: { id: number; ownerTeamId: number | null; level: number;
+    cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number }[];
   itemIds?: number[];
   lotteryNumberId?: number;
   lotteryPoolRevert?: number;
@@ -1822,7 +1873,13 @@ export async function undoAction(params: {
       if (!Number.isInteger(p.id)) continue;
       await tx.property.update({
         where: { id: p.id },
-        data: { ownerTeamId: p.ownerTeamId ?? null, level: p.level },
+        data: {
+          ownerTeamId: p.ownerTeamId ?? null,
+          level: p.level,
+          ...(p.cardRegionMult !== undefined ? { cardRegionMult: p.cardRegionMult } : {}),
+          ...(p.cardBuildingMult !== undefined ? { cardBuildingMult: p.cardBuildingMult } : {}),
+          ...(p.monopolyBonusMult !== undefined ? { monopolyBonusMult: p.monopolyBonusMult } : {}),
+        },
       });
     }
 
