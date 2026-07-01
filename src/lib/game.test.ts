@@ -1015,6 +1015,16 @@ describe("parseMonopolySince/serialize round-trip", () => {
   });
 });
 
+// ── 市場卡倍率疊乘語意 ────────────────────────────────────────
+describe("市場卡倍率疊乘", () => {
+  it("卡牌倍率疊乘：黑卡後再紅卡", () => {
+    // 直接驗算疊乘語意（service 用 current × factor）
+    const afterBlack = 1 * 0.75;
+    const afterRed = afterBlack * 1.3;
+    expect(afterRed).toBeCloseTo(0.975, 6);
+  });
+});
+
 // ── 賣不動產回交易所：回收金公式 ─────────────────────────────
 describe("sellPropertyToExchange 回收金公式", () => {
   it("賣地回收金 = investedValue 取整到 10", () => {

@@ -667,6 +667,62 @@ export async function cardMonster(params: { propertyId: number; byTeamId?: numbe
   });
 }
 
+// ── 市場卡：紅/黑（整區永久倍率）、鬧鬼/土地公（單棟永久倍率）──
+// 倍率永久疊乘在 cardRegionMult / cardBuildingMult，可互相抵消。可打自己、含無主地。
+export async function applyMarketCard(params: {
+  kind: "RED" | "BLACK" | "HAUNT" | "LANDGOD";
+  region?: RegionCode;
+  propertyId?: number;
+  byTeamId?: number;
+  byToken?: string;
+}) {
+  const { kind, region, propertyId, byTeamId, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    const state = await getState(tx);
+    const now = Date.now();
+    const ledgerIds: number[] = [];
+    const undoProps: { id: number; ownerTeamId: number | null; level: number;
+      cardRegionMult: number; cardBuildingMult: number; monopolyBonusMult: number }[] = [];
+
+    if (kind === "RED" || kind === "BLACK") {
+      if (!region) throw new Error("紅/黑卡需選定區域");
+      const factor = kind === "RED" ? state.cardRegionUpMult : state.cardRegionDownMult;
+      const props = await tx.property.findMany({ where: { region } });
+      if (props.length === 0) throw new Error("該區無不動產");
+      for (const p of props) {
+        undoProps.push({ id: p.id, ownerTeamId: p.ownerTeamId, level: p.level,
+          cardRegionMult: p.cardRegionMult, cardBuildingMult: p.cardBuildingMult, monopolyBonusMult: p.monopolyBonusMult });
+        await tx.property.update({ where: { id: p.id }, data: { cardRegionMult: p.cardRegionMult * factor } });
+      }
+      const cardName = kind === "RED" ? "紅卡" : "黑卡";
+      ledgerIds.push(await logLedger(tx, { kind: "system", delta: 0,
+        note: `${cardName}：${REGION_NAME[region]} 整區 ×${factor}`, byToken }));
+      await restockCard(tx, cardName);
+      await logCardUse(tx, byTeamId, `${cardName} → ${REGION_NAME[region]}`, byToken);
+    } else {
+      if (propertyId == null) throw new Error("鬧鬼/土地公卡需選定房屋");
+      const p = await tx.property.findUnique({ where: { id: propertyId } });
+      if (!p) throw new Error("找不到不動產");
+      const factor = kind === "LANDGOD" ? state.cardBuildingUpMult : state.cardBuildingDownMult;
+      undoProps.push({ id: p.id, ownerTeamId: p.ownerTeamId, level: p.level,
+        cardRegionMult: p.cardRegionMult, cardBuildingMult: p.cardBuildingMult, monopolyBonusMult: p.monopolyBonusMult });
+      await tx.property.update({ where: { id: p.id }, data: { cardBuildingMult: p.cardBuildingMult * factor } });
+      const cardName = kind === "LANDGOD" ? "土地公卡" : "鬧鬼卡";
+      ledgerIds.push(await logLedger(tx, { kind: "system", delta: 0,
+        note: `${cardName}：${p.name} ×${factor}`, byToken }));
+      await restockCard(tx, cardName);
+      await logCardUse(tx, byTeamId, `${cardName} → ${p.name}`, byToken);
+      if (kind === "HAUNT" && p.ownerTeamId != null) {
+        await logAttack(tx, p.ownerTeamId, `⚔ 你的「${p.name}」被鬧鬼卡打跌`, byToken);
+      }
+    }
+
+    // 倍率改變可能影響 HAVEN 現值計算，但不改持有結構；仍重算以防獨佔門檻受 level 無關。此處毋須，但安全起見略過。
+    const undo: UndoRecipe = { label: `市場卡 ${kind}`, ledgerIds, properties: undoProps };
+    return { ok: true, undo };
+  });
+}
+
 // ── 過路費 ───────────────────────────────────────────────────
 export async function payToll(params: {
   propertyId: number; // 踩到的資本據點

@@ -940,6 +940,10 @@ export const FUNCTION_CARDS: {
   { type: "拆屋卡", effect: "拆除對手一層房屋（降一級）", cost: 40, defaultStock: 5 },
   { type: "怪獸卡", effect: "摧毀對手一棟房屋，對手將失去該土地", cost: 90, defaultStock: 3 },
   { type: "市場預警卡", effect: "得知下一次事件前某區漲跌方向", cost: 50, defaultStock: 0 }, // 庫存 0＝暫時停用
+  { type: "紅卡", effect: "選定一區，整區不動產大漲", cost: 60, defaultStock: 4 },
+  { type: "黑卡", effect: "選定一區，整區不動產大跌", cost: 60, defaultStock: 4 },
+  { type: "鬧鬼卡", effect: "選定一棟房子，該棟現值下跌", cost: 40, defaultStock: 4 },
+  { type: "土地公卡", effect: "選定一棟房子，該棟現值上漲", cost: 40, defaultStock: 4 },
 ];
 
 // 發放獎勵 / 懲罰的快捷預設（資料化，單一來源；前端共用元件 RewardButtons 讀取）
