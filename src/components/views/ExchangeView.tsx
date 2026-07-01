@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num, PriceTag, LevelDots, EventBanner, TeamItemBadges, HudTabs, TurnCompleteBar } from "@/components/ui";
+import { Num, PriceTag, LevelDots, EventBanner, TeamItemBadges, MonopolyBadges, HudTabs, TurnCompleteBar } from "@/components/ui";
 import { REGIONS, REGION_UI, EffectType, upgradeFee, applyShopPrice, stackEffects, roundTo10, type UndoRecipe } from "@/lib/game";
 import { Building2, Sword, TrendingUp } from "lucide-react";
 
@@ -110,6 +110,11 @@ export function ExchangeView({
         <TeamItemBadges
           items={cur?.items ?? []}
           relevantTypes={[EffectType.SHOP_PRICE, EffectType.PROPERTY_VALUE]}
+        />
+        <MonopolyBadges
+          regions={cur?.monopolyRegions ?? []}
+          effects={["UPGRADE_BOOST"]}
+          settings={snap.settings}
         />
       </StickyTeam>
 

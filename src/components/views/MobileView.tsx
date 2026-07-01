@@ -4,7 +4,7 @@ import { useState } from "react";
 import useSWR from "swr";
 import { fetcher, useSnapshot, TeamSelect, ActionButton, postJson } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num, EventBanner, HudTabs, TeamItemBadges } from "@/components/ui";
+import { Num, EventBanner, HudTabs, TeamItemBadges, MonopolyBadges } from "@/components/ui";
 import { QuestionBank, QuestionFilters, deriveFilters, type QData } from "@/components/QuestionBank";
 import { useGameTimer, FloatingTimer } from "@/components/GameTimer";
 import {
@@ -56,6 +56,11 @@ export function MobileView() {
             <TeamItemBadges
               items={snap.teams.find((t) => t.id === team)?.items ?? []}
               relevantTypes={[]}
+            />
+            <MonopolyBadges
+              regions={snap.teams.find((t) => t.id === team)?.monopolyRegions ?? []}
+              effects={["COIN_1_5X"]}
+              settings={snap.settings}
             />
           </StickyTeam>
           <Games teams={snap.teams} team={team} mutate={mutate} />

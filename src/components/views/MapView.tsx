@@ -12,7 +12,7 @@ import { ShopView } from "@/components/views/ShopView";
 import { RealMapView } from "@/components/views/RealMapView";
 import { ScrollLock } from "@/components/ui/scroll-lock";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num, EventBanner, HudTabs, TeamItemBadges, FloatingDesc } from "@/components/ui";
+import { Num, EventBanner, HudTabs, TeamItemBadges, MonopolyBadges, FloatingDesc } from "@/components/ui";
 import { MAP_REWARD_PRESETS, REGIONS, REGION_UI, EffectType, ITEM_GRADE_COLORS, stackEffects, applyToll, FREEBIE_TAB, type MonopolyEffect, type Freebie, type UndoRecipe } from "@/lib/game";
 
 // 獨佔效果中文徽章文字（spectraCardPoints 需從 settings 取得）。
@@ -218,6 +218,11 @@ export function MapView() {
             <TeamItemBadges
               items={cur?.items ?? []}
               relevantTypes={[EffectType.GOOD_CARD_BONUS, EffectType.BAD_CARD_REDUCE, EffectType.WHEEL_ON_GOOD_CARD, EffectType.TOLL_PAID, EffectType.PIRACY, EffectType.MOVEMENT, EffectType.REMINDER]}
+            />
+            <MonopolyBadges
+              regions={cur?.monopolyRegions ?? []}
+              effects={["COIN_1_5X"]}
+              settings={snap.settings}
             />
           </StickyTeam>
 
