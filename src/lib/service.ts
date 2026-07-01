@@ -1331,6 +1331,27 @@ export async function adminSetShopItem(params: {
   return prisma.movableAsset.update({ where: { id: assetId }, data });
 }
 
+// 不動產進階系統可調參數（admin）。只更新有給的欄位。
+export async function adminSetAdvancedSettings(params: {
+  auroraMultiplier?: number; spectraCardPoints?: number;
+  havenApprIntervalMs?: number; havenApprRate?: number;
+  houseIncomeL1?: number; houseIncomeL2?: number; houseIncomeL3?: number;
+  cardRegionUpMult?: number; cardRegionDownMult?: number;
+  cardBuildingUpMult?: number; cardBuildingDownMult?: number;
+}) {
+  const data: Record<string, number> = {};
+  const numKeys = [
+    "auroraMultiplier","spectraCardPoints","havenApprIntervalMs","havenApprRate",
+    "houseIncomeL1","houseIncomeL2","houseIncomeL3",
+    "cardRegionUpMult","cardRegionDownMult","cardBuildingUpMult","cardBuildingDownMult",
+  ] as const;
+  for (const k of numKeys) {
+    const v = (params as Record<string, number | undefined>)[k];
+    if (typeof v === "number" && Number.isFinite(v)) data[k] = Math.max(0, v);
+  }
+  return prisma.gameState.update({ where: { id: 1 }, data });
+}
+
 // ── 稽核：沖銷一筆 ledger（光幣 / 卡牌點數可自動回沖）────────
 export async function reverseLedger(params: { ledgerId: number; byToken?: string }) {
   const { ledgerId, byToken } = params;
