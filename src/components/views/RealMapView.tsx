@@ -55,6 +55,7 @@ import {
   EyeOff,
   Check,
   Sword,
+  ShoppingBag,
 } from "lucide-react";
 
 // 右側控制台三段流程的名稱（指示箭頭顯示目標階段用）。
@@ -194,10 +195,10 @@ export function RealMapView({
 }: {
   team: number | "";
   setTeam: (id: number | "") => void;
-  onLand: (target: { tab: MapTab; region?: RegionCode; freebie?: Freebie }) => void;
+  onLand: (target: { tab: MapTab; region?: RegionCode; freebie?: Freebie; limited?: boolean }) => void;
   // 分頁「完成」帶回的累計金流（label＝分頁名、delta＝淨變動、subRows＝可選文字子列）；
   // 併入階段 2 後由 clearActionResult 清掉。
-  actionResult?: { label: string; delta: number; subRows?: { label: string; amount: number }[] } | null;
+  actionResult?: { label: string; delta: number; cardPoints?: number; subRows?: { label: string; amount: number }[]; keepOpen?: boolean } | null;
   clearActionResult?: () => void;
   visible?: boolean;
 }) {
@@ -209,6 +210,8 @@ export function RealMapView({
   const [rolling, setRolling] = useState(false);
   const [teleport, setTeleport] = useState(false);
   const [landed, setLanded] = useState<BoardSquare | null>(null);
+  // 本回合是否過起點（擲骰前進通過 / 停在起點）：階段 2 據此顯示「進神秘商店（限購一件）」按鈕。
+  const [passedStartTurn, setPassedStartTurn] = useState(false);
   // 本回合是否已從操作分頁「完成」回來（金流已併入階段 2）：
   // 為 true 時階段 2 的按鈕改為「結束回合」（清隊伍、回階段 1），而非再次前往分頁。
   const [actionDone, setActionDone] = useState(false);
@@ -331,7 +334,7 @@ export function RealMapView({
 
   // 換隊時清掉已選的移動道具（避免套用到別隊不存在的道具），關閉落地路由卡（屬上一隊），
   // 並把流程退回階段 1（重新驅動棋子）。
-  useEffect(() => { setSelectedMoveId(null); setLanded(null); setDrawn(null); setCardResult(null); setResult(null); setActionDone(false); setPhase(1); setFrozenObjectives([]); setCardPanelOpen(false); }, [team]);
+  useEffect(() => { setSelectedMoveId(null); setLanded(null); setPassedStartTurn(false); setDrawn(null); setCardResult(null); setResult(null); setActionDone(false); setPhase(1); setFrozenObjectives([]); setCardPanelOpen(false); }, [team]);
 
   // 分頁操作完成回傳金流 → 評估任務 → 併入階段 2 結算面板，刷新餘額並跳到階段 2，最後清掉來源。
   // 注意：mutate / clearActionResult 不放 deps，避免其 identity 變動重複觸發。
@@ -341,16 +344,20 @@ export function RealMapView({
   clearActionResultRef.current = clearActionResult;
   useEffect(() => {
     if (!actionResult) return;
-    const { label, delta, subRows } = actionResult;
+    const { label, delta, cardPoints, subRows, keepOpen } = actionResult;
     void (async () => {
       // 立即顯示分頁金流並切到階段 2，不等任務結算 API。
       setResult((prev) => {
         const rows = [...(prev?.rows ?? [])];
-        if (delta !== 0 || (subRows && subRows.length > 0)) rows.push({ label, amount: delta, subRows });
+        // 有光幣 / 卡牌點數變動或子列 → 併一列（cardPoints 於同列右側以 pt 顯示）。
+        if (delta !== 0 || (cardPoints ?? 0) !== 0 || (subRows && subRows.length > 0)) {
+          rows.push({ label, amount: delta, cardPoints: cardPoints || undefined, subRows });
+        }
         return { rows, undo: prev?.undo, noSettle: prev?.noSettle };
       });
       setPhase(2);
-      setActionDone(true);
+      // keepOpen（過起點限購商店側行程）：只併金流，不標記回合已完成——落地按鈕仍由原本落地格控制。
+      if (!keepOpen) setActionDone(true);
       clearActionResultRef.current?.();
 
       // 好運卡任務目標：在分頁操作完成後（買地、完成交易等）評估，讓同回合的行動也算數。
@@ -531,6 +538,7 @@ export function RealMapView({
     if (busy) return; // 序列化網路請求，避免兩筆 POST 競爭同隊位置
     setBusy(true);
     setActionDone(false); // 新一次移動＝新落地，清掉上一回合「已完成」狀態
+    setPassedStartTurn(false); // 新一次移動：先清掉過起點旗標，待伺服器回報再置位
     setFrozenObjectives(cur.objectives); // 快照任務列表，結算後繼續顯示直到結束回合
     const fromPos = cur.boardPos;
     const isDiceMove = !!payload.steps && payload.steps > 0;
@@ -624,6 +632,7 @@ export function RealMapView({
         const rows: MoneyRow[] = [];
         if (r.passedStart) {
           rows.push({ label: "通過起點收益", amount: PASS_START_COINS, cardPoints: PASS_START_CARD_POINTS });
+          setPassedStartTurn(true); // 本回合過起點：階段 2 顯示「進神秘商店（限購一件）」
         }
         if (r.landedOnStart) {
           rows.push({ label: "中央燈塔收益", amount: LAND_START_COINS, cardPoints: LAND_START_CARD_POINTS });
@@ -1307,8 +1316,10 @@ export function RealMapView({
             teamTextColor={teamTextColor}
             isCardSquare={isCardSquare}
             actionDone={actionDone}
+            passedStart={passedStartTurn}
             onGoTab={() => landed && onLand(squareToTab(landed))}
             onRoute={(square) => onLand(squareToTab(square))}
+            onEnterShop={() => onLand({ tab: "shop", limited: true })}
             onDraw={() => setPhase(3)}
             onDrawAt={(square) => { setLanded(square); setPhase(3); }}
             onEndTurn={() => setTeam("")}
@@ -1466,8 +1477,10 @@ function PhaseResult({
   teamTextColor,
   isCardSquare,
   actionDone,
+  passedStart,
   onGoTab,
   onRoute,
+  onEnterShop,
   onDraw,
   onDrawAt,
   onEndTurn,
@@ -1480,8 +1493,10 @@ function PhaseResult({
   teamTextColor: string;
   isCardSquare: boolean;
   actionDone: boolean;
+  passedStart: boolean; // 本回合過起點 → 顯示「進神秘商店（限購一件）」按鈕
   onGoTab: () => void;
   onRoute: (square: BoardSquare) => void; // 前往任一格對應分頁（尚未落地時用棋子當前格）
+  onEnterShop: () => void; // 過起點限購：前往神秘商店（限買一件）
   onDraw: () => void;
   onDrawAt: (square: BoardSquare) => void; // 尚未落地時於棋子當前抽卡格抽卡（先設落地格再進階段 3）
   onEndTurn: () => void;
@@ -1558,8 +1573,8 @@ function PhaseResult({
                 <span className="text-slate-200">{r.label}</span>
                 <span className="flex items-center gap-2">
                   {r.cardPoints != null && r.cardPoints !== 0 && (
-                    <span className="font-mono font-extrabold tabular-nums text-cyan-400">
-                      +{r.cardPoints}pt
+                    <span className={`font-mono font-extrabold tabular-nums ${r.cardPoints > 0 ? "text-cyan-400" : "text-rose-400"}`}>
+                      {r.cardPoints > 0 ? `+${r.cardPoints}` : r.cardPoints}pt
                     </span>
                   )}
                   {r.amount !== 0 && (
@@ -1632,7 +1647,17 @@ function PhaseResult({
       {/* 該隊進行中好運卡任務目標（達標後回合結算自動發獎；與「本次結算」同卡片風格）。*/}
       {objectives.length > 0 && <ObjectiveList objectives={objectives} />}
 
-      <div className="mt-auto">
+      <div className="mt-auto space-y-2">
+        {/* 過起點限購：本回合過起點且尚有限購額度即可進神秘商店買一件（額度用完 / 落在商店格則不顯示）。*/}
+        {!actionDone && passedStart && landed.kind !== "SHOP" && (team?.passGoShopCredit ?? 0) > 0 && (
+          <button
+            type="button"
+            onClick={onEnterShop}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-amber-400/50 bg-amber-400/15 text-sm font-black text-amber-200 transition hover:bg-amber-400/25 active:scale-[0.98]"
+          >
+            <ShoppingBag className="h-4 w-4" /> 進神秘商店（限購一件）
+          </button>
+        )}
         {actionDone ? (
           /* 已從操作分頁完成回來 → 結束本回合：清空選隊並退回階段 1，準備下一隊。*/
           <button

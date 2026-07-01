@@ -1347,6 +1347,15 @@ export const LAND_START_CARD_POINTS = 20;
 /** @deprecated use PASS_START_COINS */
 export const PASS_START_INCOME = PASS_START_COINS;
 
+// 神秘商店重抽：每次進商店（選定小隊）第一次發牌免費，之後手動重抽依「本次已重抽次數」遞增收費。
+// 成本＝count × STEP：卡牌 0,10,20,30…（扣卡牌點數）；動產 0,100,200,300…（扣光幣）。次數於 enterShop 歸 0。
+export const RESHUFFLE_CARD_STEP = 10;
+export const RESHUFFLE_ITEM_STEP = 100;
+/** 依「本次已重抽次數」算下一次重抽成本（0 次＝免費）。 */
+export function reshuffleCost(kind: "cards" | "items", count: number): number {
+  return Math.max(0, count) * (kind === "cards" ? RESHUFFLE_CARD_STEP : RESHUFFLE_ITEM_STEP);
+}
+
 // 取格（index 一律先正規化到 0..35）。
 export function boardSquareAt(index: number): BoardSquare {
   return BOARD[((index % BOARD_SIZE) + BOARD_SIZE) % BOARD_SIZE];

@@ -39,6 +39,11 @@ export function optNum(body: Record<string, unknown>, key: string, def = 0): num
   if (body[key] == null || body[key] === "") return def;
   return num(body, key);
 }
+export function optBool(body: Record<string, unknown>, key: string, def = false): boolean {
+  const v = body[key];
+  if (v == null) return def;
+  return v === true || v === "true" || v === 1 || v === "1";
+}
 export function str(body: Record<string, unknown>, key: string): string {
   const v = body[key];
   if (typeof v !== "string" || !v) throw new Error(`參數 ${key} 必填`);

@@ -49,17 +49,26 @@ export function MapView() {
   const [tab, setTab] = useState<"realmap" | "map" | "lottery" | "wheel" | "exchange" | "shop">("realmap");
   // 進行中的「回合操作」：由地圖落地導向某分頁時記下 { 小隊, 分頁 }。
   // 該分頁據此顯示「完成」按鈕並累計自身金流；按下完成才回報。null＝非回合操作（自由瀏覽分頁）。
-  const [turnAction, setTurnAction] = useState<{ teamId: number; tab: TurnActionTab; freebie?: Freebie } | null>(null);
+  const [turnAction, setTurnAction] = useState<{ teamId: number; tab: TurnActionTab; freebie?: Freebie; limited?: boolean } | null>(null);
   // 分頁「完成」回報的累計金流，待併入地圖階段 2 結算面板；由 RealMapView 取用後清掉。
   // subRows＝可選的文字子列（如命運輪盤的投入 / 拿回），於階段 2 縮排呈現。
+  // keepOpen＝過起點限購商店這類「側行程」：金流併入階段 2，但不把回合標記為已完成（不切成結束回合）。
+  // cardPoints＝本回合此處的卡牌點數支出（如神秘商店買功能卡 / 重抽），與 delta（光幣）分開顯示於結算列。
   const [actionResult, setActionResult] = useState<
-    { label: string; delta: number; subRows?: { label: string; amount: number }[] } | null
+    { label: string; delta: number; cardPoints?: number; subRows?: { label: string; amount: number }[]; keepOpen?: boolean } | null
   >(null);
 
   // 分頁操作完成：把累計金流（含可選子列）帶回地圖階段 2，並切回地圖分頁、結束本回合操作標記。
-  const completeTurnAction = (delta: number, subRows?: { label: string; amount: number }[]) => {
+  const completeTurnAction = (
+    delta: number,
+    subRows?: { label: string; amount: number }[],
+    extra?: { cardPoints?: number },
+  ) => {
     if (!turnAction) return;
-    setActionResult({ label: TURN_ACTION_LABEL[turnAction.tab], delta, subRows });
+    // 過起點限購商店：標記 keepOpen（金流併入結算，但落地按鈕仍由原本落地格控制，不變結束回合）。
+    const keepOpen = turnAction.limited === true;
+    const label = keepOpen ? "過起點・神秘商店" : TURN_ACTION_LABEL[turnAction.tab];
+    setActionResult({ label, delta, cardPoints: extra?.cardPoints, subRows, keepOpen });
     setTurnAction(null);
     setTab("realmap");
   };
@@ -131,13 +140,19 @@ export function MapView() {
           team={team}
           setTeam={setTeam}
           visible={tab === "realmap"}
-          onLand={({ tab: nextTab, region: nextRegion, freebie }) => {
+          onLand={({ tab: nextTab, region: nextRegion, freebie, limited }) => {
             if (nextRegion) setRegion(nextRegion);
             // 好運卡免費獎勵：導向 freebie 對應分頁，並標記免費模式（該頁據此免押注 / 免加購費）。
             if (freebie && team !== "") {
               const fTab = FREEBIE_TAB[freebie];
               setTurnAction({ teamId: team, tab: fTab, freebie });
               setTab(fTab);
+              return;
+            }
+            // 過起點限購：導向神秘商店並標記限購模式（本回合限買一件）。
+            if (limited && team !== "") {
+              setTurnAction({ teamId: team, tab: "shop", limited: true });
+              setTab("shop");
               return;
             }
             // 由地圖落地導向操作分頁＝開啟一段「回合操作」，該分頁顯示完成鈕並累計金流。
@@ -187,6 +202,7 @@ export function MapView() {
           setTeam={setTeam}
           turnMode={turnAction?.tab === "shop"}
           freeMode={turnAction?.freebie === "card"}
+          limited={turnAction?.tab === "shop" && turnAction?.limited === true}
           onComplete={completeTurnAction}
         />
       ) : tab === "map" ? (

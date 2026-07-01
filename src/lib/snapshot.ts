@@ -90,6 +90,7 @@ export type TeamView = {
   coins: number;
   cardPoints: number;
   boardPos: number; // 棋子目前格 index（真實地圖中控用）
+  passGoShopCredit: number; // 過起點限購額度（>0＝可在限購模式買一件）
   propertyCount: number;
   propertyValue: number; // 持有不動產現值總和（含 PROPERTY_VALUE 動產加成）
   netWorth: number;      // coins + propertyValue（結算口徑，不含動產幣值）
@@ -383,6 +384,7 @@ export async function getSnapshot(): Promise<Snapshot> {
       coins: t.coins,
       cardPoints: t.cardPoints,
       boardPos: t.boardPos,
+      passGoShopCredit: t.passGoShopCredit,
       propertyCount: pv.count,
       propertyValue: adjustedPropValue,
       netWorth: t.coins + adjustedPropValue,

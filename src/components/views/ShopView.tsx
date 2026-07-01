@@ -8,7 +8,7 @@ import { CreditCard, Package } from "lucide-react";
 import { fetcher, useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, HudTabs, TurnCompleteBar } from "@/components/ui";
-import { ITEM_GRADE_COLORS, EffectType, functionCardImage } from "@/lib/game";
+import { ITEM_GRADE_COLORS, EffectType, functionCardImage, reshuffleCost } from "@/lib/game";
 
 type ShopCard = { type: string; cost: number; effect: string; remaining: number };
 type ShopData = { cards: ShopCard[] };
@@ -58,36 +58,6 @@ function drawDisplay<T>(pool: T[], keyOf: (x: T) => string, n = 3, weightOf?: (x
   return picked;
 }
 
-// 每隊的 3 張展示鎖在 localStorage，避免「重進商店重抽」。
-// key 依「種類（cards/assets）+ 隊伍 id」；買一個後清掉該隊該種，下次進來才重抽。
-const drawKey = (kind: string, teamId: number) => `shopDraw:${kind}:${teamId}`;
-function loadDraw(kind: string, teamId: number): string[] | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(drawKey(kind, teamId));
-    const arr = raw ? (JSON.parse(raw) as unknown) : null;
-    return Array.isArray(arr) && arr.every((x) => typeof x === "string") ? (arr as string[]) : null;
-  } catch {
-    return null;
-  }
-}
-function saveDraw(kind: string, teamId: number, keys: string[]) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(drawKey(kind, teamId), JSON.stringify(keys));
-  } catch {
-    /* 容量 / 隱私模式失敗時靜默忽略 */
-  }
-}
-function clearDraw(kind: string, teamId: number) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(drawKey(kind, teamId));
-  } catch {
-    /* ignore */
-  }
-}
-
 // 發牌動畫：卡片從牌堆飛入（依序），落定後從牌背翻面露出正面。dealKey 變動即重播。
 function DealtCard({ index, dealKey, children }: { index: number; dealKey: number; children: React.ReactNode }) {
   const dealDelay = index * 0.18; // 依序發牌
@@ -129,10 +99,29 @@ function DealtCard({ index, dealKey, children }: { index: number; dealKey: numbe
   );
 }
 
-// 「每隊固定展示 3 個・重進不重抽・買一個後重抽」共用邏輯。
-// kind 區分卡 / 動產（localStorage 分開鎖）；pool 變動（庫存輪詢）不重抽。
+// 「展示中」卡片標題：限購模式時右上角掛一顆「限購一件 / 已用完」小徽章（取代原本獨立 Card 橫幅）。
+function ShopDisplayTitle({ label, limited, locked }: { label: string; limited: boolean; locked: boolean }) {
+  return (
+    <span className="flex flex-1 items-center justify-between gap-2">
+      <span>{label}</span>
+      {limited && (
+        <span
+          className={`shrink-0 rounded-md border px-2 py-0.5 text-[11px] font-bold ${
+            locked
+              ? "border-slate-500/40 bg-slate-500/10 text-slate-300"
+              : "border-amber-400/50 bg-amber-400/15 text-amber-200"
+          }`}
+        >
+          {locked ? "限購已用完" : "過起點・限購一件"}
+        </span>
+      )}
+    </span>
+  );
+}
+
+// 展示 3 個共用邏輯：每次「進商店」（選定 / 切換小隊）就重抽一組全新的 3 個，不跨次保留。
+// 庫存輪詢（pool 變動）不重抽——resolvedFor 確保每隊只在首次解析時抽一次；redraw() 供關主付費重抽 / 買後重抽手動觸發。
 function useShopDisplay<T>(
-  kind: string,
   team: number | "",
   pool: T[] | undefined,
   keyOf: (x: T) => string,
@@ -140,28 +129,17 @@ function useShopDisplay<T>(
 ) {
   const [keys, setKeys] = useState<string[]>([]);
   const [dealKey, setDealKey] = useState(0); // 每次抽牌 +1，重播發牌動畫
-  const resolvedFor = useRef<number | null>(null); // 已為哪一隊解出展示（避免庫存輪詢時重抽）
+  const resolvedFor = useRef<number | null>(null); // 已為哪一隊抽過（避免庫存輪詢時重抽）
 
-  // 強制重抽（關主手動「重抽三張」）：覆寫該隊的鎖定
-  const reshuffle = useCallback(() => {
+  // 手動重抽（付費重抽 / 買後重抽）：即時抽一組新的並重播動畫。
+  const redraw = useCallback(() => {
     if (pool && team !== "") {
-      const next = drawDisplay(pool, keyOf, 3, weightOf);
-      saveDraw(kind, team, next);
-      setKeys(next);
+      setKeys(drawDisplay(pool, keyOf, 3, weightOf));
       setDealKey((k) => k + 1);
     }
-  }, [pool, team, kind, keyOf, weightOf]);
+  }, [pool, team, keyOf, weightOf]);
 
-  // 買一個後：清掉該隊鎖定，下次解析時重抽
-  const clearLock = useCallback(() => {
-    if (team !== "") {
-      clearDraw(kind, team);
-      resolvedFor.current = null;
-    }
-  }, [team, kind]);
-
-  // 切換隊伍時：有鎖定就沿用，沒有才抽一次並鎖定。resolvedFor 確保每隊只解一次。
-  // 沿用鎖定時，會剔除「已無庫存」的項目，並從仍有庫存的池子補滿 3 個（避免展示已售完 / 停用的卡）。
+  // 進商店 / 切換小隊：抽一組全新的 3 個（每隊只在首次解析時抽，庫存輪詢不重抽）。
   useEffect(() => {
     if (team === "") {
       resolvedFor.current = null;
@@ -169,24 +147,12 @@ function useShopDisplay<T>(
       return;
     }
     if (!pool || resolvedFor.current === team) return;
-    const inStock = new Set(pool.map(keyOf));
-    const saved = loadDraw(kind, team)?.filter((k) => inStock.has(k)) ?? null;
-    let next: string[];
-    if (saved && saved.length === 3) {
-      next = saved; // 鎖定仍全部有庫存，照舊
-    } else {
-      // 沒鎖定，或鎖定中有項目已售完 → 保留仍有庫存的，從剩餘池子補滿 3 個
-      const keep = saved ?? [];
-      const remaining = pool.filter((x) => !keep.includes(keyOf(x)));
-      next = [...keep, ...drawDisplay(remaining, keyOf, 3 - keep.length, weightOf)];
-    }
-    saveDraw(kind, team, next);
     resolvedFor.current = team;
-    setKeys(next);
+    setKeys(drawDisplay(pool, keyOf, 3, weightOf));
     setDealKey((k) => k + 1);
-  }, [team, pool, kind, keyOf, weightOf]);
+  }, [team, pool, keyOf, weightOf]);
 
-  return { keys, dealKey, reshuffle, clearLock };
+  return { keys, dealKey, redraw };
 }
 
 const cardKey = (c: ShopCard) => c.type;
@@ -200,6 +166,7 @@ export function ShopView({
   setTeam: setTeamProp,
   turnMode = false,
   freeMode = false,
+  limited = false,
   onComplete,
 }: {
   team?: number | "";
@@ -209,16 +176,25 @@ export function ShopView({
   turnMode?: boolean;
   // 好運卡「神秘禮物」免費抽動產：頂部出現一鍵「免費抽動產」面板（依等級加權隨機、免費），抽一次後鎖。
   freeMode?: boolean;
-  onComplete?: (delta: number) => void;
+  // 過起點限購模式：本回合限買一件（卡或動產擇一），買前消耗 passGoShopCredit；買完 / 無額度即鎖。
+  limited?: boolean;
+  // delta＝本回合此處光幣淨變動；extra.cardPoints＝本回合此處卡牌點數支出（負值），併入地圖階段 2 結算。
+  // 簽名對齊共用 completeTurnAction(delta, subRows?, extra?)——ShopView 不用 subRows，傳 undefined。
+  onComplete?: (delta: number, subRows?: { label: string; amount: number }[], extra?: { cardPoints?: number }) => void;
 } = {}) {
   // 受控（由 MapView 共用 team）或自管（/shop 獨立頁）
   const [teamInner, setTeamInner] = useState<number | "">("");
   const team = teamProp ?? teamInner;
   const setTeam = setTeamProp ?? setTeamInner;
   const [tab, setTab] = useState<"cards" | "assets">(freeMode ? "assets" : "cards");
-  // 本回合累計動產購買支出（負值）；按「完成」時併入地圖階段 2。
+  // 本回合累計動產購買支出（光幣，負值）；按「完成」時併入地圖階段 2。
   const [turnDelta, setTurnDelta] = useState(0);
-  const { snap } = useSnapshot(3000);
+  // 本回合累計功能卡購買支出（卡牌點數，負值）；同樣併入地圖階段 2 結算列。
+  const [turnPoints, setTurnPoints] = useState(0);
+  // 本次進商店已重抽次數（前端鏡射；enterShop 歸 0）：用來即時顯示下一次重抽成本。
+  const [cardShuffles, setCardShuffles] = useState(0);
+  const [itemShuffles, setItemShuffles] = useState(0);
+  const { snap, mutate: mutateSnap } = useSnapshot(3000);
   // 只輪詢目前 tab 的庫存（另一個 tab 暫停＝refreshInterval 0），減少不必要的 API 呼叫。
   // 切回該 tab 時 SWR 仍會立即重新驗證一次（revalidateOnMount/focus），不會看到過期庫存。
   const { data, mutate: mutateShop } = useSWR<ShopData>("/api/shop", fetcher, { refreshInterval: tab === "cards" ? 3000 : 0 });
@@ -227,8 +203,16 @@ export function ShopView({
   // 只展示「還有庫存」的項目，去重隨機抽 3 個（兩個 tab 各自一組）
   const cardPool = useMemo(() => data?.cards.filter((c) => c.remaining > 0), [data]);
   const itemPool = useMemo(() => itemData?.items.filter((it) => it.shopStock > 0), [itemData]);
-  const cardDisplay = useShopDisplay("cards", team, cardPool, cardKey, cardWeight);
-  const itemDisplay = useShopDisplay("assets", team, itemPool, itemKey, itemWeight);
+  const cardDisplay = useShopDisplay(team, cardPool, cardKey, cardWeight);
+  const itemDisplay = useShopDisplay(team, itemPool, itemKey, itemWeight);
+
+  // 進商店（選定 / 切換小隊）：後端重置本次重抽次數，前端鏡射歸 0。
+  useEffect(() => {
+    if (team === "") return;
+    setCardShuffles(0);
+    setItemShuffles(0);
+    void postJson("/api/shop/enter", { teamId: team }).catch(() => { /* 忽略：僅重置計數，失敗不影響購買 */ });
+  }, [team]);
 
   if (!snap || !data) return <p className="text-sm text-slate-400">載入中…</p>;
   const cur = snap.teams.find((t) => t.id === team);
@@ -236,6 +220,29 @@ export function ShopView({
   const hasVoucher = (cur?.items ?? []).some((i) => i.effectType === EffectType.MYSTERY_SHOP_PRICE);
   const byType = new Map(data.cards.map((c) => [c.type, c]));
   const byId = new Map((itemData?.items ?? []).map((it) => [String(it.id), it]));
+
+  // 限購模式：剩餘額度（passGoShopCredit）用完即鎖住所有購買（兩個 tab 一致）。
+  const passGoCredit = cur?.passGoShopCredit ?? 0;
+  const limitedLocked = limited && passGoCredit <= 0;
+  // 下一次重抽成本（0 次＝免費，之後遞增）：卡 ×10（點數）、動產 ×100（光幣）。
+  const cardShuffleCost = reshuffleCost("cards", cardShuffles);
+  const itemShuffleCost = reshuffleCost("items", itemShuffles);
+  const cardShuffleLabel = cardShuffleCost > 0 ? `重抽三張（-${cardShuffleCost} 點）` : "重抽三張（免費）";
+  const itemShuffleLabel = itemShuffleCost > 0 ? `重抽三件（-${itemShuffleCost} 光幣）` : "重抽三件（免費）";
+  // 付費重抽：先扣費（後端）再本地重抽並更新鏡射次數 / 餘額。餘額不足由後端擋下（丟錯）。
+  const doReshuffle = async (kind: "cards" | "items") => {
+    if (team === "") return;
+    const r = await postJson("/api/shop/reshuffle", { teamId: team, kind });
+    if (kind === "cards") { cardDisplay.redraw(); setCardShuffles(r.count); }
+    else { itemDisplay.redraw(); setItemShuffles(r.count); }
+    // 回合操作：重抽費也是本回合此處的支出 → 卡＝卡牌點數、動產＝光幣，累計為負併入階段 2。
+    if (turnMode && r.cost > 0) {
+      if (kind === "cards") setTurnPoints((p) => p - r.cost);
+      else setTurnDelta((d) => d - r.cost);
+    }
+    await mutateSnap();
+    return r.cost > 0 ? `已重抽（-${r.cost}）` : "已重抽（免費）";
+  };
 
   return (
     <div className="space-y-4">
@@ -274,9 +281,20 @@ export function ShopView({
 
       {tab === "cards" ? (
       <>
-      <Card title="展示中（3 張・每隊固定，買一張後重抽）">
+      <Card title={<ShopDisplayTitle label="展示中（3 張・進商店重抽一組，可付點數再重抽）" limited={limited} locked={limitedLocked} />}>
+        {limitedLocked ? (
+          <p className="rounded-lg border border-slate-500/30 bg-slate-500/10 px-3 py-3 text-center text-sm font-semibold text-slate-300">
+            本次過起點限購已用完（功能卡 / 動產擇一買一件）。
+          </p>
+        ) : (
+        <>
         <div className="mb-3 flex items-center justify-between gap-3">
-          <ActionButton label="重抽三張" className="chip shrink-0" disabled={team === ""} onAction={async () => { cardDisplay.reshuffle(); }} />
+          <ActionButton
+            label={cardShuffleLabel}
+            className="chip shrink-0"
+            disabled={team === "" || (cardShuffleCost > 0 && (cur?.cardPoints ?? 0) < cardShuffleCost)}
+            onAction={() => doReshuffle("cards")}
+          />
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {cardDisplay.keys.map((type, i) => {
@@ -295,13 +313,16 @@ export function ShopView({
                   <div className="mt-1 h-8 text-xs text-slate-400">{c?.effect ?? ""}</div>
                   <div className="my-2 text-sm text-slate-300">點數 <Num className="font-bold text-cyan-300">{c?.cost ?? 0}</Num>　庫存 <Num>{c?.remaining ?? 0}</Num></div>
                   <ActionButton
-                    label={soldOut ? "已售完" : cantAfford ? `點數不足（- ${c.cost - (cur?.cardPoints ?? 0)}）` : "購買"}
+                    label={soldOut ? "已售完" : limitedLocked ? "限購已用完" : cantAfford ? `點數不足（- ${c.cost - (cur?.cardPoints ?? 0)}）` : "購買"}
                     className="w-full btn-emerald"
-                    disabled={team === "" || soldOut || cantAfford}
+                    disabled={team === "" || soldOut || cantAfford || limitedLocked}
                     onAction={async () => {
-                      const r = await postJson("/api/shop/sell", { teamId: team, cardType: type });
+                      const r = await postJson("/api/shop/sell", { teamId: team, cardType: type, limited });
                       await mutateShop();
-                      cardDisplay.reshuffle(); // 買一張 → 立刻重抽三張並播發牌動畫
+                      await mutateSnap(); // 限購額度 / 餘額即時更新
+                      if (!limited) cardDisplay.redraw(); // 一般模式買一張 → 立刻重抽三張；限購買完即鎖不重抽
+                      // 回合操作：功能卡購買是卡牌點數支出 → 累計為負，待「完成」併入地圖階段 2。
+                      if (turnMode) setTurnPoints((p) => p - (r.cost ?? 0));
                       return `售出 ${r.card}（-${r.cost} 點）`;
                     }} />
                 </div>
@@ -309,6 +330,8 @@ export function ShopView({
             );
           })}
         </div>
+        </>
+        )}
       </Card>
 
       <Card title="庫存總覽">
@@ -328,9 +351,20 @@ export function ShopView({
       </Card>
       </>
       ) : (
-      <Card title="展示中（3 件・每隊固定，買一件後重抽）">
+      <Card title={<ShopDisplayTitle label="展示中（3 件・進商店重抽一組，可付光幣再重抽）" limited={limited} locked={limitedLocked} />}>
+        {limitedLocked ? (
+          <p className="rounded-lg border border-slate-500/30 bg-slate-500/10 px-3 py-3 text-center text-sm font-semibold text-slate-300">
+            本次過起點限購已用完（功能卡 / 動產擇一買一件）。
+          </p>
+        ) : (
+        <>
         <div className="mb-3 flex items-center justify-between gap-3">
-          <ActionButton label="重抽三件" className="chip shrink-0" disabled={team === ""} onAction={async () => { itemDisplay.reshuffle(); }} />
+          <ActionButton
+            label={itemShuffleLabel}
+            className="chip shrink-0"
+            disabled={team === "" || (itemShuffleCost > 0 && (cur?.coins ?? 0) < itemShuffleCost)}
+            onAction={() => doReshuffle("items")}
+          />
         </div>
         {!itemData?.items?.length ? (
           <p className="text-sm text-slate-400">目前沒有上架中的動產。</p>
@@ -352,13 +386,14 @@ export function ShopView({
                       售價 <Num className="font-bold text-amber-300">{it?.price ?? 0}</Num> 光幣　庫存 <Num>{it?.shopStock ?? 0}</Num>
                     </div>
                     <ActionButton
-                      label={soldOut ? "已售完" : cantAfford ? `光幣不足（- ${it.price - (cur?.coins ?? 0)}）` : "購買"}
+                      label={soldOut ? "已售完" : limitedLocked ? "限購已用完" : cantAfford ? `光幣不足（- ${it.price - (cur?.coins ?? 0)}）` : "購買"}
                       className="w-full btn-emerald"
-                      disabled={team === "" || soldOut || cantAfford}
+                      disabled={team === "" || soldOut || cantAfford || limitedLocked}
                       onAction={async () => {
-                        const r = await postJson("/api/shop/item", { teamId: team, assetId: it!.id });
+                        const r = await postJson("/api/shop/item", { teamId: team, assetId: it!.id, limited });
                         await mutateItems();
-                        itemDisplay.clearLock(); // 買一件 → 清掉該隊鎖定並重抽
+                        await mutateSnap(); // 限購額度 / 餘額即時更新
+                        if (!limited) itemDisplay.redraw(); // 一般模式買一件 → 立刻重抽；限購買完即鎖不重抽
                         // 回合操作：動產購買是支出 → 累計為負，待「完成」併入地圖階段 2。
                         if (turnMode) setTurnDelta((d) => d - (r.price ?? 0));
                         return `售出 ${r.name}（-${r.price} 光幣）`;
@@ -370,10 +405,14 @@ export function ShopView({
             })}
           </div>
         )}
+        </>
+        )}
       </Card>
       )}
 
-      {turnMode && onComplete && <TurnCompleteBar delta={turnDelta} onComplete={onComplete} />}
+      {turnMode && onComplete && (
+        <TurnCompleteBar delta={turnDelta} onComplete={(d) => onComplete(d, undefined, { cardPoints: turnPoints })} />
+      )}
     </div>
   );
 }

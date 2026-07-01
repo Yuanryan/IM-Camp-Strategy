@@ -28,6 +28,7 @@ function makeProjectionSnapshot(): Snapshot {
         coins: 1000,
         cardPoints: 0,
         boardPos: 0,
+        passGoShopCredit: 0,
         propertyCount: 1,
         propertyValue: 130,
         netWorth: 1130,

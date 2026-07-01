@@ -1,4 +1,4 @@
-import { apiRoute, num } from "@/lib/api";
+import { apiRoute, num, optBool } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { buyShopItem } from "@/lib/service";
 
@@ -12,5 +12,5 @@ export const GET = apiRoute(["CARDSHOP", "ADMIN"], async () => {
 });
 
 export const POST = apiRoute(["CARDSHOP"], async ({ body, session }) =>
-  buyShopItem({ teamId: num(body, "teamId"), assetId: num(body, "assetId"), byToken: session.label }),
+  buyShopItem({ teamId: num(body, "teamId"), assetId: num(body, "assetId"), limited: optBool(body, "limited"), byToken: session.label }),
 );

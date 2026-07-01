@@ -61,6 +61,9 @@ import {
   parseMonopolySince,
   serializeMonopolySince,
   monopolyEffectText,
+  reshuffleCost,
+  RESHUFFLE_CARD_STEP,
+  RESHUFFLE_ITEM_STEP,
   type ObjectiveBaseline,
   type ObjectiveState,
 } from "./game";
@@ -74,6 +77,31 @@ const ZERO_STATE: ObjectiveState = {
   tradeCount: 0, propertyCount: 0, level3Count: 0,
   cardUseCount: 0, auctionWins: 0, monopolyRegions: [],
 };
+
+// ── 神秘商店重抽成本（本次已重抽次數 × 步進；0 次免費）─────────────
+describe("reshuffleCost", () => {
+  it("第一次重抽（count 0）免費", () => {
+    expect(reshuffleCost("cards", 0)).toBe(0);
+    expect(reshuffleCost("items", 0)).toBe(0);
+  });
+
+  it("卡牌依 RESHUFFLE_CARD_STEP 遞增：0,10,20,30…", () => {
+    expect(reshuffleCost("cards", 1)).toBe(RESHUFFLE_CARD_STEP);
+    expect(reshuffleCost("cards", 2)).toBe(2 * RESHUFFLE_CARD_STEP);
+    expect(reshuffleCost("cards", 3)).toBe(3 * RESHUFFLE_CARD_STEP);
+  });
+
+  it("動產依 RESHUFFLE_ITEM_STEP 遞增：0,100,200,300…", () => {
+    expect(reshuffleCost("items", 1)).toBe(RESHUFFLE_ITEM_STEP);
+    expect(reshuffleCost("items", 2)).toBe(2 * RESHUFFLE_ITEM_STEP);
+    expect(reshuffleCost("items", 3)).toBe(3 * RESHUFFLE_ITEM_STEP);
+  });
+
+  it("負數次數視為 0（不會出現負成本）", () => {
+    expect(reshuffleCost("cards", -1)).toBe(0);
+    expect(reshuffleCost("items", -5)).toBe(0);
+  });
+});
 
 // ── 動產效果疊加（相加，無遞減）──────────────────────────────
 describe("stackEffects", () => {

@@ -36,6 +36,9 @@ model Team {
   coins          Int             @default(0) // 光幣
   cardPoints     Int             @default(0) // 卡牌點數
   boardPos       Int             @default(0) // 棋子目前格 index（0=中央燈塔起點；見 lib/game.ts BOARD）
+  passGoShopCredit   Int          @default(0) // 過起點限購額度：擲骰過起點 +1；限購模式買一件 -1；下次擲骰開始歸 0（本回合不買作廢）
+  cardReshuffleCount Int          @default(0) // 本次進商店已重抽功能卡次數（成本＝count×RESHUFFLE_CARD_STEP，卡牌點數）；enterShop 歸 0
+  itemReshuffleCount Int          @default(0) // 本次進商店已重抽動產次數（成本＝count×RESHUFFLE_ITEM_STEP，光幣）；enterShop 歸 0
   properties     Property[]
   lotteryNumbers LotteryNumber[]
   ledgers        Ledger[]

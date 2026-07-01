@@ -37,6 +37,7 @@ import {
   PASS_START_CARD_POINTS,
   LAND_START_COINS,
   LAND_START_CARD_POINTS,
+  reshuffleCost,
   TOLL_RATE,
   REGIONS,
   TASK_GOOD_CARDS,
@@ -198,17 +199,25 @@ export async function moveTeamPiece(params: {
 
     let to: number;
     let passedStart = false;
+    let isDiceMove = false;
     if (typeof steps === "number") {
       const r = advance(team.boardPos, steps);
       to = r.to;
       passedStart = r.passedStart;
+      isDiceMove = true;
     } else if (typeof toIndex === "number") {
       to = ((toIndex % BOARD_SIZE) + BOARD_SIZE) % BOARD_SIZE;
     } else {
       throw new Error("需提供 steps 或 toIndex");
     }
 
-    await tx.team.update({ where: { id: teamId }, data: { boardPos: to } });
+    // 擲骰＝新的一回合：先清掉上一回合未用掉的過起點限購額度（本回合不買即作廢）。
+    // 卡片觸發的位置移動（toIndex）不算新回合，不清除。
+    const boardData: { boardPos: number; passGoShopCredit?: number | { increment: number } } = { boardPos: to };
+    if (isDiceMove) boardData.passGoShopCredit = 0;
+    // 擲骰過起點：發放一次限購額度（與過起點收益同一交易；後退 / 卡片移動不發）。
+    if (passedStart) boardData.passGoShopCredit = { increment: 1 };
+    await tx.team.update({ where: { id: teamId }, data: boardData });
 
     // 起點收益：過起點給光幣 + 卡牌點數；停在起點再追加一次。
     const landedOnStart = to === 0 && passedStart;
@@ -1153,10 +1162,63 @@ export async function respondTrade(params: {
 }
 
 // ── 卡牌商店 ─────────────────────────────────────────────────
-// 賣一張功能卡。展示的 3 張由前端隨機抽（純展示），故售出以「卡種類」為準。
-export async function sellCard(params: { teamId: number; cardType: string; byToken?: string }) {
-  const { teamId, cardType, byToken } = params;
+// 進商店（在 ShopView 選定小隊時呼叫）：重置本次重抽次數，回傳目前狀態供前端顯示下一次重抽成本。
+// 純狀態重置、不動金流，故不寫 ledger、不回 undo（下次進商店會再蓋掉）。
+export async function enterShop(params: { teamId: number }) {
+  const team = await prisma.team
+    .update({ where: { id: params.teamId }, data: { cardReshuffleCount: 0, itemReshuffleCount: 0 } })
+    .catch(() => { throw new Error("找不到小隊"); });
+  return { ok: true, passGoShopCredit: team.passGoShopCredit, cardReshuffleCount: 0, itemReshuffleCount: 0 };
+}
+
+// 重抽展示（付費）：依「本次已重抽次數」計費（0 次免費，之後遞增），扣點 / 扣幣後次數 +1。
+// kind=cards 扣卡牌點數、items 扣光幣。回傳本次成本與新次數 + 可撤銷配方（退費並把次數退回）。
+export async function payReshuffle(params: { teamId: number; kind: "cards" | "items"; byToken?: string }) {
+  const { teamId, kind, byToken } = params;
   return prisma.$transaction(async (tx) => {
+    const team = await tx.team.findUnique({ where: { id: teamId } });
+    if (!team) throw new Error("找不到小隊");
+    const count = kind === "cards" ? team.cardReshuffleCount : team.itemReshuffleCount;
+    const cost = reshuffleCost(kind, count);
+    const balance = kind === "cards" ? team.cardPoints : team.coins;
+    if (cost > balance) throw new Error(kind === "cards" ? `卡牌點數不足（需 ${cost}）` : `光幣不足（需 ${cost}）`);
+    let ledgerId: number | undefined;
+    if (cost > 0) {
+      await tx.team.update({
+        where: { id: teamId },
+        data: kind === "cards" ? { cardPoints: { decrement: cost } } : { coins: { decrement: cost } },
+      });
+      ledgerId = await logLedger(tx, {
+        teamId,
+        kind: kind === "cards" ? "cardPoints" : "coins",
+        delta: -cost,
+        note: `神秘商店重抽${kind === "cards" ? "功能卡" : "動產"}（第 ${count + 1} 次・-${cost}）`,
+        byToken,
+      });
+    }
+    await tx.team.update({
+      where: { id: teamId },
+      data: kind === "cards" ? { cardReshuffleCount: { increment: 1 } } : { itemReshuffleCount: { increment: 1 } },
+    });
+    const undo: UndoRecipe | undefined = ledgerId != null ? { label: `撤銷重抽扣費`, ledgerIds: [ledgerId] } : undefined;
+    return { ok: true, cost, count: count + 1, undo };
+  });
+}
+
+// 過起點限購：limited 模式下購買前先驗證並扣掉一格額度（無額度即擋下）。非限購模式（踩到商店格）不受限。
+async function consumePassGoCredit(tx: Tx, teamId: number, limited: boolean) {
+  if (!limited) return;
+  const team = await tx.team.findUnique({ where: { id: teamId } });
+  if (!team || team.passGoShopCredit <= 0) throw new Error("過起點限購額度已用完（本回合限購一件）");
+  await tx.team.update({ where: { id: teamId }, data: { passGoShopCredit: { decrement: 1 } } });
+}
+
+// 賣一張功能卡。展示的 3 張由前端隨機抽（純展示），故售出以「卡種類」為準。
+// limited=true＝過起點限購模式：需消耗一格 passGoShopCredit（見 consumePassGoCredit）。
+export async function sellCard(params: { teamId: number; cardType: string; limited?: boolean; byToken?: string }) {
+  const { teamId, cardType, limited = false, byToken } = params;
+  return prisma.$transaction(async (tx) => {
+    await consumePassGoCredit(tx, teamId, limited);
     const card = await tx.functionCard.findUnique({ where: { type: cardType } });
     if (!card) throw new Error("找不到該功能卡");
     if (card.remaining <= 0) throw new Error("該卡已售完");
@@ -1180,9 +1242,11 @@ export async function sellCard(params: { teamId: number; cardType: string; byTok
 }
 
 // 神秘商店：用光幣購買動產（上架 shopStock>0 的模板）。買到即用 grantItem 的方式建立 TeamItem。
-export async function buyShopItem(params: { teamId: number; assetId: number; byToken?: string }) {
-  const { teamId, assetId, byToken } = params;
+// limited=true＝過起點限購模式：需消耗一格 passGoShopCredit（見 consumePassGoCredit）。
+export async function buyShopItem(params: { teamId: number; assetId: number; limited?: boolean; byToken?: string }) {
+  const { teamId, assetId, limited = false, byToken } = params;
   return prisma.$transaction(async (tx) => {
+    await consumePassGoCredit(tx, teamId, limited);
     const asset = await tx.movableAsset.findUnique({ where: { id: assetId } });
     if (!asset) throw new Error("找不到該動產");
     if (asset.shopStock <= 0) throw new Error("該動產已售完");
