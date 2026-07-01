@@ -554,6 +554,7 @@ export async function cardSeizeLand(params: { propertyId: number; toTeamId: numb
     await logAttack(tx, fromTeamId, `⚔ ${buyer.name} 用購地卡強制收購你的「${prop.name}」（補償 ${compensation}）`, byToken);
     await logCardUse(tx, toTeamId, `購地卡 → 隊 #${fromTeamId} 的「${prop.name}」`, byToken);
     await restockCard(tx, "購地卡");
+    await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `購地卡 ${prop.name}`,
       ledgerIds,
@@ -581,6 +582,7 @@ export async function cardSwapLand(params: { propertyAId: number; propertyBId: n
     await logAttack(tx, b.ownerTeamId, `⚔ ${attacker?.name ?? "對手"} 用換地卡把你的「${b.name}」換成了「${a.name}」`, byToken);
     await logCardUse(tx, a.ownerTeamId, `換地卡：${a.name} ⇄ ${b.name}`, byToken);
     await restockCard(tx, "換地卡");
+    await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `換地卡 ${a.name} ⇄ ${b.name}`,
       ledgerIds: [lid],
@@ -611,6 +613,7 @@ export async function cardSwapHouse(params: { propertyAId: number; propertyBId: 
     await logAttack(tx, b.ownerTeamId, `⚔ ${attacker?.name ?? "對手"} 用換屋卡把你的「${b.name}」等級換成 ${a.level} 級`, byToken);
     await logCardUse(tx, a.ownerTeamId, `換屋卡：${a.name} ⇄ ${b.name}`, byToken);
     await restockCard(tx, "換屋卡");
+    await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `換屋卡 ${a.name} ⇄ ${b.name}`,
       ledgerIds: [lid],
@@ -644,6 +647,7 @@ export async function cardDemolish(params: { propertyId: number; byTeamId?: numb
     await logAttack(tx, prop.ownerTeamId, `⚔ ${atk ? `${atk} 用拆屋卡把` : ""}你的「${prop.name}」${atk ? "降為" : "被拆屋卡降為"} ${prop.level - 1} 級`, byToken);
     await logCardUse(tx, byTeamId, `拆屋卡 → 「${prop.name}」降級`, byToken);
     await restockCard(tx, "拆屋卡");
+    await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `拆屋卡 ${prop.name}`,
       ledgerIds: [lid],
@@ -667,6 +671,7 @@ export async function cardMonster(params: { propertyId: number; byTeamId?: numbe
     await logAttack(tx, fromTeamId, `⚔ ${atk ? `${atk} 用怪獸卡摧毀了你的` : "你的"}「${prop.name}」，你失去這塊地了`, byToken);
     await logCardUse(tx, byTeamId, `怪獸卡 → 摧毀「${prop.name}」`, byToken);
     await restockCard(tx, "怪獸卡");
+    await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `怪獸卡 ${prop.name}`,
       ledgerIds: [lid],
@@ -2030,6 +2035,8 @@ export async function undoAction(params: {
         },
       });
     }
+
+    if (toRestore.length) await reconcileMonopolySince(tx, Date.now());
 
     // 動產：刪除撤銷對象發出的 TeamItem（如好運卡骰到動產）
     const itemsToDelete = [...new Set((itemIds ?? []).filter((n) => Number.isInteger(n)))];
