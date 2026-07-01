@@ -159,9 +159,17 @@ export function parseActiveEvents(csv: string): number[] {
 
 // 計算單一不動產現值
 export function currentValue(
-  prop: { basePrice: number; region: string; type: string },
+  prop: {
+    basePrice: number;
+    region: string;
+    type: string;
+    cardRegionMult?: number;
+    cardBuildingMult?: number;
+    monopolyBonusMult?: number;
+  },
   activeEvents: number[],
   event4Penalty?: string | null,
+  opts?: { havenLiveMult?: number },
 ): number {
   let v = prop.basePrice;
   for (const idx of activeEvents) {
@@ -175,6 +183,10 @@ export function currentValue(
       v *= ev.hostPenaltyMult;
     }
   }
+  v *= prop.cardRegionMult ?? 1;
+  v *= prop.cardBuildingMult ?? 1;
+  v *= prop.monopolyBonusMult ?? 1;
+  v *= opts?.havenLiveMult ?? 1;
   return Math.round(v);
 }
 

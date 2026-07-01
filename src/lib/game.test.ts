@@ -429,6 +429,30 @@ describe("currentValue", () => {
   it("未知事件編號被忽略", () => {
     expect(currentValue(aurora, [99], null)).toBe(500);
   });
+
+  it("currentValue 疊乘 cardRegionMult / cardBuildingMult / monopolyBonusMult", () => {
+    const p = {
+      basePrice: 1000,
+      region: "AURORA",
+      type: "金融",
+      cardRegionMult: 1.3,
+      cardBuildingMult: 0.75,
+      monopolyBonusMult: 2,
+    };
+    // 1000 × 1.3 × 0.75 × 2 = 1950
+    expect(currentValue(p, [], null)).toBe(1950);
+  });
+
+  it("currentValue 缺省倍率欄位視為 1（向後相容）", () => {
+    const p = { basePrice: 500, region: "AURORA", type: "金融" };
+    expect(currentValue(p, [], null)).toBe(500);
+  });
+
+  it("currentValue 疊乘 havenLiveMult（即時層，由 opts 傳入）", () => {
+    const p = { basePrice: 1000, region: "HAVEN", type: "住宅" };
+    // 1000 × 1.5 = 1500
+    expect(currentValue(p, [], null, { havenLiveMult: 1.5 })).toBe(1500);
+  });
 });
 
 // ── leveledValue（升級後價值：含升級加成）──────────────────────
