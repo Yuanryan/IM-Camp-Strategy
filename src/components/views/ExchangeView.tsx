@@ -156,8 +156,17 @@ export function ExchangeView({
                       <div className={`text-xs font-medium ${ui.text}`}>{p.type}</div>
                     </div>
                     <div className="shrink-0 text-right leading-tight">
-                      <PriceTag current={p.currentValue} base={p.basePrice} />
-                      <div className="text-[11px] text-slate-500">初始 <Num>{p.basePrice}</Num></div>
+                      {p.ownerTeamId != null ? (
+                        <>
+                          <PriceTag current={roundTo10(p.investedValue)} base={p.basePrice} />
+                          <div className="text-[11px] text-slate-500">持有現值・賣回值</div>
+                        </>
+                      ) : (
+                        <>
+                          <PriceTag current={p.currentValue} base={p.basePrice} />
+                          <div className="text-[11px] text-slate-500">初始 <Num>{p.basePrice}</Num></div>
+                        </>
+                      )}
                     </div>
                   </div>
 
