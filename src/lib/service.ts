@@ -534,9 +534,26 @@ async function logCardUse(tx: Tx, byTeamId: number | undefined, note: string, by
 }
 
 // 出卡後把該功能卡回補一張到神秘商店庫存（出完即用、用了就回流，總供給維持不變）。
-// 商店無此卡（市場預警卡等資訊卡）時靜默略過。
+// 商店無此卡（型別不存在）時靜默略過。
 async function restockCard(tx: Tx, cardType: string) {
   await tx.functionCard.updateMany({ where: { type: cardType }, data: { remaining: { increment: 1 } } });
+}
+
+// 消耗出卡隊持有中的一張功能卡（未持有或持有 0 張則擋下）。
+async function consumeTeamCard(tx: Tx, teamId: number, cardType: string): Promise<void> {
+  const holding = await tx.teamCard.findUnique({ where: { teamId_cardType: { teamId, cardType } } });
+  if (!holding || holding.count <= 0) throw new Error(`此隊未持有「${cardType}」`);
+  if (holding.count <= 1) {
+    await tx.teamCard.delete({ where: { id: holding.id } });
+  } else {
+    await tx.teamCard.update({ where: { id: holding.id }, data: { count: { decrement: 1 } } });
+  }
+}
+
+// 出卡即用：從出卡隊持有扣 1 張，並回補商店流通庫存（用了就回流，總供給不變）。
+async function spendFunctionCard(tx: Tx, teamId: number, cardType: string): Promise<void> {
+  await consumeTeamCard(tx, teamId, cardType);
+  await restockCard(tx, cardType);
 }
 
 // 購地卡：強制收購對手一塊地。對手獲「初始定價 × 80%」補償（銀行出資），產權（含等級）轉給出卡隊。
@@ -560,7 +577,7 @@ export async function cardSeizeLand(params: { propertyId: number; toTeamId: numb
     ledgerIds.push(await logLedger(tx, { teamId: toTeamId, kind: "property", delta: 0, note: `購地卡強制收購 ${prop.name}（來自隊 #${fromTeamId}）`, byToken }));
     await logAttack(tx, fromTeamId, `⚔ ${buyer.name} 用購地卡強制收購你的「${prop.name}」（補償 ${compensation}）`, byToken);
     await logCardUse(tx, toTeamId, `購地卡 → 隊 #${fromTeamId} 的「${prop.name}」`, byToken);
-    await restockCard(tx, "購地卡");
+    await spendFunctionCard(tx, toTeamId, "購地卡");
     await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `購地卡 ${prop.name}`,
@@ -588,7 +605,7 @@ export async function cardSwapLand(params: { propertyAId: number; propertyBId: n
     const lid = await logLedger(tx, { teamId: a.ownerTeamId, kind: "property", delta: 0, note: `換地卡：${a.name} ⇄ ${b.name}`, byToken });
     await logAttack(tx, b.ownerTeamId, `⚔ ${attacker?.name ?? "對手"} 用換地卡把你的「${b.name}」換成了「${a.name}」`, byToken);
     await logCardUse(tx, a.ownerTeamId, `換地卡：${a.name} ⇄ ${b.name}`, byToken);
-    await restockCard(tx, "換地卡");
+    await spendFunctionCard(tx, a.ownerTeamId, "換地卡");
     await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `換地卡 ${a.name} ⇄ ${b.name}`,
@@ -619,7 +636,7 @@ export async function cardSwapHouse(params: { propertyAId: number; propertyBId: 
     const lid = await logLedger(tx, { teamId: a.ownerTeamId, kind: "property", delta: 0, note: `換屋卡：${a.name}(${a.level}級) ⇄ ${b.name}(${b.level}級)`, byToken });
     await logAttack(tx, b.ownerTeamId, `⚔ ${attacker?.name ?? "對手"} 用換屋卡把你的「${b.name}」等級換成 ${a.level} 級`, byToken);
     await logCardUse(tx, a.ownerTeamId, `換屋卡：${a.name} ⇄ ${b.name}`, byToken);
-    await restockCard(tx, "換屋卡");
+    await spendFunctionCard(tx, a.ownerTeamId, "換屋卡");
     await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `換屋卡 ${a.name} ⇄ ${b.name}`,
@@ -640,8 +657,8 @@ async function attackerName(tx: Tx, byTeamId?: number): Promise<string | null> {
   return t?.name ?? null;
 }
 
-// 拆屋卡：對手一棟房屋降一級（3→2→1→未升級）。
-export async function cardDemolish(params: { propertyId: number; byTeamId?: number; byToken?: string }) {
+// 拆屋卡：對手一棟房屋降一級（3→2→1→未升級）。byTeamId＝出卡隊（須持有此卡）。
+export async function cardDemolish(params: { propertyId: number; byTeamId: number; byToken?: string }) {
   const { propertyId, byTeamId, byToken } = params;
   return prisma.$transaction(async (tx) => {
     const prop = await tx.property.findUnique({ where: { id: propertyId } });
@@ -653,7 +670,7 @@ export async function cardDemolish(params: { propertyId: number; byTeamId?: numb
     const atk = await attackerName(tx, byTeamId);
     await logAttack(tx, prop.ownerTeamId, `⚔ ${atk ? `${atk} 用拆屋卡把` : ""}你的「${prop.name}」${atk ? "降為" : "被拆屋卡降為"} ${prop.level - 1} 級`, byToken);
     await logCardUse(tx, byTeamId, `拆屋卡 → 「${prop.name}」降級`, byToken);
-    await restockCard(tx, "拆屋卡");
+    await spendFunctionCard(tx, byTeamId, "拆屋卡");
     await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `拆屋卡 ${prop.name}`,
@@ -664,8 +681,8 @@ export async function cardDemolish(params: { propertyId: number; byTeamId?: numb
   });
 }
 
-// 怪獸卡：完全摧毀對手一棟房屋，使該地降回未購買狀態（無主、0 級）。
-export async function cardMonster(params: { propertyId: number; byTeamId?: number; byToken?: string }) {
+// 怪獸卡：完全摧毀對手一棟房屋，使該地降回未購買狀態（無主、0 級）。byTeamId＝出卡隊（須持有此卡）。
+export async function cardMonster(params: { propertyId: number; byTeamId: number; byToken?: string }) {
   const { propertyId, byTeamId, byToken } = params;
   return prisma.$transaction(async (tx) => {
     const prop = await tx.property.findUnique({ where: { id: propertyId } });
@@ -677,7 +694,7 @@ export async function cardMonster(params: { propertyId: number; byTeamId?: numbe
     const atk = await attackerName(tx, byTeamId);
     await logAttack(tx, fromTeamId, `⚔ ${atk ? `${atk} 用怪獸卡摧毀了你的` : "你的"}「${prop.name}」，你失去這塊地了`, byToken);
     await logCardUse(tx, byTeamId, `怪獸卡 → 摧毀「${prop.name}」`, byToken);
-    await restockCard(tx, "怪獸卡");
+    await spendFunctionCard(tx, byTeamId, "怪獸卡");
     await reconcileMonopolySince(tx, Date.now());
     const undo: UndoRecipe = {
       label: `怪獸卡 ${prop.name}`,
@@ -690,11 +707,12 @@ export async function cardMonster(params: { propertyId: number; byTeamId?: numbe
 
 // ── 市場卡：紅/黑（整區永久倍率）、鬧鬼/土地公（單棟永久倍率）──
 // 倍率永久疊乘在 cardRegionMult / cardBuildingMult，可互相抵消。可打自己、含無主地。
+// byTeamId＝出卡隊（須持有此卡）。
 export async function applyMarketCard(params: {
   kind: "RED" | "BLACK" | "HAUNT" | "LANDGOD";
   region?: RegionCode;
   propertyId?: number;
-  byTeamId?: number;
+  byTeamId: number;
   byToken?: string;
 }) {
   const { kind, region, propertyId, byTeamId, byToken } = params;
@@ -718,7 +736,7 @@ export async function applyMarketCard(params: {
       const cardName = kind === "RED" ? "紅卡" : "黑卡";
       ledgerIds.push(await logLedger(tx, { kind: "system", delta: 0,
         note: `${cardName}：${REGION_NAME[region]} 整區 ×${factor}`, byToken }));
-      await restockCard(tx, cardName);
+      await spendFunctionCard(tx, byTeamId, cardName);
       await logCardUse(tx, byTeamId, `${cardName} → ${REGION_NAME[region]}`, byToken);
     } else {
       if (propertyId == null) throw new Error("鬧鬼/土地公卡需選定房屋");
@@ -731,7 +749,7 @@ export async function applyMarketCard(params: {
       const cardName = kind === "LANDGOD" ? "土地公卡" : "鬧鬼卡";
       ledgerIds.push(await logLedger(tx, { kind: "system", delta: 0,
         note: `${cardName}：${p.name} ×${factor}`, byToken }));
-      await restockCard(tx, cardName);
+      await spendFunctionCard(tx, byTeamId, cardName);
       await logCardUse(tx, byTeamId, `${cardName} → ${p.name}`, byToken);
       if (kind === "HAUNT" && p.ownerTeamId != null) {
         await logAttack(tx, p.ownerTeamId, `⚔ 你的「${p.name}」被鬧鬼卡打跌`, byToken);
@@ -741,6 +759,115 @@ export async function applyMarketCard(params: {
     // 倍率改變可能影響 HAVEN 現值計算，但不改持有結構；仍重算以防獨佔門檻受 level 無關。此處毋須，但安全起見略過。
     const undo: UndoRecipe = { label: `市場卡 ${kind}`, ledgerIds, properties: undoProps };
     return { ok: true, undo };
+  });
+}
+
+// 查稅卡：強制目標隊伍失去 10% 光幣（銀行沒收，不流向出卡隊）。teamId＝出卡隊（須持有此卡）。
+export async function cardTaxAudit(params: { teamId: number; targetTeamId: number; byToken?: string }) {
+  const { teamId, targetTeamId, byToken } = params;
+  if (teamId === targetTeamId) throw new Error("不能對自己查稅");
+  return prisma.$transaction(async (tx) => {
+    const target = await tx.team.findUnique({ where: { id: targetTeamId } });
+    if (!target) throw new Error("找不到目標小隊");
+    const attacker = await tx.team.findUnique({ where: { id: teamId }, select: { name: true } });
+    if (!attacker) throw new Error("找不到出卡小隊");
+
+    const amount = roundTo10(target.coins * 0.1);
+    if (amount > 0) {
+      await tx.team.update({ where: { id: targetTeamId }, data: { coins: { decrement: amount } } });
+    }
+    const lid = await logLedger(tx, { teamId: targetTeamId, kind: "coins", delta: -amount, note: "查稅卡：被扣 10% 光幣（銀行沒收）", byToken });
+    await logAttack(tx, targetTeamId, `⚔ ${attacker.name} 對你發動查稅卡，被沒收 ${amount} 光幣`, byToken);
+    await logCardUse(tx, teamId, `查稅卡 → 隊 #${targetTeamId}（沒收 ${amount}）`, byToken);
+    await spendFunctionCard(tx, teamId, "查稅卡");
+
+    const undo: UndoRecipe = { label: `查稅卡 → 隊 #${targetTeamId}`, ledgerIds: [lid] };
+    return { ok: true, amount, undo };
+  });
+}
+
+// 孫生媽媽卡：隨機三選一，從目標隊伍偷「10% 光幣 / 10% 卡牌點數 / 隨機 1 件動產」歸出卡隊。
+// 目標沒有可偷的動產時，三選一池排除該選項。teamId＝出卡隊（須持有此卡）。
+export async function cardStealRandom(params: { teamId: number; targetTeamId: number; byToken?: string }) {
+  const { teamId, targetTeamId, byToken } = params;
+  if (teamId === targetTeamId) throw new Error("不能偷自己");
+  return prisma.$transaction(async (tx) => {
+    const target = await tx.team.findUnique({ where: { id: targetTeamId } });
+    if (!target) throw new Error("找不到目標小隊");
+    const attacker = await tx.team.findUnique({ where: { id: teamId }, select: { name: true } });
+    if (!attacker) throw new Error("找不到出卡小隊");
+
+    const targetItems = await tx.teamItem.findMany({
+      where: { teamId: targetTeamId, ...ACTIVE_ITEM },
+      include: { asset: true },
+    });
+    const pool: Array<"coins" | "cardPoints" | "item"> = [
+      "coins",
+      "cardPoints",
+      ...(targetItems.length > 0 ? (["item"] as const) : []),
+    ];
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+
+    const ledgerIds: number[] = [];
+    let note: string;
+    if (pick === "coins") {
+      const amount = roundTo10(target.coins * 0.1);
+      if (amount > 0) {
+        await tx.team.update({ where: { id: targetTeamId }, data: { coins: { decrement: amount } } });
+        await tx.team.update({ where: { id: teamId }, data: { coins: { increment: amount } } });
+      }
+      ledgerIds.push(await logLedger(tx, { teamId: targetTeamId, kind: "coins", delta: -amount, note: "孫生媽媽卡：被偷 10% 光幣", byToken }));
+      ledgerIds.push(await logLedger(tx, { teamId, kind: "coins", delta: amount, note: `孫生媽媽卡：偷得隊 #${targetTeamId} 10% 光幣`, byToken }));
+      note = `偷走 ${amount} 光幣`;
+    } else if (pick === "cardPoints") {
+      const amount = roundTo10(target.cardPoints * 0.1);
+      if (amount > 0) {
+        await tx.team.update({ where: { id: targetTeamId }, data: { cardPoints: { decrement: amount } } });
+        await tx.team.update({ where: { id: teamId }, data: { cardPoints: { increment: amount } } });
+      }
+      ledgerIds.push(await logLedger(tx, { teamId: targetTeamId, kind: "cardPoints", delta: -amount, note: "孫生媽媽卡：被偷 10% 卡牌點數", byToken }));
+      ledgerIds.push(await logLedger(tx, { teamId, kind: "cardPoints", delta: amount, note: `孫生媽媽卡：偷得隊 #${targetTeamId} 10% 卡牌點數`, byToken }));
+      note = `偷走 ${amount} 卡牌點數`;
+    } else {
+      const stolen = targetItems[Math.floor(Math.random() * targetItems.length)];
+      await tx.teamItem.update({ where: { id: stolen.id }, data: { teamId } });
+      ledgerIds.push(await logLedger(tx, { teamId: targetTeamId, kind: "system", delta: 0, note: `孫生媽媽卡：被偷走動產「${stolen.asset.name}」`, byToken }));
+      ledgerIds.push(await logLedger(tx, { teamId, kind: "system", delta: 0, note: `孫生媽媽卡：偷得隊 #${targetTeamId} 的動產「${stolen.asset.name}」`, byToken }));
+      note = `偷走動產「${stolen.asset.name}」`;
+    }
+
+    await logAttack(tx, targetTeamId, `⚔ ${attacker.name} 用孫生媽媽卡對你${note}`, byToken);
+    await logCardUse(tx, teamId, `孫生媽媽卡 → 隊 #${targetTeamId}（${note}）`, byToken);
+    await spendFunctionCard(tx, teamId, "孫生媽媽卡");
+
+    // 注：偷動產的持有權轉移不在 undo 範圍內（同不動產卡不同，UndoRecipe 目前無「動產轉移還原」欄位）；
+    // 偷光幣/卡點的部分仍可正常照 ledger -delta 回沖。
+    const undo: UndoRecipe = { label: `孫生媽媽卡 → 隊 #${targetTeamId}`, ledgerIds };
+    return { ok: true, pick, note, undo };
+  });
+}
+
+// 手動效果卡：遙控骰子卡（移動擲骰指定 1–6 點）／強力膠卡（目標連續 3 回合僅移動 1 格）。
+// 系統僅負責流通紀錄（出卡隊持有 -1、商店 remaining +1）；實際效果由關主人工執行（同 REMINDER 類道具）。
+export async function spendFunctionCardManual(params: {
+  teamId: number;
+  cardType: string;
+  targetTeamId?: number;
+  byToken?: string;
+}) {
+  const { teamId, cardType, targetTeamId, byToken } = params;
+  if (cardType !== "遙控骰子卡" && cardType !== "強力膠卡") throw new Error("此卡不支援人工出卡");
+  return prisma.$transaction(async (tx) => {
+    let targetNote = "";
+    if (targetTeamId != null) {
+      const target = await tx.team.findUnique({ where: { id: targetTeamId }, select: { name: true } });
+      if (!target) throw new Error("找不到目標小隊");
+      targetNote = ` → ${target.name}`;
+      await logAttack(tx, targetTeamId, `⚔ 有隊伍對你使用了${cardType}，請聽從關主指示`, byToken);
+    }
+    await logCardUse(tx, teamId, `${cardType}${targetNote}（人工執行）`, byToken);
+    await spendFunctionCard(tx, teamId, cardType);
+    return { ok: true, cardType };
   });
 }
 
@@ -1034,6 +1161,11 @@ export async function sellCard(params: { teamId: number; cardType: string; byTok
     if (team.cardPoints < cost) throw new Error(`卡牌點數不足（需 ${cost}）`);
     await tx.team.update({ where: { id: teamId }, data: { cardPoints: { decrement: cost } } });
     await tx.functionCard.update({ where: { type: card.type }, data: { remaining: { decrement: 1 } } });
+    await tx.teamCard.upsert({
+      where: { teamId_cardType: { teamId, cardType: card.type } },
+      create: { teamId, cardType: card.type, count: 1 },
+      update: { count: { increment: 1 } },
+    });
     if (cost !== card.cost) await decrementUses(tx, shopEffect.usedIds);
     await logLedger(tx, { teamId, kind: "cardPoints", delta: -cost, note: `購買功能卡 ${card.type}${cost !== card.cost ? `（原 ${card.cost}，折扣後 ${cost}）` : ""}`, byToken });
     return { ok: true, card: card.type, cost };

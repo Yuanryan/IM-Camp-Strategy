@@ -14,6 +14,7 @@ import {
   CursePanel,
   type DrawnCard,
 } from "@/components/views/LuckDraw";
+import { CardUsePanel } from "@/components/views/CardUsePanel";
 import {
   BOARD,
   BOARD_SIZE,
@@ -53,6 +54,7 @@ import {
   Eye,
   EyeOff,
   Check,
+  Sword,
 } from "lucide-react";
 
 // 右側控制台三段流程的名稱（指示箭頭顯示目標階段用）。
@@ -108,15 +110,20 @@ const PIP_XY: [number, number][] = [
 function DieFace({
   value,
   color,
+  ringColor,
+  textColor,
   size,
   rolling = false,
 }: {
   value: number;
   color: string;
+  ringColor: string;
+  textColor: string;
   size: number;
   rolling?: boolean;
 }) {
   const pip = PIPS[value];
+  const markColor = color === "#020617" ? textColor : ringColor;
   return (
     <svg
       width={size}
@@ -127,13 +134,13 @@ function DieFace({
       <rect
         x="3" y="3" width="94" height="94" rx="18"
         fill="#020617"
-        stroke={color}
+        stroke={ringColor}
         strokeWidth="3"
         opacity="0.95"
       />
       {pip ? (
         pip.map((i) => (
-          <circle key={i} cx={PIP_XY[i][0]} cy={PIP_XY[i][1]} r="8.5" fill={color} />
+          <circle key={i} cx={PIP_XY[i][0]} cy={PIP_XY[i][1]} r="8.5" fill={markColor} />
         ))
       ) : (
         <text
@@ -142,7 +149,7 @@ function DieFace({
           dominantBaseline="middle"
           fontSize="46"
           fontWeight="900"
-          fill={color}
+          fill={markColor}
         >
           {value}
         </text>
@@ -207,6 +214,8 @@ export function RealMapView({
   const [actionDone, setActionDone] = useState(false);
   // 右側面板流程階段：1 移動 / 2 結算結果 / 3 抽卡（GLOW・FOG 才可達）。
   const [phase, setPhase] = useState<1 | 2 | 3>(1);
+  // 功能卡出卡面板：開啟時暫時取代整個控制台內容（不影響底下的階段狀態），關閉後還原。
+  const [cardPanelOpen, setCardPanelOpen] = useState(false);
   // 階段 3 就地抽到的即時卡。
   const [drawn, setDrawn] = useState<DrawnCard | null>(null);
   // 階段 3 抽卡結算摘要：套用 / 登記完成後顯示總結算 + 「回到地圖」。null = 尚未結算。
@@ -322,7 +331,7 @@ export function RealMapView({
 
   // 換隊時清掉已選的移動道具（避免套用到別隊不存在的道具），關閉落地路由卡（屬上一隊），
   // 並把流程退回階段 1（重新驅動棋子）。
-  useEffect(() => { setSelectedMoveId(null); setLanded(null); setDrawn(null); setCardResult(null); setResult(null); setActionDone(false); setPhase(1); setFrozenObjectives([]); }, [team]);
+  useEffect(() => { setSelectedMoveId(null); setLanded(null); setDrawn(null); setCardResult(null); setResult(null); setActionDone(false); setPhase(1); setFrozenObjectives([]); setCardPanelOpen(false); }, [team]);
 
   // 分頁操作完成回傳金流 → 評估任務 → 併入階段 2 結算面板，刷新餘額並跳到階段 2，最後清掉來源。
   // 注意：mutate / clearActionResult 不放 deps，避免其 identity 變動重複觸發。
@@ -411,6 +420,8 @@ export function RealMapView({
   const curIdx = teams.findIndex((t) => t.id === team);
   const cur = curIdx >= 0 ? teams[curIdx] : undefined;
   const teamColor = cur ? pieceColor(cur, curIdx) : ACCENT;
+  const teamTextColor = cur ? pieceTextColor(cur, curIdx) : "#0f172a";
+  const teamRingColor = cur ? pieceRingColor(cur, curIdx) : ACCENT;
   // 該隊的「提醒」道具：擲骰前進前先讓關主看到（前進時會自動消耗一次）。
   const reminders = (cur?.items ?? []).filter((i) => i.effectType === EffectType.REMINDER);
   // 該隊的「主動移動」道具：可在擲骰後以徽章選取，效果直接套到步數與前進按鈕，前進時消耗一次。
@@ -1018,8 +1029,27 @@ export function RealMapView({
         style={{ width: phaseBoxW ?? undefined }}
         className="flex w-[330px] shrink-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-2.5 backdrop-blur-xl xl:w-[360px] max-lg:!w-full max-lg:h-auto max-lg:overflow-visible"
       >
+        {cardPanelOpen ? (
+          <CardUsePanel defaultTeamId={team} onClose={() => setCardPanelOpen(false)} />
+        ) : (
+        <>
+        {/* 手機版入口：桌機改走左緣垂直按鈕（見面板外側），此處僅小螢幕顯示。*/}
+        <button
+          type="button"
+          onClick={() => setCardPanelOpen(true)}
+          className="mb-2 flex shrink-0 items-center justify-center gap-1.5 self-start rounded-lg border border-violet-400/30 bg-violet-500/10 px-3 py-1.5 text-xs font-bold text-violet-200 transition hover:bg-violet-500/20 active:scale-95 lg:hidden"
+        >
+          <Sword className="h-3.5 w-3.5" /> 功能卡
+        </button>
+
         {/* 流程分頁點：指示目前階段 + 可點切換（階段 2/3 需有落地結果才可達）*/}
-        <PhaseDots phase={phase} reachable={reachablePhase} color={teamColor} onJump={goPhase} />
+        <PhaseDots
+          phase={phase}
+          reachable={reachablePhase}
+          color={teamColor}
+          ringColor={teamRingColor}
+          onJump={goPhase}
+        />
 
         {/* 滑動視窗：水平滑動切換階段（不攔截內部垂直捲動），垂直留給頁面 / 內捲。
             三階段並排成軌道，靠 translateX 滑入；拖曳中跟著手指（phaseDrag）。*/}
@@ -1075,7 +1105,14 @@ export function RealMapView({
 
           {/* 骰子儀表 */}
           <div className="mt-2.5 flex items-center gap-3">
-            <DieFace value={dieValue} color={teamColor} size={66} rolling={rolling} />
+            <DieFace
+              value={dieValue}
+              color={teamColor}
+              ringColor={teamRingColor}
+              textColor={teamTextColor}
+              size={66}
+              rolling={rolling}
+            />
             <div className="min-w-0 flex-1">
               <div className="mt-1.5 grid grid-cols-6 gap-1">
                 {[1, 2, 3, 4, 5, 6].map((n) => (
@@ -1084,7 +1121,7 @@ export function RealMapView({
                     type="button"
                     onClick={() => setSteps(n)}
                     disabled={team === ""}
-                    style={steps === n ? { borderColor: teamColor, color: teamColor } : undefined}
+                    style={steps === n ? { borderColor: teamRingColor, color: teamRingColor } : undefined}
                     className={`flex h-8 items-center justify-center rounded-lg border text-sm font-black transition active:scale-90 disabled:opacity-30 ${
                       steps === n ? "bg-white/10" : "border-white/10 bg-white/5 text-slate-300 hover:bg-white/10"
                     }`}
@@ -1152,7 +1189,7 @@ export function RealMapView({
             type="button"
             onClick={() => move({ steps: effectiveSteps, useItemId: selectedMove?.id })}
             disabled={team === "" || effectiveSteps === 0 || busy}
-            style={team !== "" && effectiveSteps !== 0 ? { background: teamColor } : undefined}
+            style={team !== "" && effectiveSteps !== 0 ? { background: teamColor, color: teamTextColor } : undefined}
             className="mt-2.5 flex h-11 w-full items-center justify-center gap-2 rounded-xl text-base font-black text-slate-950 transition active:scale-[0.98] disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-slate-500"
           >
             {busy ? (
@@ -1267,6 +1304,7 @@ export function RealMapView({
               done: o.done || (result?.rows ?? []).some((r) => r.label.includes(o.cardName)),
             }))}
             teamColor={teamColor}
+            teamTextColor={teamTextColor}
             isCardSquare={isCardSquare}
             actionDone={actionDone}
             onGoTab={() => landed && onLand(squareToTab(landed))}
@@ -1359,11 +1397,31 @@ export function RealMapView({
         </div>
         </div>
         </div>
+        </>
+        )}
       </aside>
 
+      {/* 左緣「功能卡」入口：風格對齊階段切換箭頭，固定在較高處避免與其重疊。
+          面板開啟中即隱藏（面板內建返回鈕）；桌機專用，手機走 aside 內的橫向 chip。*/}
+      {!cardPanelOpen && (
+        <button
+          type="button"
+          aria-label="開啟功能卡"
+          onClick={() => setCardPanelOpen(true)}
+          style={{ opacity: phaseDrag ? 0 : undefined }}
+          className="pointer-events-auto absolute -left-3.5 top-16 z-20 flex flex-col items-center gap-1 text-violet-300 transition-opacity duration-200 hover:text-violet-200 max-lg:hidden"
+        >
+          <Sword className="h-5 w-5" />
+          <span className="text-[11px] font-bold tracking-wider [writing-mode:vertical-rl]">
+            功能卡
+          </span>
+        </button>
+      )}
+
       {/* 階段切換指示：浮在面板外側（左／右），無底色、含目標階段名稱（移動／結算／抽卡），
-          提示可左右滑動切換；點擊亦可跳階。拖曳中淡出避免干擾。並排版面才顯示（縱向堆疊隱藏）。*/}
-      {phase > 1 && (
+          提示可左右滑動切換；點擊亦可跳階。拖曳中淡出避免干擾。並排版面才顯示（縱向堆疊隱藏）。
+          功能卡面板開啟時隱藏，避免與底下隱藏的階段內容混淆。*/}
+      {!cardPanelOpen && phase > 1 && (
         <button
           type="button"
           aria-label={`上一階段：${PHASE_NAME[(phase - 1) as 1 | 2 | 3]}`}
@@ -1377,12 +1435,12 @@ export function RealMapView({
           </span>
         </button>
       )}
-      {phase < reachablePhase && (
+      {!cardPanelOpen && phase < reachablePhase && (
         <button
           type="button"
           aria-label={`下一階段：${PHASE_NAME[(phase + 1) as 1 | 2 | 3]}`}
           onClick={() => goPhase(phase + 1)}
-          style={{ color: teamColor, opacity: phaseDrag ? 0 : undefined }}
+          style={{ color: teamRingColor, opacity: phaseDrag ? 0 : undefined }}
           className="pointer-events-auto absolute right-1 top-1/2 z-20 flex -translate-y-1/2 flex-col items-center gap-1 transition-opacity duration-200 max-lg:hidden"
         >
           <ChevronRight className="hint-swipe-x h-6 w-6" />
@@ -1405,6 +1463,7 @@ function PhaseResult({
   team,
   objectives,
   teamColor,
+  teamTextColor,
   isCardSquare,
   actionDone,
   onGoTab,
@@ -1418,6 +1477,7 @@ function PhaseResult({
   team?: TeamView;
   objectives: TeamView["objectives"];
   teamColor: string;
+  teamTextColor: string;
   isCardSquare: boolean;
   actionDone: boolean;
   onGoTab: () => void;
@@ -1445,7 +1505,7 @@ function PhaseResult({
             <button
               type="button"
               onClick={() => onDrawAt(here)}
-              style={{ background: teamColor }}
+              style={{ background: teamColor, color: teamTextColor }}
               className="flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-black text-slate-950 transition active:scale-[0.98]"
             >
               前往抽卡 <ArrowRight className="h-4 w-4" />
@@ -1586,7 +1646,7 @@ function PhaseResult({
           <button
             type="button"
             onClick={onDraw}
-            style={{ background: teamColor }}
+            style={{ background: teamColor, color: teamTextColor }}
             className="flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-black text-slate-950 transition active:scale-[0.98]"
           >
             前往抽卡 <ArrowRight className="h-4 w-4" />

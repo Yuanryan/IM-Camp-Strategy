@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { motion } from "framer-motion";
+import Image from "next/image";
 import { CreditCard, Package } from "lucide-react";
 import { fetcher, useSnapshot, postJson, ActionButton, TeamSelect } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
 import { Num, HudTabs, TurnCompleteBar } from "@/components/ui";
-import { ITEM_GRADE_COLORS, EffectType } from "@/lib/game";
+import { ITEM_GRADE_COLORS, EffectType, functionCardImage } from "@/lib/game";
 
 type ShopCard = { type: string; cost: number; effect: string; remaining: number };
 type ShopData = { cards: ShopCard[] };
@@ -189,6 +190,8 @@ function useShopDisplay<T>(
 }
 
 const cardKey = (c: ShopCard) => c.type;
+// 展示抽卡機率 = 該卡流通數 / 流通卡牌總數：直接用 remaining 當權重即可（drawDisplay 的加權演算法逐次依剩餘權重比例抽）。
+const cardWeight = (c: ShopCard) => c.remaining;
 const itemKey = (it: ShopItem) => String(it.id);
 const itemWeight = (it: ShopItem) => GRADE_DRAW_WEIGHT[it.grade] ?? 1;
 
@@ -224,7 +227,7 @@ export function ShopView({
   // 只展示「還有庫存」的項目，去重隨機抽 3 個（兩個 tab 各自一組）
   const cardPool = useMemo(() => data?.cards.filter((c) => c.remaining > 0), [data]);
   const itemPool = useMemo(() => itemData?.items.filter((it) => it.shopStock > 0), [itemData]);
-  const cardDisplay = useShopDisplay("cards", team, cardPool, cardKey);
+  const cardDisplay = useShopDisplay("cards", team, cardPool, cardKey, cardWeight);
   const itemDisplay = useShopDisplay("assets", team, itemPool, itemKey, itemWeight);
 
   if (!snap || !data) return <p className="text-sm text-slate-400">載入中…</p>;
@@ -283,6 +286,11 @@ export function ShopView({
             return (
               <DealtCard key={`${type}-${i}`} index={i} dealKey={cardDisplay.dealKey}>
                 <div className="rounded-xl border border-white/10 bg-white/5 p-3 text-center">
+                  {c && (
+                    <div className="relative mx-auto mb-2 aspect-3/4 w-full max-w-[140px] overflow-hidden rounded-lg border border-cyan-400/20 bg-black/20">
+                      <Image src={functionCardImage(c.type)} alt={c.type} fill sizes="140px" className="object-cover" />
+                    </div>
+                  )}
                   <div className="text-base font-bold text-cyan-200">{c?.type ?? "（空）"}</div>
                   <div className="mt-1 h-8 text-xs text-slate-400">{c?.effect ?? ""}</div>
                   <div className="my-2 text-sm text-slate-300">點數 <Num className="font-bold text-cyan-300">{c?.cost ?? 0}</Num>　庫存 <Num>{c?.remaining ?? 0}</Num></div>
@@ -293,7 +301,7 @@ export function ShopView({
                     onAction={async () => {
                       const r = await postJson("/api/shop/sell", { teamId: team, cardType: type });
                       await mutateShop();
-                      cardDisplay.clearLock(); // 買一張 → 清掉該隊鎖定並重抽
+                      cardDisplay.reshuffle(); // 買一張 → 立刻重抽三張並播發牌動畫
                       return `售出 ${r.card}（-${r.cost} 點）`;
                     }} />
                 </div>
@@ -306,8 +314,13 @@ export function ShopView({
       <Card title="庫存總覽">
         <ul className="grid grid-cols-1 gap-x-6 text-sm sm:grid-cols-2">
           {data.cards.map((c) => (
-            <li key={c.type} className="flex justify-between border-b border-white/10 py-1">
-              <span>{c.type}</span>
+            <li key={c.type} className="flex items-center justify-between gap-2 border-b border-white/10 py-1">
+              <span className="flex items-center gap-2">
+                <span className="relative h-8 w-6 shrink-0 overflow-hidden rounded border border-white/10 bg-black/20">
+                  <Image src={functionCardImage(c.type)} alt={c.type} fill sizes="24px" className="object-cover" />
+                </span>
+                {c.type}
+              </span>
               <span className="text-slate-400">點數 {c.cost}・剩 {c.remaining}</span>
             </li>
           ))}

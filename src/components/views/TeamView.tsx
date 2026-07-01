@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import useSWR from "swr";
+import Image from "next/image";
 import { fetcher, useSnapshot, postJson, toast, confirmDialog, withTeam } from "@/components/client";
 import { Card } from "@/components/Shell";
 import { Num, PriceTag, LevelDots, EventBanner, AuctionBanner, AttackBanner, BottomNav } from "@/components/ui";
 import { TradeView } from "@/components/views/TradeView";
 import { InstructionsView } from "@/components/views/InstructionsView";
 import { Wallet, ArrowLeftRight, Trophy, BookOpen } from "lucide-react";
-import { REGIONS, REGION_UI, ITEM_GRADE_COLORS, EFFECT_TYPE_LABELS } from "@/lib/game";
+import { REGIONS, REGION_UI, ITEM_GRADE_COLORS, EFFECT_TYPE_LABELS, functionCardImage, FUNCTION_CARDS } from "@/lib/game";
 import type { Snapshot } from "@/lib/snapshot";
 
 const LEVEL_TAG = ["已購", "1級", "2級", "3級"];
@@ -194,6 +195,9 @@ export function TeamView({ teamId }: { teamId: number }) {
             )}
           </Card>
           
+          {/* ── 我持有的功能卡（已買未使用）─────────────────────────── */}
+          <CardsCard cards={me.cards} />
+
           {/* ── 我的道具 ────────────────────────────────────────── */}
           <ItemsCard me={me} teams={snap.teams} onDone={mutate} authDisabled={authDisabled} />
 
@@ -257,6 +261,35 @@ export function TeamView({ teamId }: { teamId: number }) {
         ] as const}
       />
     </div>
+  );
+}
+
+// ── 我持有的功能卡（已買未使用；圖片 + 張數）───────────────────────
+function CardsCard({ cards }: { cards: Snapshot["teams"][number]["cards"] }) {
+  const effectOf = (type: string) => FUNCTION_CARDS.find((c) => c.type === type)?.effect ?? "";
+  return (
+    <Card title={`持有功能卡（${cards.length}）`}>
+      {cards.length === 0 ? (
+        <p className="text-sm text-slate-400">尚無持有中的功能卡，可在神秘商店購買</p>
+      ) : (
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+          {cards.map((c) => (
+            <div key={c.type} className="relative overflow-hidden rounded-xl border border-cyan-400/20 bg-white/5">
+              <div className="relative aspect-3/4 w-full bg-black/20">
+                <Image src={functionCardImage(c.type)} alt={c.type} fill sizes="160px" className="object-cover" />
+              </div>
+              <span className="absolute right-1.5 top-1.5 grid h-6 min-w-6 place-items-center rounded-full bg-slate-950/85 px-1.5 text-xs font-black text-cyan-300 ring-1 ring-cyan-400/40">
+                ×{c.count}
+              </span>
+              <div className="px-2 py-1.5">
+                <div className="truncate text-xs font-bold text-cyan-100">{c.type}</div>
+                <p className="mt-0.5 line-clamp-2 text-[10px] leading-snug text-slate-400">{effectOf(c.type)}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
   );
 }
 

@@ -938,25 +938,33 @@ export function weightedPick<T>(items: { value: T; weight: number }[], rng: () =
   return items[items.length - 1]?.value ?? null; // 浮點誤差保險
 }
 
-// 功能卡清單（cost = 卡牌點數，企畫書未定，預設值可於 admin 調整）
+// 功能卡圖片：實體卡圖存於 public/Cards/<卡名>.png（檔名已去除數量後綴）。
+export function functionCardImage(type: string): string {
+  return `/Cards/${type}.png`;
+}
+
+// 功能卡清單（cost = 卡牌點數；依實體卡張數（稀有度）與效果強度（S/A/B/C 分級）定價）
 export const FUNCTION_CARDS: {
   type: string;
   effect: string;
   cost: number;
   defaultStock: number;
 }[] = [
-  // 點數 / 庫存對齊企畫書（功能卡表 L1464+）：抑制攻擊卡滾雪球。
-  // 中央燈塔一次給 30 點，故攻擊卡刻意較貴、限量。
-  { type: "購地卡", effect: "強制收購對手一塊土地（對手獲初始價 8 折補償）", cost: 100, defaultStock: 5 },
-  { type: "換地卡", effect: "以己方土地與對手土地強制對換", cost: 50, defaultStock: 5 },
-  { type: "換屋卡", effect: "與對手互換一棟房屋的升級級別", cost: 30, defaultStock: 5 },
-  { type: "拆屋卡", effect: "拆除對手一層房屋（降一級）", cost: 40, defaultStock: 5 },
-  { type: "怪獸卡", effect: "摧毀對手一棟房屋，對手將失去該土地", cost: 90, defaultStock: 3 },
-  { type: "市場預警卡", effect: "得知下一次事件前某區漲跌方向", cost: 50, defaultStock: 0 }, // 庫存 0＝暫時停用
-  { type: "紅卡", effect: "選定一區，整區不動產大漲", cost: 60, defaultStock: 4 },
-  { type: "黑卡", effect: "選定一區，整區不動產大跌", cost: 60, defaultStock: 4 },
-  { type: "鬧鬼卡", effect: "選定一棟房子，該棟現值下跌", cost: 40, defaultStock: 4 },
-  { type: "土地公卡", effect: "選定一棟房子，該棟現值上漲", cost: 40, defaultStock: 4 },
+  // 點數 / 庫存對齊實體卡張數（見 public/Cards/*.png 檔名）；中央燈塔一次給 30 點，故攻擊卡刻意較貴、限量。
+  // S 級：改變資產結構或完全封鎖行動；A 級：大額經濟攻擊；B 級：中等置換 / 漲跌；C 級：常見小工具。
+  { type: "購地卡", effect: "強制收購對手一塊土地（對手獲初始價 8 折補償）", cost: 150, defaultStock: 3 },
+  { type: "怪獸卡", effect: "摧毀對手一棟房屋，對手將失去該土地", cost: 150, defaultStock: 3 },
+  { type: "強力膠卡", effect: "指定目標隊伍連續 3 回合，每回合只能移動 1 格（由關主人工執行）", cost: 120, defaultStock: 7 },
+  { type: "紅卡", effect: "選定一區，整區不動產大漲", cost: 90, defaultStock: 3 },
+  { type: "黑卡", effect: "選定一區，整區不動產大跌", cost: 90, defaultStock: 3 },
+  { type: "孫生媽媽卡", effect: "隨機三選一：偷走目標隊伍 10% 光幣 / 10% 卡牌點數 / 隨機 1 件動產", cost: 80, defaultStock: 10 },
+  { type: "查稅卡", effect: "強制目標隊伍失去 10% 光幣（銀行沒收）", cost: 70, defaultStock: 10 },
+  { type: "鬧鬼卡", effect: "選定一棟房子，該棟現值下跌", cost: 55, defaultStock: 5 },
+  { type: "土地公卡", effect: "選定一棟房子，該棟現值上漲", cost: 55, defaultStock: 5 },
+  { type: "拆屋卡", effect: "拆除對手一層房屋（降一級）", cost: 45, defaultStock: 15 },
+  { type: "換地卡", effect: "以己方土地與對手土地強制對換", cost: 40, defaultStock: 15 },
+  { type: "換屋卡", effect: "與對手互換一棟房屋的升級級別", cost: 35, defaultStock: 10 },
+  { type: "遙控骰子卡", effect: "移動擲骰時可指定點數為 1–6（由關主人工執行）", cost: 25, defaultStock: 20 },
 ];
 
 // 發放獎勵 / 懲罰的快捷預設（資料化，單一來源；前端共用元件 RewardButtons 讀取）

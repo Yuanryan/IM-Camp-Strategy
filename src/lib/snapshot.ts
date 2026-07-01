@@ -74,6 +74,12 @@ export type ObjectiveView = {
   isCurse: boolean;    // true = 詛咒卡（達標＝解咒 + 補償）
 };
 
+// 小隊持有中（已買未使用）的功能卡：type 對應 FUNCTION_CARDS[].type，用於商店 / 小隊頁圖片＋張數 UI。
+export type TeamCardView = {
+  type: string;
+  count: number;
+};
+
 export type TeamView = {
   id: number;
   name: string;
@@ -89,6 +95,7 @@ export type TeamView = {
   netWorth: number;      // coins + propertyValue（結算口徑，不含動產幣值）
   itemCount: number;
   items: ActiveItemView[];
+  cards: TeamCardView[]; // 持有中的功能卡（買入未使用），count > 0 才會出現
   recentAttacks: string[]; // 最近被功能卡攻擊的通知訊息（時間窗內，新到舊）；小隊頁警示橫幅用
   objectives: ObjectiveView[]; // 進行中的好運卡任務目標（含進度）
   monopolyRegions: RegionCode[]; // 該隊目前獨佔的區碼（供頁面顯示獨佔被動徽章）
@@ -170,7 +177,7 @@ export type Snapshot = {
 const ATTACK_WINDOW_MS = 1_800_000;
 
 export async function getSnapshot(): Promise<Snapshot> {
-  const [state, teams, properties, lotteryNumbers, teamItems, auctionEvent, attackLogs, openObjectives, acceptedTrades, cardUseGroups, soldLotWins] =
+  const [state, teams, properties, lotteryNumbers, teamItems, teamCards, auctionEvent, attackLogs, openObjectives, acceptedTrades, cardUseGroups, soldLotWins] =
     await Promise.all([
       prisma.gameState.findUnique({ where: { id: 1 } }),
       prisma.team.findMany({ orderBy: { id: "asc" } }),
@@ -178,6 +185,8 @@ export async function getSnapshot(): Promise<Snapshot> {
       prisma.lotteryNumber.findMany(),
       // 凍結於 PENDING 交易中的動產（lockedTradeId 非 null）不算擁有者有效持有，排除
       prisma.teamItem.findMany({ where: { active: true, lockedTradeId: null }, include: { asset: true } }),
+      // 各隊持有中（買入未使用）的功能卡；count<=0 的列不會存在（用完即刪列，見 service.consumeTeamCard）
+      prisma.teamCard.findMany({ where: { count: { gt: 0 } } }),
       prisma.auctionEvent.findFirst({
         where: { status: "OPEN" },
         orderBy: { id: "desc" },
@@ -257,6 +266,14 @@ export async function getSnapshot(): Promise<Snapshot> {
       markTeamId: item.markTeamId,
     });
     teamItemsMap.set(item.teamId, list);
+  }
+
+  // 各隊持有中的功能卡（買入未使用）
+  const teamCardsMap = new Map<number, TeamCardView[]>();
+  for (const c of teamCards) {
+    const list = teamCardsMap.get(c.teamId) ?? [];
+    list.push({ type: c.cardType, count: c.count });
+    teamCardsMap.set(c.teamId, list);
   }
 
   // 各隊近期攻擊通知（新到舊；ledger 已 orderBy id desc）
@@ -371,6 +388,7 @@ export async function getSnapshot(): Promise<Snapshot> {
       netWorth: t.coins + adjustedPropValue,
       itemCount: items.length,
       items,
+      cards: teamCardsMap.get(t.id) ?? [],
       recentAttacks: attacksByTeam.get(t.id) ?? [],
       objectives: objectivesByTeam(t.id),
       monopolyRegions: monopolyByTeam.get(t.id) ?? [],

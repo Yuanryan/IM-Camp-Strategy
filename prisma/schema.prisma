@@ -43,6 +43,7 @@ model Team {
   items          TeamItem[]
   auctionsWon    AuctionLot[]
   objectives     TeamObjective[]
+  cards          TeamCard[]
   createdAt      DateTime        @default(now()) @db.Timestamptz
 }
 
@@ -210,6 +211,17 @@ model FunctionCard {
   effect    String @default("")
   cost      Int    @default(0) // 購買所需卡牌點數（企畫書未定，可於 admin 調整）
   remaining Int
+}
+
+// 小隊持有的功能卡（買入未使用的張數）：買入 +1，使用時（各卡效果函式）-1 並回補 FunctionCard.remaining。
+model TeamCard {
+  id       Int    @id @default(autoincrement())
+  teamId   Int
+  team     Team   @relation(fields: [teamId], references: [id])
+  cardType String
+  count    Int    @default(0)
+
+  @@unique([teamId, cardType])
 }
 
 // 商店展示的 3 張（slot 0..2）
