@@ -481,6 +481,13 @@ describe("leveledValue", () => {
     // 2 級加成 ×2 → 1650
     expect(leveledValue({ ...prop, level: 2 }, [1], null)).toBe(825 * 2);
   });
+
+  it("leveledValue 透傳 havenLiveMult 與永久倍率", () => {
+    const p = { basePrice: 1000, region: "HAVEN", type: "住宅", level: 2,
+      cardRegionMult: 1, cardBuildingMult: 1, monopolyBonusMult: 1 };
+    // currentValue = 1000 × 1.2(haven即時) = 1200；× (1+0.5×2)=2 → 2400
+    expect(leveledValue(p, [], null, { havenLiveMult: 1.2 })).toBe(2400);
+  });
 });
 
 // ── investedValue / investedPrincipalMult（結算淨值＝投入本金市值）──────
@@ -516,6 +523,19 @@ describe("investedValue", () => {
     expect(investedValue({ ...prop, level: 0 }, [1], null)).toBe(Math.round(600 * 1.375));
     // 無事件後回到 600（淨值下跌，反映市場風險）
     expect(investedValue({ ...prop, level: 0 }, [], null)).toBe(600);
+  });
+
+  it("investedValue 含永久倍率與升級本金", () => {
+    const p = { basePrice: 1000, region: "AURORA", type: "金融", level: 3,
+      cardRegionMult: 1.3, cardBuildingMult: 1, monopolyBonusMult: 1 };
+    // base 1000 × 本金倍率(lvl3=2.2) × 事件1 × cardRegionMult 1.3 = 2860
+    expect(investedValue(p, [], null)).toBe(2860);
+  });
+
+  it("investedValue 透傳 havenLiveMult", () => {
+    const p = { basePrice: 1000, region: "HAVEN", type: "住宅", level: 0 };
+    // 1000 × 1.0(本金) × 1(事件) × 1.5(haven即時) = 1500
+    expect(investedValue(p, [], null, { havenLiveMult: 1.5 })).toBe(1500);
   });
 });
 

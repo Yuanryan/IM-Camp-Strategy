@@ -227,13 +227,23 @@ export function investedPrincipalMult(level: number): number {
 // 結果≈該隊實際投入的光幣（升級＝買價同等對待，無 k 加成），且會隨事件漲跌，
 // 故「買在高點、事件回跌」會虧損 —— 不動產最終市值受事件影響（符合企畫書）。
 export function investedValue(
-  prop: { basePrice: number; region: string; type: string; level: number },
+  prop: {
+    basePrice: number; region: string; type: string; level: number;
+    cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number;
+  },
   activeEvents: number[],
   event4Penalty?: string | null,
+  opts?: { havenLiveMult?: number },
 ): number {
-  const eventMult =
-    currentValue({ basePrice: 1000, region: prop.region, type: prop.type }, activeEvents, event4Penalty) / 1000;
-  return Math.round(prop.basePrice * investedPrincipalMult(prop.level) * eventMult);
+  // 取「事件 + 永久倍率 + 即時層」的總乘數（以 base=1000 正規化），再乘 base × 本金倍率。
+  const mult =
+    currentValue(
+      { basePrice: 1000, region: prop.region, type: prop.type,
+        cardRegionMult: prop.cardRegionMult, cardBuildingMult: prop.cardBuildingMult,
+        monopolyBonusMult: prop.monopolyBonusMult },
+      activeEvents, event4Penalty, opts,
+    ) / 1000;
+  return Math.round(prop.basePrice * investedPrincipalMult(prop.level) * mult);
 }
 
 // ── 過路費用「升級加成市值」（仍用 k=0.5，過路費＝蓋房的主要回報）──────────
@@ -241,11 +251,15 @@ export function investedValue(
 // leveledValue = currentValue ×（1 + LEVEL_VALUE_BONUS × level）。
 export const LEVEL_VALUE_BONUS = 0.5;
 export function leveledValue(
-  prop: { basePrice: number; region: string; type: string; level: number },
+  prop: {
+    basePrice: number; region: string; type: string; level: number;
+    cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number;
+  },
   activeEvents: number[],
   event4Penalty?: string | null,
+  opts?: { havenLiveMult?: number },
 ): number {
-  return currentValue(prop, activeEvents, event4Penalty) * (1 + LEVEL_VALUE_BONUS * prop.level);
+  return currentValue(prop, activeEvents, event4Penalty, opts) * (1 + LEVEL_VALUE_BONUS * prop.level);
 }
 
 // 大樂透加購費：50 × 2^(已登記號碼數 - 1)；第一個免費
