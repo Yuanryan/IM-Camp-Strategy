@@ -39,7 +39,7 @@ export function getProjectionNameVisualWidth(name: string): number {
 export function getProjectionRankNameScale(name: string): number {
   const FULL_WIDTH = 6; // 視覺寬度 6 以內：滿版
   const MIN_SCALE = 0.62; // 最小縮到 60%
-  const SHRINK_PER_UNIT = 0.05; // 每超過一單位寬縮 8%
+  const SHRINK_PER_UNIT = 0.08; // 每超過一單位寬縮 8%
   const width = getProjectionNameVisualWidth(name);
   if (width <= FULL_WIDTH) return 1;
   const scale = 1 - (width - FULL_WIDTH) * SHRINK_PER_UNIT;
