@@ -419,6 +419,7 @@ function RegionArena({
         );
         const controlled = Boolean(regionState?.monopolyTeamName);
         const ui = REGION_UI[region.code];
+        const propertyRowCount = Math.max(Math.ceil(properties.length / 2), 1);
 
         return (
           <article
@@ -454,88 +455,81 @@ function RegionArena({
             </div>
 
             <ul
-              className="relative z-10 grid min-h-0 flex-1 gap-1"
+              className="projection-property-card-grid relative z-10 grid min-h-0 flex-1 grid-cols-2 gap-1.5"
               style={{
-                gridTemplateRows: `repeat(${Math.max(properties.length, 1)}, minmax(0, 1fr))`,
+                gridTemplateRows: `repeat(${propertyRowCount}, minmax(0, 1fr))`,
               }}
             >
-              {properties.map((property, propertyIndex) => {
+              {properties.map((property) => {
                 const previousCurrentValue =
                   previousPropertyCurrentValues?.[property.id] ??
                   property.currentValue;
                 const isWhiteOwner = property.ownerColorName === "白";
+                const isDarkOwner =
+                  property.ownerColorName === "黑" ||
+                  property.ownerColor?.toLowerCase() === "#020617";
+                const ownerLabel = property.ownerName ?? "未售出";
+                const propertyNameSizeClass =
+                  getProjectionPropertyNameSizeClass(property.name);
                 const ownerTagStyle: CSSProperties = {
-                  borderColor: `${property.ownerColorRing ?? property.ownerColor ?? "#7dd3fc"}${isWhiteOwner ? "" : "99"}`,
-                  background: isWhiteOwner
-                    ? (property.ownerColor ?? "#f8fafc")
-                    : `${property.ownerColor ?? "#38bdf8"}26`,
-                  color: isWhiteOwner
-                    ? (property.ownerColorText ?? "#0f172a")
-                    : (property.ownerColorRing ?? property.ownerColor ?? "#bae6fd"),
-                  boxShadow: `0 0 8px ${property.ownerColorRing ?? property.ownerColor ?? "#38bdf8"}55`,
+                  borderColor: property.ownerName
+                    ? `${property.ownerColorRing ?? property.ownerColor ?? "#7dd3fc"}${isWhiteOwner ? "" : "99"}`
+                    : "rgba(148, 163, 184, 0.18)",
+                  background: property.ownerName
+                    ? isWhiteOwner || isDarkOwner
+                      ? (property.ownerColor ?? "#f8fafc")
+                      : `${property.ownerColor ?? "#38bdf8"}26`
+                    : "rgba(15, 23, 42, 0.72)",
+                  color: property.ownerName
+                    ? isWhiteOwner || isDarkOwner
+                      ? (property.ownerColorText ?? "#0f172a")
+                      : (property.ownerColorRing ?? property.ownerColor ?? "#bae6fd")
+                    : "rgba(203, 213, 225, 0.78)",
+                  boxShadow: property.ownerName
+                    ? `0 0 6px ${property.ownerColorRing ?? property.ownerColor ?? "#38bdf8"}44`
+                    : "none",
                 };
 
                 return (
                   <li
                     key={property.id}
-                    className={`projection-property-row ${
-                      controlled ? "projection-monopoly-property-row" : ""
-                    } grid min-h-0 grid-cols-[minmax(0,1fr)_5.6rem] items-center gap-2 rounded-lg border px-2.5 ${
+                    className={`projection-property-row projection-property-mini-card grid min-h-0 grid-rows-[minmax(0,1fr)_auto] overflow-hidden rounded-xl border px-3 py-2 ${
                       property.ownerTeamId
-                        ? "border-white/10 bg-black/35"
-                        : "border-white/[0.04] bg-black/15 text-slate-400"
+                        ? "border-white/10 bg-black/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
+                        : "border-white/[0.05] bg-black/15 text-slate-400"
                     }`}
-                    style={
-                      controlled
-                        ? ({
-                            "--projection-row-index": propertyIndex,
-                            "--projection-row-delay": `${propertyIndex * 180}ms`,
-                          } as CSSProperties)
-                        : undefined
-                    }
                   >
-                    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.45rem_11.5rem] items-center gap-3">
-                      <span className="min-w-0 truncate text-[clamp(1rem,1.45vw,1.22rem)] font-black leading-none">
+                    <div className="projection-property-card-main grid min-h-0 grid-cols-[minmax(0,1fr)_minmax(4.4rem,max-content)] items-start gap-2">
+                      <span className={`projection-property-name-large min-w-0 truncate font-black leading-tight ${propertyNameSizeClass}`}>
                         {property.name}
                       </span>
-                      <span className="flex justify-center">
-                        {property.ownerTeamId != null && (
-                          <ProjectionLevelLights level={property.level} />
-                        )}
-                      </span>
-                      <span className="flex min-w-0 justify-start">
-                        {property.ownerName ? (
-                          <span
-                            className="projection-owner-tag min-w-0 whitespace-nowrap rounded-lg border px-2.5 py-1 text-[0.82rem] font-black leading-none"
-                            title={`${property.ownerName}（${property.ownerColorName ?? "小隊色"}）`}
-                            style={ownerTagStyle}
-                          >
-                            {property.ownerName}
-                          </span>
-                        ) : null}
-                      </span>
-                    </div>
-                    {property.ownerTeamId != null ? (
-                      <div className="w-full text-right leading-none">
-                        <PriceTag
-                          current={property.investedValue}
-                          base={property.basePrice}
-                          trendValue={property.currentValue}
-                          trendBase={previousCurrentValue}
-                          hideTrendIcon
-                          className="block text-[clamp(1.12rem,1.8vw,1.45rem)] font-black tabular-nums"
-                        />
-                      </div>
-                    ) : (
                       <PriceTag
-                        current={property.currentValue}
+                        current={
+                          property.ownerTeamId != null
+                            ? property.investedValue
+                            : property.currentValue
+                        }
                         base={property.basePrice}
                         trendValue={property.currentValue}
                         trendBase={previousCurrentValue}
                         hideTrendIcon
-                        className="block w-full text-right text-[clamp(1.12rem,1.8vw,1.45rem)] font-black leading-none tabular-nums"
+                        className="projection-property-price-large block shrink-0 justify-self-end text-right text-[clamp(1.22rem,1.95vw,1.62rem)] font-black leading-none tabular-nums"
                       />
-                    )}
+                    </div>
+                    <div className="projection-property-card-meta mt-1.5 grid min-w-0 grid-cols-[3.2rem_minmax(0,1fr)] items-center gap-2">
+                      <ProjectionLevelLights level={property.level} />
+                      <span
+                        className="projection-owner-tag projection-owner-tag-compact min-w-0 max-w-full justify-self-end truncate whitespace-nowrap rounded-full border px-2 py-0.5 text-[0.64rem] font-black leading-none"
+                        title={
+                          property.ownerName
+                            ? `${property.ownerName}（${property.ownerColorName ?? "小隊色"}）`
+                            : "未售出"
+                        }
+                        style={ownerTagStyle}
+                      >
+                        {ownerLabel}
+                      </span>
+                    </div>
                   </li>
                 );
               })}
@@ -596,19 +590,30 @@ function DominanceBadge({
   );
 }
 
+function getProjectionPropertyNameSizeClass(name: string) {
+  const length = [...name].length;
+  if (length >= 14) {
+    return "projection-property-name-compact text-[clamp(0.86rem,1.14vw,1.04rem)]";
+  }
+  if (length >= 10) {
+    return "projection-property-name-medium text-[clamp(0.98rem,1.34vw,1.18rem)]";
+  }
+  return "text-[clamp(1.1rem,1.65vw,1.38rem)]";
+}
+
 function ProjectionLevelLights({ level }: { level: number }) {
   const tier = getProjectionLevelTier(level);
   return (
     <span
       data-level-tier={tier}
-      className="projection-level-lights inline-flex shrink-0 items-center gap-1.5"
+      className="projection-level-lights projection-level-lights-compact inline-flex shrink-0 items-center gap-1"
       title={`資產等級 ${level}`}
     >
       {[1, 2, 3].map((step) => (
         <span
           key={step}
           data-active={step <= level ? "true" : "false"}
-          className="projection-level-light projection-level-light-large h-2.5 w-2.5 rounded-full"
+          className="projection-level-light projection-level-light-compact h-2 w-2 rounded-full"
         />
       ))}
     </span>

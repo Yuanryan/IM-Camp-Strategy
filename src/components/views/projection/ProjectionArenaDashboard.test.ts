@@ -59,6 +59,24 @@ function makeProjectionSnapshot(): Snapshot {
         investedValue: 130,
         leveledValue: 150,
       },
+      {
+        id: 2,
+        name: "Google 台北 101 辦公室",
+        region: "AURORA",
+        regionName: "極光金域",
+        type: "PROPERTY",
+        basePrice: 100,
+        level: 0,
+        ownerTeamId: null,
+        ownerName: null,
+        ownerColor: null,
+        ownerColorName: null,
+        ownerColorText: null,
+        ownerColorRing: null,
+        currentValue: 120,
+        investedValue: 100,
+        leveledValue: 100,
+      },
     ],
     regions: [
       {
@@ -171,7 +189,7 @@ describe("ProjectionArenaDashboard property table", () => {
     expect(markup).not.toContain("金融 / 商業 / 交易");
   });
 
-  it("renders larger level lights and owner tags for projector readability", () => {
+  it("renders projection assets as aligned 2-column mini cards", () => {
     const markup = renderToStaticMarkup(
       createElement(ProjectionArenaDashboard, {
         snap: makeProjectionSnapshot(),
@@ -179,14 +197,33 @@ describe("ProjectionArenaDashboard property table", () => {
       }),
     );
 
-    expect(markup).toContain("projection-owner-tag");
-    expect(markup).toContain("projection-level-light-large");
-    expect(markup).toContain("h-2.5 w-2.5");
-    expect(markup).toContain("text-[0.82rem]");
-    expect(markup).toContain("gap-3");
+    expect(markup).toContain("projection-property-card-grid");
+    expect(markup).toContain("grid-cols-2");
+    expect(markup).toContain("projection-property-mini-card");
+    expect(markup).toContain("projection-property-name-large");
+    expect(markup).toContain("projection-property-price-large");
+    expect(markup).toContain("projection-owner-tag-compact");
+    expect(markup).toContain("projection-level-light-compact");
+    expect(markup).toContain("未售出");
   });
 
-  it("marks controlled-region property rows for staggered monopoly animation", () => {
+  it("keeps long property names from pushing price and owner tags out of mini cards", () => {
+    const markup = renderToStaticMarkup(
+      createElement(ProjectionArenaDashboard, {
+        snap: makeProjectionSnapshot(),
+        lotteryAnimating: false,
+      }),
+    );
+
+    expect(markup).toContain("Google 台北 101 辦公室");
+    expect(markup).toContain("projection-property-card-main");
+    expect(markup).toContain("grid-cols-[minmax(0,1fr)_minmax(4.4rem,max-content)]");
+    expect(markup).toContain("projection-property-name-compact");
+    expect(markup).toContain("projection-property-card-meta");
+    expect(markup).toContain("grid-cols-[3.2rem_minmax(0,1fr)]");
+  });
+
+  it("does not apply staggered pulse animation classes to property cards", () => {
     const markup = renderToStaticMarkup(
       createElement(ProjectionArenaDashboard, {
         snap: makeProjectionSnapshot(),
@@ -195,8 +232,8 @@ describe("ProjectionArenaDashboard property table", () => {
     );
 
     expect(markup).toContain("projection-property-row");
-    expect(markup).toContain("projection-monopoly-property-row");
-    expect(markup).toContain("--projection-row-index:0");
+    expect(markup).not.toContain("projection-monopoly-property-row");
+    expect(markup).not.toContain("--projection-row-index");
   });
 
   it("uses price color without trend arrow icons on the projection table", () => {

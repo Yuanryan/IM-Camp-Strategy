@@ -885,29 +885,6 @@ input[type="number"] {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-.projection-monopoly-property-row {
-  animation: projectionMonopolyRowPulse 3.4s ease-in-out infinite;
-  animation-delay: var(--projection-row-delay, 0ms);
-  will-change: background-color, border-color, box-shadow;
-}
-
-@keyframes projectionMonopolyRowPulse {
-  0%,
-  100% {
-    border-color: rgba(255, 255, 255, 0.1);
-    background-color: rgba(0, 0, 0, 0.35);
-    box-shadow: none;
-  }
-
-  42% {
-    border-color: rgba(var(--region-glow), 0.6);
-    background-color: rgba(var(--region-glow), 0.12);
-    box-shadow:
-      inset 0 0 18px rgba(var(--region-glow), 0.08),
-      0 0 14px rgba(var(--region-glow), 0.2);
-  }
-}
-
 .projection-level-light {
   border: 1px solid rgba(100, 116, 139, 0.38);
   background: rgba(51, 65, 85, 0.72);
@@ -992,13 +969,8 @@ input[type="number"] {
   .projection-rank-silver,
   .projection-rank-silver .projection-rank-badge,
   .projection-rank-bronze::after,
-  .projection-monopoly-property-row,
   .projection-region-controlled {
     animation: none;
-  }
-
-  .projection-monopoly-property-row {
-    will-change: auto;
   }
 
   .system-ambient-layer {
