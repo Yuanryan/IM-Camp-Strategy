@@ -605,18 +605,22 @@ input[type="number"] {
 }
 
 .projection-rank-name {
-  font-size: clamp(0.875rem, 30cqh, 1.35rem);
+  /* 基礎字級隨列高縮放，再乘上依名稱長度算出的 --rank-name-scale（長名字自動變小、不截斷）。 */
+  font-size: calc(clamp(0.875rem, 30cqh, 1.35rem) * var(--rank-name-scale, 1));
   line-height: 1;
+  /* 隊名保底寬度：即使總資產數字很大也不會被壓到看不見（超出才 truncate）。
+     用 !important 蓋掉 JSX 上的 Tailwind min-w-0，確保這個下限真正生效。 */
+  min-width: 8rem !important;
 }
 
 .projection-rank-value {
   font-size: clamp(1rem, 34cqh, 1.6rem);
 }
 
-/* 光幣（次要）：比總資產小一階，靜音色由 opacity 控制 */
+/* 光幣（次要）：比總資產小一階，靜音色由 opacity 控制；縮小字級讓右側數字塊變窄，留給隊名更多空間 */
 .projection-rank-coins,
 .projection-rank-sep {
-  font-size: clamp(0.7rem, 24cqh, 1.05rem);
+  font-size: clamp(0.62rem, 20cqh, 0.9rem);
 }
 
 .projection-rank-badge {
