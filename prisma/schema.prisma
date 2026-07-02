@@ -114,6 +114,7 @@ enum ItemEffectType {
   MOVEMENT
   REMINDER
   CARD_BLOCK
+  ATTACK_SHIELD
 }
 
 // 動產模板：定義效果種類與強度

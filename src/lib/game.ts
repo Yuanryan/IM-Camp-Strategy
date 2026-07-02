@@ -356,7 +356,6 @@ export const EffectType = {
   WHEEL_BONUS:       "WHEEL_BONUS",       // 輪盤淨獲利加成（+0.50 → 獲利 ×1.5）
   WHEEL_NO_ZERO:     "WHEEL_NO_ZERO",     // 移除輪盤 ×0 結果（保底不輸本）
   WHEEL_STAKE_BOOST: "WHEEL_STAKE_BOOST", // 輪盤投入上限提升（+0.10 → 最多押 20% 資金）
-  WHEEL_ON_GOOD_CARD:"WHEEL_ON_GOOD_CARD",// 好運卡獎勵 × 輪盤結果
   LOTTERY_BONUS:     "LOTTERY_BONUS",     // 大樂透中獎倍率加成（+0.50 → 獎金 ×1.5）
   JACKPOT_SHARE:     "JACKPOT_SHARE",     // 任意隊中獎時自動抽成（0.05 → 5% 獎金池）
   LOTTERY_INSURANCE: "LOTTERY_INSURANCE", // 他隊中獎時退還本期登記費用（一次性）
@@ -364,12 +363,12 @@ export const EffectType = {
   COMPOUND_INTEREST: "COMPOUND_INTEREST", // 每回合賺取現有光幣 X%（0.02 → 2%/輪）
   PROPERTY_DIVIDEND: "PROPERTY_DIVIDEND", // 每回合賺取不動產現值 X%（0.03 → 3%/輪）
   UNDERDOG:          "UNDERDOG",          // 末位時每回合獲得固定補貼（200 → 末位時 +200/輪）
-  DOUBLE_OR_NOTHING: "DOUBLE_OR_NOTHING", // 流動關主發獎時 50/50：雙倍或歸零
   ALLIANCE_BONUS:    "ALLIANCE_BONUS",    // 交易接受時雙方各獲固定光幣（50 → 各 +50）
   PIRACY:            "PIRACY",            // 俠盜印記・懸賞標記：被標記隊收過路費時抽成（僅當俠盜較窮才生效）
   MOVEMENT:          "MOVEMENT",          // 主動移動道具：關主在遊戲地圖按鈕觸發，改變本次擲骰步數（見 MovementMode）
   REMINDER:          "REMINDER",          // 無計算，僅提醒關主
   CARD_BLOCK:        "CARD_BLOCK",        // 詛咒：禁止對其他隊伍出功能卡（前端封鎖出卡操作），解咒後解除
+  ATTACK_SHIELD:     "ATTACK_SHIELD",     // 護盾：擋下一次對本隊的功能卡攻擊（消耗一次），純標記，效果於出卡時判定
 } as const;
 export type EffectType = typeof EffectType[keyof typeof EffectType];
 
@@ -386,7 +385,6 @@ export const EFFECT_TYPE_LABELS: Record<EffectType, string> = {
   WHEEL_BONUS:       "輪盤加成",
   WHEEL_NO_ZERO:     "輪盤保底",
   WHEEL_STAKE_BOOST: "輪盤上限提升",
-  WHEEL_ON_GOOD_CARD:"好運卡輪盤",
   LOTTERY_BONUS:     "樂透加成",
   JACKPOT_SHARE:     "樂透抽成",
   LOTTERY_INSURANCE: "樂透保險",
@@ -394,12 +392,12 @@ export const EFFECT_TYPE_LABELS: Record<EffectType, string> = {
   COMPOUND_INTEREST: "複利收益",
   PROPERTY_DIVIDEND: "不動產分紅",
   UNDERDOG:          "末位補貼",
-  DOUBLE_OR_NOTHING: "雙倍或歸零",
   ALLIANCE_BONUS:    "交易紅利",
   PIRACY:            "海盜旗",
   MOVEMENT:          "主動移動",
   REMINDER:          "提醒（無計算）",
   CARD_BLOCK:        "詛咒・封卡",
+  ATTACK_SHIELD:     "護盾",
 };
 
 // ── 主動移動道具（MOVEMENT）─────────────────────────────────
@@ -632,6 +630,7 @@ export const MOVABLE_ASSET_SEED: {
   { name: "圖書館閉館座位",       grade: "A", effectType: "WHEEL_NO_ZERO",     effectValue:  0,    condition: null, defaultUses: 2,    description: "輪盤保底，×0 不會出現（2 次）— 穩到不出包" },
   { name: "期末 All-pass 香",     grade: "A", effectType: "UNDERDOG",          effectValue:  200,  condition: null, defaultUses: null, description: "每回合若為末位獲 200 光幣補貼（永久）— 低空翻身" },
   { name: "賭徒硬幣",           grade: "A", effectType: "WHEEL_STAKE_BOOST", effectValue:  0.20, condition: null, defaultUses: null, description: "輪盤最大投入上限增加 20%（永久）— 高進低出，梭哈魂" },
+  { name: "資安防火牆",           grade: "A", effectType: "ATTACK_SHIELD",    effectValue:  0,    condition: null, defaultUses: 1,    description: "護盾：擋下下一張其他隊伍對你使用的攻擊功能卡（1 次）— 資安做好，攻擊擋掉" },
   // ── B 級：消耗品 / 小加成（食物、二手、生活）──
   { name: "手工薩克斯風",         grade: "B", effectType: "COINS_PER_ROUND",   effectValue:  50,   condition: null, defaultUses: null, description: "每回合固定收益 50 光幣（永久）— 街頭打賞" },
   { name: "水源阿伯二手腳踏車",   grade: "B", effectType: "TOLL_PAID",         effectValue: -0.10, condition: null, defaultUses: 1,    description: "支付過路費減少 10%（1 次）— 二手代步" },
@@ -980,6 +979,8 @@ export type UndoRecipe = {
     cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number }[];
   // 撤銷時需刪除的 TeamItem（如好運卡骰到動產時發出的那張）
   itemIds?: number[];
+  // 撤銷時需「回補一次使用並重新生效」的 TeamItem（護盾擋下攻擊後被消耗的那張）
+  restoreItemIds?: number[];
   // 撤銷大樂透登記：刪除該 LotteryNumber 列並回補獎金池
   lotteryNumberId?: number;
   lotteryPoolRevert?: number; // 需從池中扣回的金額（= poolAdd）

@@ -233,7 +233,7 @@ export function MapView() {
             </div>
             <TeamItemBadges
               items={cur?.items ?? []}
-              relevantTypes={[EffectType.GOOD_CARD_BONUS, EffectType.BAD_CARD_REDUCE, EffectType.WHEEL_ON_GOOD_CARD, EffectType.TOLL_PAID, EffectType.PIRACY, EffectType.MOVEMENT, EffectType.REMINDER]}
+              relevantTypes={[EffectType.GOOD_CARD_BONUS, EffectType.BAD_CARD_REDUCE, EffectType.ATTACK_SHIELD, EffectType.TOLL_PAID, EffectType.PIRACY, EffectType.MOVEMENT, EffectType.REMINDER]}
             />
             <MonopolyBadges
               regions={cur?.monopolyRegions ?? []}

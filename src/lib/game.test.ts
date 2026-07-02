@@ -367,11 +367,10 @@ describe("effect: ALLIANCE_BONUS（applyAllianceBonus）", () => {
   });
 });
 
-// ── WHEEL_ON_GOOD_CARD、DOUBLE_OR_NOTHING、UNDERDOG、LOTTERY_INSURANCE
-// 這三個含隨機 / 條件邏輯，核心邏輯在 service.ts（整合測試才能完整驗）。
-// 此處只驗結構正確。
+// ── UNDERDOG、LOTTERY_INSURANCE、ATTACK_SHIELD 等含條件 / 隨機 / 出卡判定的效果
+// 核心邏輯在 service.ts（整合測試才能完整驗）；此處只驗結構正確（存在於牌庫）。
 describe("effect: 含條件 / 隨機 effectType 結構驗證", () => {
-  // 註：主題化道具改版後，WHEEL_ON_GOOD_CARD / DOUBLE_OR_NOTHING 已刻意不在牌庫中。
+  // 註：主題化道具改版後，WHEEL_ON_GOOD_CARD / DOUBLE_OR_NOTHING 已從 EffectType 移除。
   it("UNDERDOG 在 MOVABLE_ASSET_SEED 中存在", () => {
     expect(MOVABLE_ASSET_SEED.some((a) => a.effectType === EffectType.UNDERDOG)).toBe(true);
   });
@@ -380,6 +379,11 @@ describe("effect: 含條件 / 隨機 effectType 結構驗證", () => {
   });
   it("LOTTERY_FEE_DISCOUNT 在 MOVABLE_ASSET_SEED 中存在", () => {
     expect(MOVABLE_ASSET_SEED.some((a) => a.effectType === EffectType.LOTTERY_FEE_DISCOUNT)).toBe(true);
+  });
+  it("ATTACK_SHIELD（護盾）在 MOVABLE_ASSET_SEED 中存在且為一次性消耗", () => {
+    const shield = MOVABLE_ASSET_SEED.find((a) => a.effectType === EffectType.ATTACK_SHIELD);
+    expect(shield).toBeDefined();
+    expect(shield?.defaultUses).toBe(1);
   });
 });
 
@@ -401,7 +405,6 @@ describe("effect 覆蓋率", () => {
       EffectType.WHEEL_BONUS,
       EffectType.WHEEL_STAKE_BOOST,
       EffectType.WHEEL_NO_ZERO,
-      EffectType.WHEEL_ON_GOOD_CARD,
       EffectType.LOTTERY_BONUS,
       EffectType.JACKPOT_SHARE,
       EffectType.LOTTERY_INSURANCE,
@@ -409,12 +412,12 @@ describe("effect 覆蓋率", () => {
       EffectType.COMPOUND_INTEREST,
       EffectType.PROPERTY_DIVIDEND,
       EffectType.UNDERDOG,
-      EffectType.DOUBLE_OR_NOTHING,
       EffectType.ALLIANCE_BONUS,
       EffectType.PIRACY,
       EffectType.MOVEMENT,
       EffectType.REMINDER,
       EffectType.CARD_BLOCK, // 詛咒・封卡：無數值公式，純前端封鎖出卡（同 REMINDER 為標記型）
+      EffectType.ATTACK_SHIELD, // 護盾：無數值公式，純標記，出卡時判定擋下攻擊（同 REMINDER 為標記型）
     ]);
     for (const t of Object.values(EffectType)) {
       expect(tested.has(t)).toBe(true);
@@ -695,13 +698,12 @@ describe("MOVABLE_ASSET_SEED", () => {
     }
   });
 
-  it("REMINDER / WHEEL_NO_ZERO / WHEEL_ON_GOOD_CARD / DOUBLE_OR_NOTHING 效果值為 0；其餘非零", () => {
+  it("REMINDER / WHEEL_NO_ZERO / CARD_BLOCK / ATTACK_SHIELD 效果值為 0；其餘非零", () => {
     const zeroValueTypes = new Set<string>([
       EffectType.REMINDER,
       EffectType.WHEEL_NO_ZERO,
-      EffectType.WHEEL_ON_GOOD_CARD,
-      EffectType.DOUBLE_OR_NOTHING,
       EffectType.CARD_BLOCK, // 詛咒・封卡：純標記，effectValue 恆 0（前端封鎖出卡）
+      EffectType.ATTACK_SHIELD, // 護盾：純標記，effectValue 恆 0（出卡時判定擋下）
     ]);
     for (const a of MOVABLE_ASSET_SEED) {
       // MOVEMENT 的 effectValue 語意依模式而定（DOUBLE 模式為 0），另由 MOVEMENT 區塊驗證

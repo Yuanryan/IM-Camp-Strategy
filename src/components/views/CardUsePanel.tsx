@@ -69,6 +69,19 @@ export function CardUsePanel({
   const tgtProp = properties.find((p) => p.id === tgt);
   const compensation = tgtProp ? roundTo10(tgtProp.basePrice * 0.8) : 0;
 
+  // 護盾提示：判斷本次出卡的「被攻擊隊」，若其持有生效中的護盾 → 提示會被擋下（僅提示，仍可出卡）。
+  // 攻擊卡才有被攻擊隊：team 目標卡（查稅/孫生媽媽/強力膠）→ targetTeam；
+  // 針對對手不動產的卡（購地/拆屋/怪獸/換地/換屋）→ 目標地 tgt 的持有隊。市場卡 / 自身卡無被攻擊隊。
+  const ATTACK_ACTIONS = new Set(["seizeLand", "swapLand", "swapHouse", "demolish", "monster", "taxAudit", "stealRandom"]);
+  const victimTeamId: number | "" =
+    !meta ? ""
+    : meta.action === "taxAudit" || meta.action === "stealRandom" ? targetTeam
+    : (meta.action === "manualUse" && meta.type === "強力膠卡") ? targetTeam
+    : ATTACK_ACTIONS.has(meta.action) && tgtProp ? (tgtProp.ownerTeamId ?? "")
+    : "";
+  const victimTeam = victimTeamId === "" ? undefined : teams.find((t) => t.id === victimTeamId);
+  const victimShielded = (victimTeam?.items ?? []).some((i) => i.effectType === EffectType.ATTACK_SHIELD);
+
   const run = async (): Promise<string | ActionResult> => {
     if (actorTeam === "") return "請先選出卡隊";
     if (!meta) return "請先選卡片";
@@ -214,6 +227,12 @@ export function CardUsePanel({
             {meta.action === "seizeLand" && tgtProp && (
               <p className="mt-3 text-xs text-slate-400">
                 補償給 <b className="text-cyan-300">{tgtProp.ownerName}</b>：初始價 <Num>{tgtProp.basePrice}</Num> × 80% ＝ <Num className="neon-gold">{compensation}</Num> 光幣
+              </p>
+            )}
+
+            {victimShielded && (
+              <p className="mt-3 rounded-lg border border-sky-400/30 bg-sky-400/10 px-3 py-2 text-xs text-sky-200">
+                🛡 目標 <b>{victimTeam?.name}</b> 持有護盾，將擋下此次攻擊（護盾消耗一次，卡片仍會用掉）。
               </p>
             )}
 
