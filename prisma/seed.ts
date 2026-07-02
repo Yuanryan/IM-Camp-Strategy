@@ -46,6 +46,7 @@ async function reset() {
   await prisma.lotteryNumber.deleteMany();
   await prisma.accessToken.deleteMany();
   await prisma.teamItem.deleteMany();     // 必須在 team 之前（FK: teamId, assetId）
+  await prisma.teamCard.deleteMany();      // 必須在 team 之前（FK: teamId）— 小隊手牌的功能卡
   await prisma.teamObjective.deleteMany(); // 必須在 team 之前（FK: teamId）— 好運任務 / 詛咒卡
   await prisma.auctionLot.deleteMany();    // 必須在 team + auctionEvent 之前（FK: winnerTeamId, eventId）
   await prisma.auctionEvent.deleteMany();
