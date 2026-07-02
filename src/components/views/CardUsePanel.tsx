@@ -232,7 +232,7 @@ export function CardUsePanel({
 
             {victimShielded && (
               <p className="mt-3 rounded-lg border border-sky-400/30 bg-sky-400/10 px-3 py-2 text-xs text-sky-200">
-                🛡 目標 <b>{victimTeam?.name}</b> 持有護盾，將擋下此次攻擊（護盾消耗一次，卡片仍會用掉）。
+                🛡 目標 <b>{victimTeam?.name}</b> 持有護盾，將擋下此次攻擊（消耗卡片和護盾）
               </p>
             )}
 
