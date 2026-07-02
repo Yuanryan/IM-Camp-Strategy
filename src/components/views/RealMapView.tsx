@@ -333,8 +333,9 @@ export function RealMapView({
   }, []);
 
   // 換隊時清掉已選的移動道具（避免套用到別隊不存在的道具），關閉落地路由卡（屬上一隊），
-  // 並把流程退回階段 1（重新驅動棋子）。
-  useEffect(() => { setSelectedMoveId(null); setLanded(null); setPassedStartTurn(false); setDrawn(null); setCardResult(null); setResult(null); setActionDone(false); setPhase(1); setFrozenObjectives([]); setCardPanelOpen(false); }, [team]);
+  // 並把流程退回階段 1（重新驅動棋子）。功能卡面板與地圖共用選隊狀態，換隊可能來自面板內，
+  // 故不在此關閉面板（面板自己會依新隊重置手牌）。
+  useEffect(() => { setSelectedMoveId(null); setLanded(null); setPassedStartTurn(false); setDrawn(null); setCardResult(null); setResult(null); setActionDone(false); setPhase(1); setFrozenObjectives([]); }, [team]);
 
   // 分頁操作完成回傳金流 → 評估任務 → 併入階段 2 結算面板，刷新餘額並跳到階段 2，最後清掉來源。
   // 注意：mutate / clearActionResult 不放 deps，避免其 identity 變動重複觸發。
@@ -1460,7 +1461,7 @@ export function RealMapView({
       {/* 功能卡懸浮托盤：從右緣滑出、延伸至棋盤中段，背後棋盤上暗色遮罩（點擊 / Esc 關閉）。
           錨定在本列（rowRef，relative）上，桌機覆蓋約 2/3 寬、手機幾乎全寬，給卡面與選標更寬的呼吸空間。*/}
       <CardTray open={cardPanelOpen} onClose={() => setCardPanelOpen(false)}>
-        <CardUsePanel defaultTeamId={team} onClose={() => setCardPanelOpen(false)} />
+        <CardUsePanel team={team} setTeam={setTeam} onClose={() => setCardPanelOpen(false)} />
       </CardTray>
     </div>
     </div>
