@@ -908,6 +908,49 @@ input[type="number"] {
   }
 }
 
+/* 現價漲跌箭頭：數字變動時（span 重新掛載）朝漲跌方向彈一下並淡入定位。 */
+.price-arrow {
+  transform-origin: center;
+}
+
+.price-arrow-up {
+  animation: priceArrowUp 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.price-arrow-down {
+  animation: priceArrowDown 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes priceArrowUp {
+  0% {
+    transform: translateY(0.5em) scale(0.7);
+    opacity: 0;
+  }
+  55% {
+    transform: translateY(-0.3em) scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes priceArrowDown {
+  0% {
+    transform: translateY(-0.5em) scale(0.7);
+    opacity: 0;
+  }
+  55% {
+    transform: translateY(0.3em) scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
 .projection-level-light {
   border: 1px solid rgba(100, 116, 139, 0.38);
   background: rgba(51, 65, 85, 0.72);
@@ -993,7 +1036,9 @@ input[type="number"] {
   .projection-rank-silver .projection-rank-badge,
   .projection-rank-bronze::after,
   .projection-monopoly-property-row,
-  .projection-region-controlled {
+  .projection-region-controlled,
+  .price-arrow-up,
+  .price-arrow-down {
     animation: none;
   }
 

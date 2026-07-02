@@ -495,7 +495,7 @@ function RegionArena({
                     }
                   >
                     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_2.45rem_11.5rem] items-center gap-3">
-                      <span className="min-w-0 truncate text-[clamp(1rem,1.45vw,1.22rem)] font-black leading-none">
+                      <span className="min-w-0 truncate text-[0.92rem] font-bold leading-none">
                         {property.name}
                       </span>
                       <span className="flex justify-center">
@@ -522,8 +522,7 @@ function RegionArena({
                           base={property.basePrice}
                           trendValue={property.currentValue}
                           trendBase={previousCurrentValue}
-                          hideTrendIcon
-                          className="block text-[clamp(1.12rem,1.8vw,1.45rem)] font-black tabular-nums"
+                          className="block text-base font-black tabular-nums"
                         />
                       </div>
                     ) : (
@@ -532,8 +531,7 @@ function RegionArena({
                         base={property.basePrice}
                         trendValue={property.currentValue}
                         trendBase={previousCurrentValue}
-                        hideTrendIcon
-                        className="block w-full text-right text-[clamp(1.12rem,1.8vw,1.45rem)] font-black leading-none tabular-nums"
+                        className="block w-full text-right text-base font-black leading-none tabular-nums"
                       />
                     )}
                   </li>

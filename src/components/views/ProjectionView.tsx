@@ -102,9 +102,11 @@ export function ProjectionView() {
   );
 }
 
+// 每支不動產各自記「上一次變動前的現價」當漲跌基準，並持續保留直到它自己再次變動。
+// 這樣某支漲了、其他支沒動時，沒動的那些不會被重置成白色——它們維持上一次的漲跌狀態，
+// 只有輪到自己變價時才更新方向（用「變動前的值」對比新值 → 得到最新的漲/跌）。
 function usePreviousPropertyCurrentValues(snapshot: Snapshot | null) {
-  const previous = useRef<Record<number, number> | undefined>(undefined);
-  const lastSnapshotKey = useRef<string | null>(null);
+  const lastValues = useRef<Record<number, number>>({});
   const [baseline, setBaseline] = useState<Record<number, number> | undefined>(
     undefined,
   );
@@ -115,22 +117,30 @@ function usePreviousPropertyCurrentValues(snapshot: Snapshot | null) {
     : null;
 
   useLayoutEffect(() => {
-    if (!snapshot || !snapshotKey || snapshotKey === lastSnapshotKey.current) {
-      return;
-    }
+    if (!snapshot || !snapshotKey) return;
 
-    setBaseline(previous.current);
-    previous.current = buildPropertyCurrentValueMap(snapshot);
-    lastSnapshotKey.current = snapshotKey;
+    setBaseline((prev) => {
+      const next: Record<number, number> = { ...(prev ?? {}) };
+      let changed = false;
+      for (const property of snapshot.properties) {
+        const seen = lastValues.current[property.id];
+        // 首見：記下現值、基準＝自身（中性，無箭頭）。
+        if (seen === undefined) {
+          next[property.id] = property.currentValue;
+          changed = true;
+        } else if (seen !== property.currentValue) {
+          // 這支自己變價了：基準改成「變動前的值」→ 產生最新方向並保留。
+          next[property.id] = seen;
+          changed = true;
+        }
+        // 沒變的維持原基準（保留先前漲跌狀態），不動 next。
+        lastValues.current[property.id] = property.currentValue;
+      }
+      return changed ? next : prev;
+    });
   }, [snapshot, snapshotKey]);
 
   return baseline;
-}
-
-function buildPropertyCurrentValueMap(snapshot: Snapshot) {
-  return Object.fromEntries(
-    snapshot.properties.map((property) => [property.id, property.currentValue]),
-  );
 }
 
 const EMPTY_ANIMATION_QUEUE: ProjectionAnimationQueueState = {
