@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { postJson, TeamSelect, toast } from "@/components/client";
 import { Card, StickyTeam } from "@/components/Shell";
-import { Num, TeamItemBadges, TurnCompleteBar } from "@/components/ui";
-import { WHEEL_OUTCOMES, applyWheelMaxStake, applyWheelBonus, EffectType, type UndoRecipe } from "@/lib/game";
+import { Num, TeamItemBadges, MonopolyBadges, TurnCompleteBar } from "@/components/ui";
+import { WHEEL_OUTCOMES, applyWheelMaxStake, applyWheelBonus, EffectType, type UndoRecipe, type RegionCode } from "@/lib/game";
 import type { ActiveItemView } from "@/lib/snapshot";
 
 // 依權重比例切出每一段（x5 權重最低 → 最窄）
@@ -34,13 +34,14 @@ function arcPath(cx: number, cy: number, r: number, start: number, sweep: number
   return `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
 }
 
-type TeamLite = { id: number; name: string; coins: number; items: ActiveItemView[] };
+type TeamLite = { id: number; name: string; coins: number; items: ActiveItemView[]; monopolyRegions: RegionCode[] };
 
 export function WheelView({
   teams,
   team,
   setTeam,
   cur,
+  settings,
   onDone,
   turnMode = false,
   freeMode = false,
@@ -50,10 +51,11 @@ export function WheelView({
   team: number | "";
   setTeam: (id: number | "") => void;
   cur?: TeamLite;
+  settings: { auroraMultiplier: number; spectraCardPoints: number };
   onDone: () => void | Promise<unknown>;
   // 地圖回合操作：顯示「完成」鈕，累計本回合轉盤金流並回報（含投入 / 拿回子列）。
   turnMode?: boolean;
-  // 好運卡「命運眷顧」免費轉盤：不押注（隱藏押注控制），轉一次發「淨入帳 ≥0」，
+  // 好運卡「命運眷顧」免費轉盤：不押注（隱藏押注控制），轉一次發「入帳 = 500×mult（≥0，不扣本金）」，
   // 走 /api/map/free-wheel；turnMode 同時為 true，完成時以單條「命運眷顧」子列回報。
   freeMode?: boolean;
   onComplete?: (delta: number, subRows?: { label: string; amount: number }[]) => void;
@@ -145,7 +147,7 @@ export function WheelView({
     }
   };
 
-  // 好運卡「命運眷顧」免費轉一次：不押注，發淨入帳（夾 ≥0）。只能轉一次（轉過即 done）。
+  // 好運卡「命運眷顧」免費轉一次：不押注，發入帳 = 500×mult（夾 ≥0，不扣本金）。只能轉一次（轉過即 done）。
   const [freeDone, setFreeDone] = useState(false);
   const freeSpin = async () => {
     if (team === "" || spinning || freeDone) return;
@@ -156,7 +158,7 @@ export function WheelView({
       const r = await postJson("/api/map/free-wheel", { teamId: team });
       animateTo(r.mult);
       window.setTimeout(async () => {
-        // 免費轉盤無投入：stake=0、delta=淨入帳（reward）、baseDelta=0（無加成行）。
+        // 免費轉盤無投入：stake=0、delta=入帳（reward）、baseDelta=0（無加成行）。
         setLast({ mult: r.mult, delta: r.reward, baseDelta: 0, stake: 0 });
         setFreeDone(true);
         if (turnMode) setTurnPayoutTotal((p) => p + (r.reward ?? 0));
@@ -192,6 +194,15 @@ export function WheelView({
           items={cur?.items ?? []}
           relevantTypes={[EffectType.WHEEL_BONUS, EffectType.WHEEL_NO_ZERO, EffectType.WHEEL_STAKE_BOOST]}
         />
+        {/* AURORA 獨佔加成徽章：僅免費輪盤（銀行發放）入帳 ×auroraMultiplier；
+            一般押注輪盤為隊對隊性質，後端不套 AURORA，故 freeMode 才顯示。 */}
+        {freeMode && (
+          <MonopolyBadges
+            regions={cur?.monopolyRegions ?? []}
+            effects={["COIN_1_5X"]}
+            settings={settings}
+          />
+        )}
       </StickyTeam>
 
       <Card title="命運投資輪盤">

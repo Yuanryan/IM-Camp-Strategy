@@ -332,13 +332,13 @@ export function spinWheel(): number {
   return 1;
 }
 
-// 好運卡「命運眷顧」免費輪盤的名目投入額：以此為基準乘上輪盤倍率，
-// 取「淨變動但不低於 0」——白拿的好運卡只會賺、不會倒扣（×0／×0.5 只是少賺）。
+// 好運卡「命運眷顧」免費輪盤的名目投入額：以此為基準乘上輪盤倍率。
+// 白拿的好運卡只會賺、不會倒扣（×0 才不入帳）。
 export const FREE_WHEEL_STAKE = 500;
 
-// 名目投入 stake 轉一次輪盤，回傳「淨入帳光幣」（夾在 ≥0）。供 service 與 UI 預覽共用。
+// 名目投入 stake 轉一次輪盤，回傳「入帳光幣」= stake×mult（夾在 ≥0，不扣本金）。供 service 與 UI 預覽共用。
 export function freeWheelReward(stake: number, mult: number): number {
-  return Math.max(0, Math.round(stake * mult) - stake);
+  return Math.max(0, Math.round(stake * mult));
 }
 
 // ── 動產效果系統 ─────────────────────────────────────────────────
@@ -356,7 +356,6 @@ export const EffectType = {
   WHEEL_BONUS:       "WHEEL_BONUS",       // 輪盤淨獲利加成（+0.50 → 獲利 ×1.5）
   WHEEL_NO_ZERO:     "WHEEL_NO_ZERO",     // 移除輪盤 ×0 結果（保底不輸本）
   WHEEL_STAKE_BOOST: "WHEEL_STAKE_BOOST", // 輪盤投入上限提升（+0.10 → 最多押 20% 資金）
-  WHEEL_ON_GOOD_CARD:"WHEEL_ON_GOOD_CARD",// 好運卡獎勵 × 輪盤結果
   LOTTERY_BONUS:     "LOTTERY_BONUS",     // 大樂透中獎倍率加成（+0.50 → 獎金 ×1.5）
   JACKPOT_SHARE:     "JACKPOT_SHARE",     // 任意隊中獎時自動抽成（0.05 → 5% 獎金池）
   LOTTERY_INSURANCE: "LOTTERY_INSURANCE", // 他隊中獎時退還本期登記費用（一次性）
@@ -364,12 +363,12 @@ export const EffectType = {
   COMPOUND_INTEREST: "COMPOUND_INTEREST", // 每回合賺取現有光幣 X%（0.02 → 2%/輪）
   PROPERTY_DIVIDEND: "PROPERTY_DIVIDEND", // 每回合賺取不動產現值 X%（0.03 → 3%/輪）
   UNDERDOG:          "UNDERDOG",          // 末位時每回合獲得固定補貼（200 → 末位時 +200/輪）
-  DOUBLE_OR_NOTHING: "DOUBLE_OR_NOTHING", // 流動關主發獎時 50/50：雙倍或歸零
   ALLIANCE_BONUS:    "ALLIANCE_BONUS",    // 交易接受時雙方各獲固定光幣（50 → 各 +50）
   PIRACY:            "PIRACY",            // 俠盜印記・懸賞標記：被標記隊收過路費時抽成（僅當俠盜較窮才生效）
   MOVEMENT:          "MOVEMENT",          // 主動移動道具：關主在遊戲地圖按鈕觸發，改變本次擲骰步數（見 MovementMode）
   REMINDER:          "REMINDER",          // 無計算，僅提醒關主
   CARD_BLOCK:        "CARD_BLOCK",        // 詛咒：禁止對其他隊伍出功能卡（前端封鎖出卡操作），解咒後解除
+  ATTACK_SHIELD:     "ATTACK_SHIELD",     // 護盾：擋下一次對本隊的功能卡攻擊（消耗一次），純標記，效果於出卡時判定
 } as const;
 export type EffectType = typeof EffectType[keyof typeof EffectType];
 
@@ -386,7 +385,6 @@ export const EFFECT_TYPE_LABELS: Record<EffectType, string> = {
   WHEEL_BONUS:       "輪盤加成",
   WHEEL_NO_ZERO:     "輪盤保底",
   WHEEL_STAKE_BOOST: "輪盤上限提升",
-  WHEEL_ON_GOOD_CARD:"好運卡輪盤",
   LOTTERY_BONUS:     "樂透加成",
   JACKPOT_SHARE:     "樂透抽成",
   LOTTERY_INSURANCE: "樂透保險",
@@ -394,12 +392,12 @@ export const EFFECT_TYPE_LABELS: Record<EffectType, string> = {
   COMPOUND_INTEREST: "複利收益",
   PROPERTY_DIVIDEND: "不動產分紅",
   UNDERDOG:          "末位補貼",
-  DOUBLE_OR_NOTHING: "雙倍或歸零",
   ALLIANCE_BONUS:    "交易紅利",
   PIRACY:            "海盜旗",
   MOVEMENT:          "主動移動",
   REMINDER:          "提醒（無計算）",
   CARD_BLOCK:        "詛咒・封卡",
+  ATTACK_SHIELD:     "護盾",
 };
 
 // ── 主動移動道具（MOVEMENT）─────────────────────────────────
@@ -632,6 +630,7 @@ export const MOVABLE_ASSET_SEED: {
   { name: "圖書館閉館座位",       grade: "A", effectType: "WHEEL_NO_ZERO",     effectValue:  0,    condition: null, defaultUses: 2,    description: "輪盤保底，×0 不會出現（2 次）— 穩到不出包" },
   { name: "期末 All-pass 香",     grade: "A", effectType: "UNDERDOG",          effectValue:  200,  condition: null, defaultUses: null, description: "每回合若為末位獲 200 光幣補貼（永久）— 低空翻身" },
   { name: "賭徒硬幣",           grade: "A", effectType: "WHEEL_STAKE_BOOST", effectValue:  0.20, condition: null, defaultUses: null, description: "輪盤最大投入上限增加 20%（永久）— 高進低出，梭哈魂" },
+  { name: "資安防火牆",           grade: "A", effectType: "ATTACK_SHIELD",    effectValue:  0,    condition: null, defaultUses: 1,    description: "護盾：擋下下一張其他隊伍對你使用的攻擊功能卡（1 次）— 資安做好，攻擊擋掉" },
   // ── B 級：消耗品 / 小加成（食物、二手、生活）──
   { name: "手工薩克斯風",         grade: "B", effectType: "COINS_PER_ROUND",   effectValue:  50,   condition: null, defaultUses: null, description: "每回合固定收益 50 光幣（永久）— 街頭打賞" },
   { name: "水源阿伯二手腳踏車",   grade: "B", effectType: "TOLL_PAID",         effectValue: -0.10, condition: null, defaultUses: 1,    description: "支付過路費減少 10%（1 次）— 二手代步" },
@@ -710,6 +709,7 @@ export type GoodCard = {
   targetCount?: number; // 交易 / 拍賣 次數目標；其餘 kind 用 1
   targetRegion?: RegionCode | null; // BUY_LAND 指定區；null = 任一區
   rewardCoins?: number; // 完成獎勵光幣
+  weight?: number; // 抽牌權重（省略＝1）：值越大越常抽到，0 = 不抽
 };
 
 export type BadOutcome = { label: string; deduct: number }; // deduct 為要扣的光幣（正數）
@@ -721,6 +721,7 @@ export type BadCard = {
   criteria?: string;
   outcomes: BadOutcome[];
   game?: string; // 任務需題庫時，對應的 gameName
+  weight?: number; // 抽牌權重（省略＝1）：值越大越常抽到，0 = 不抽
 };
 
 // 好運卡：直接獎勵卡（無任務，關主依說明直接執行）
@@ -801,6 +802,7 @@ export type CurseCard = {
   targetRegion?: RegionCode | null; // BUY_LAND 指定區；null = 任一區
   rewardCoins: number;  // 解咒獎勵光幣
   taskText: string;     // 解咒條件說明
+  weight?: number;      // 抽牌權重（省略＝1）：值越大越常抽到，0 = 不抽
 };
 
 export const CURSE_CARDS: CurseCard[] = [
@@ -831,7 +833,12 @@ export const CURSE_CARDS: CurseCard[] = [
 export function pickCurseCard(openKinds: Set<TaskKind>, rng: () => number = Math.random): CurseCard | null {
   const pool = CURSE_CARDS.filter((c) => !openKinds.has(c.taskKind));
   if (pool.length === 0) return null;
-  return weightedPick(pool.map((value) => ({ value, weight: 1 })), rng);
+  return weightedPick(pool.map((value) => ({ value, weight: cardWeight(value) })), rng);
+}
+
+// 卡片抽牌權重：省略 weight 視為 1；負值夾成 0（不抽）。供好運 / 厄運 / 任務 / 詛咒各池共用。
+export function cardWeight(c: { weight?: number }): number {
+  return Math.max(0, c.weight ?? 1);
 }
 
 // 計算某區獨佔隊伍：需有 ≥1 棟三級 → 最多三級 → 再比總持有數 → 平手則無。
@@ -867,7 +874,7 @@ export function findMonopoly(
 export function pickTaskCard(openKinds: Set<TaskKind>, rng: () => number = Math.random): GoodCard | null {
   const pool = TASK_GOOD_CARDS.filter((c) => c.taskKind && !openKinds.has(c.taskKind));
   if (pool.length === 0) return null;
-  return weightedPick(pool.map((value) => ({ value, weight: 1 })), rng);
+  return weightedPick(pool.map((value) => ({ value, weight: cardWeight(value) })), rng);
 }
 
 // ── 任務目標進度評估（純函式，供 snapshot 顯示與結算判定共用）──
@@ -980,6 +987,8 @@ export type UndoRecipe = {
     cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number }[];
   // 撤銷時需刪除的 TeamItem（如好運卡骰到動產時發出的那張）
   itemIds?: number[];
+  // 撤銷時需「回補一次使用並重新生效」的 TeamItem（護盾擋下攻擊後被消耗的那張）
+  restoreItemIds?: number[];
   // 撤銷大樂透登記：刪除該 LotteryNumber 列並回補獎金池
   lotteryNumberId?: number;
   lotteryPoolRevert?: number; // 需從池中扣回的金額（= poolAdd）

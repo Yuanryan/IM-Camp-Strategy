@@ -305,7 +305,7 @@ export async function applyWheel(params: {
   });
 }
 
-// 好運卡「命運眷顧」免費轉一次輪盤：以 FREE_WHEEL_STAKE 為名目投入，發「淨入帳（夾 ≥0）」。
+// 好運卡「命運眷顧」免費轉一次輪盤：以 FREE_WHEEL_STAKE 為名目投入，發「入帳 = stake×mult（夾 ≥0，不扣本金）」。
 // 不押玩家自己的光幣（白拿的好運卡只會賺、不會倒扣），但仍享 WHEEL_BONUS / WHEEL_NO_ZERO 動產效果。
 export async function applyFreeWheel(params: { teamId: number; byToken?: string }) {
   const { teamId, byToken } = params;
@@ -324,7 +324,7 @@ export async function applyFreeWheel(params: { teamId: number; byToken?: string 
       ? items.filter((i) => i.asset.effectType === "WHEEL_NO_ZERO").map((i) => i.id)
       : [];
 
-    // 名目淨利（夾 ≥0），再套 WHEEL_BONUS 放大（虧損不放大，這裡本就 ≥0）
+    // 入帳 = stake×mult（夾 ≥0，不扣本金），再套 WHEEL_BONUS 放大
     const baseReward = freeWheelReward(FREE_WHEEL_STAKE, mult);
     const bonusEffect = await loadActiveEffects(tx, teamId, "WHEEL_BONUS");
     const reward = applyWheelBonus(baseReward, bonusEffect.delta);
@@ -541,6 +541,28 @@ async function logAttack(tx: Tx, victimTeamId: number, note: string, byToken?: s
   await logLedger(tx, { teamId: victimTeamId, kind: "attack", delta: 0, note, byToken });
 }
 
+// 護盾（ATTACK_SHIELD）：被攻擊隊若持有生效中的護盾，擋下這次功能卡攻擊並消耗一次。
+// 回傳被消耗的護盾 TeamItem id（供 undo restoreItemIds 回補）；無護盾則回傳 null（攻擊照常進行）。
+// 呼叫時機：在攻擊卡函式「已確定被攻擊隊、驗證完前置條件」後、實際套用傷害前。
+async function consumeShieldIfAny(
+  tx: Tx,
+  victimTeamId: number,
+  cardName: string,
+  attackerName: string | null,
+  byToken?: string,
+): Promise<number | null> {
+  const shield = await tx.teamItem.findFirst({
+    where: { teamId: victimTeamId, ...ACTIVE_ITEM, asset: { effectType: "ATTACK_SHIELD" } },
+    orderBy: { id: "asc" }, // 多個護盾時固定先用最早取得的那張
+    include: { asset: true },
+  });
+  if (!shield) return null;
+  await decrementUses(tx, [shield.id]); // 消耗一次；歸零即失效
+  const who = attackerName ? `${attackerName} 的` : "";
+  await logAttack(tx, victimTeamId, `🛡 你的護盾（${shield.asset.name}）擋下了${who}「${cardName}」攻擊`, byToken);
+  return shield.id;
+}
+
 // 出卡紀錄：對「出卡隊」寫一筆 kind:"card_use"、delta:0 的 ledger，供
 // 好運卡任務「對其他隊伍使用一張卡片」(USE_CARD_ON_TEAM) 計數。byTeamId 未知時略過。
 // 不納入 undo（純計數紀錄，撤銷產權不影響）。
@@ -583,6 +605,15 @@ export async function cardSeizeLand(params: { propertyId: number; toTeamId: numb
     const buyer = await tx.team.findUnique({ where: { id: toTeamId } });
     if (!buyer) throw new Error("找不到出卡小隊");
     const fromTeamId = prop.ownerTeamId;
+
+    // 護盾：被攻擊隊擋下 → 不動產不轉手，攻擊隊仍消耗此卡。
+    const shieldId = await consumeShieldIfAny(tx, fromTeamId, "購地卡", buyer.name, byToken);
+    if (shieldId !== null) {
+      await logCardUse(tx, toTeamId, `購地卡 → 隊 #${fromTeamId}（被護盾擋下）`, byToken);
+      await spendFunctionCard(tx, toTeamId, "購地卡");
+      return { ok: true, blocked: true, compensation: 0, undo: { label: "購地卡（被護盾擋下）", ledgerIds: [], restoreItemIds: [shieldId] } };
+    }
+
     const compensation = roundTo10(prop.basePrice * 0.8);
     const ledgerIds: number[] = [];
     if (compensation > 0) {
@@ -616,6 +647,15 @@ export async function cardSwapLand(params: { propertyAId: number; propertyBId: n
     if (a.ownerTeamId === b.ownerTeamId) throw new Error("兩塊地屬於同一隊");
     // attacker = 出卡隊（來源地 A 的持有隊）；victim = 目標地 B 的持有隊
     const attacker = await tx.team.findUnique({ where: { id: a.ownerTeamId }, select: { name: true } });
+
+    // 護盾：被攻擊隊（B 地持有隊）擋下 → 不互換，攻擊隊仍消耗此卡。
+    const swapLandShieldId = await consumeShieldIfAny(tx, b.ownerTeamId, "換地卡", attacker?.name ?? null, byToken);
+    if (swapLandShieldId !== null) {
+      await logCardUse(tx, a.ownerTeamId, `換地卡：${a.name} ⇄ ${b.name}（被護盾擋下）`, byToken);
+      await spendFunctionCard(tx, a.ownerTeamId, "換地卡");
+      return { ok: true, blocked: true, undo: { label: "換地卡（被護盾擋下）", ledgerIds: [], restoreItemIds: [swapLandShieldId] } };
+    }
+
     await tx.property.update({ where: { id: a.id }, data: { ownerTeamId: b.ownerTeamId } });
     await tx.property.update({ where: { id: b.id }, data: { ownerTeamId: a.ownerTeamId } });
     const lid = await logLedger(tx, { teamId: a.ownerTeamId, kind: "property", delta: 0, note: `換地卡：${a.name} ⇄ ${b.name}`, byToken });
@@ -647,6 +687,15 @@ export async function cardSwapHouse(params: { propertyAId: number; propertyBId: 
     if (a.ownerTeamId === b.ownerTeamId) throw new Error("兩棟房屋屬於同一隊");
     // attacker = 出卡隊（來源屋 A 的持有隊）；victim = 目標屋 B 的持有隊
     const attacker = await tx.team.findUnique({ where: { id: a.ownerTeamId }, select: { name: true } });
+
+    // 護盾：被攻擊隊（B 屋持有隊）擋下 → 不換等級，攻擊隊仍消耗此卡。
+    const swapHouseShieldId = await consumeShieldIfAny(tx, b.ownerTeamId, "換屋卡", attacker?.name ?? null, byToken);
+    if (swapHouseShieldId !== null) {
+      await logCardUse(tx, a.ownerTeamId, `換屋卡：${a.name} ⇄ ${b.name}（被護盾擋下）`, byToken);
+      await spendFunctionCard(tx, a.ownerTeamId, "換屋卡");
+      return { ok: true, blocked: true, undo: { label: "換屋卡（被護盾擋下）", ledgerIds: [], restoreItemIds: [swapHouseShieldId] } };
+    }
+
     await tx.property.update({ where: { id: a.id }, data: { level: b.level } });
     await tx.property.update({ where: { id: b.id }, data: { level: a.level } });
     const lid = await logLedger(tx, { teamId: a.ownerTeamId, kind: "property", delta: 0, note: `換屋卡：${a.name}(${a.level}級) ⇄ ${b.name}(${b.level}級)`, byToken });
@@ -681,9 +730,18 @@ export async function cardDemolish(params: { propertyId: number; byTeamId: numbe
     if (!prop) throw new Error("找不到不動產");
     if (prop.ownerTeamId == null) throw new Error("該不動產尚未售出");
     if (prop.level <= 0) throw new Error("該房屋已最低等級，無法再降級");
+    const atk = await attackerName(tx, byTeamId);
+
+    // 護盾：被攻擊隊（屋主）擋下 → 不降級，攻擊隊仍消耗此卡。
+    const demolishShieldId = await consumeShieldIfAny(tx, prop.ownerTeamId, "拆屋卡", atk, byToken);
+    if (demolishShieldId !== null) {
+      await logCardUse(tx, byTeamId, `拆屋卡 → 「${prop.name}」（被護盾擋下）`, byToken);
+      await spendFunctionCard(tx, byTeamId, "拆屋卡");
+      return { ok: true, blocked: true, undo: { label: "拆屋卡（被護盾擋下）", ledgerIds: [], restoreItemIds: [demolishShieldId] } };
+    }
+
     await tx.property.update({ where: { id: propertyId }, data: { level: prop.level - 1 } });
     const lid = await logLedger(tx, { teamId: prop.ownerTeamId, kind: "property", delta: 0, note: `拆屋卡：${prop.name} ${prop.level}級 → ${prop.level - 1}級`, byToken });
-    const atk = await attackerName(tx, byTeamId);
     await logAttack(tx, prop.ownerTeamId, `⚔ ${atk ? `${atk} 用拆屋卡把` : ""}你的「${prop.name}」${atk ? "降為" : "被拆屋卡降為"} ${prop.level - 1} 級`, byToken);
     await logCardUse(tx, byTeamId, `拆屋卡 → 「${prop.name}」降級`, byToken);
     await spendFunctionCard(tx, byTeamId, "拆屋卡");
@@ -705,9 +763,18 @@ export async function cardMonster(params: { propertyId: number; byTeamId: number
     if (!prop) throw new Error("找不到不動產");
     if (prop.ownerTeamId == null) throw new Error("該不動產尚未售出");
     const fromTeamId = prop.ownerTeamId;
+    const atk = await attackerName(tx, byTeamId);
+
+    // 護盾：被攻擊隊（屋主）擋下 → 房屋不被摧毀，攻擊隊仍消耗此卡。
+    const monsterShieldId = await consumeShieldIfAny(tx, fromTeamId, "怪獸卡", atk, byToken);
+    if (monsterShieldId !== null) {
+      await logCardUse(tx, byTeamId, `怪獸卡 → 「${prop.name}」（被護盾擋下）`, byToken);
+      await spendFunctionCard(tx, byTeamId, "怪獸卡");
+      return { ok: true, blocked: true, undo: { label: "怪獸卡（被護盾擋下）", ledgerIds: [], restoreItemIds: [monsterShieldId] } };
+    }
+
     await tx.property.update({ where: { id: propertyId }, data: { ownerTeamId: null, level: 0 } });
     const lid = await logLedger(tx, { teamId: fromTeamId, kind: "property", delta: 0, note: `怪獸卡摧毀 ${prop.name}（降回未購買）`, byToken });
-    const atk = await attackerName(tx, byTeamId);
     await logAttack(tx, fromTeamId, `⚔ ${atk ? `${atk} 用怪獸卡摧毀了你的` : "你的"}「${prop.name}」，你失去這塊地了`, byToken);
     await logCardUse(tx, byTeamId, `怪獸卡 → 摧毀「${prop.name}」`, byToken);
     await spendFunctionCard(tx, byTeamId, "怪獸卡");
@@ -788,6 +855,14 @@ export async function cardTaxAudit(params: { teamId: number; targetTeamId: numbe
     const attacker = await tx.team.findUnique({ where: { id: teamId }, select: { name: true } });
     if (!attacker) throw new Error("找不到出卡小隊");
 
+    // 護盾：被攻擊隊擋下 → 不扣光幣，攻擊隊仍消耗此卡。
+    const taxShieldId = await consumeShieldIfAny(tx, targetTeamId, "查稅卡", attacker.name, byToken);
+    if (taxShieldId !== null) {
+      await logCardUse(tx, teamId, `查稅卡 → 隊 #${targetTeamId}（被護盾擋下）`, byToken);
+      await spendFunctionCard(tx, teamId, "查稅卡");
+      return { ok: true, blocked: true, amount: 0, undo: { label: "查稅卡（被護盾擋下）", ledgerIds: [], restoreItemIds: [taxShieldId] } };
+    }
+
     const amount = roundTo10(target.coins * 0.1);
     if (amount > 0) {
       await tx.team.update({ where: { id: targetTeamId }, data: { coins: { decrement: amount } } });
@@ -812,6 +887,14 @@ export async function cardStealRandom(params: { teamId: number; targetTeamId: nu
     if (!target) throw new Error("找不到目標小隊");
     const attacker = await tx.team.findUnique({ where: { id: teamId }, select: { name: true } });
     if (!attacker) throw new Error("找不到出卡小隊");
+
+    // 護盾：被攻擊隊擋下 → 不被偷任何東西，攻擊隊仍消耗此卡。
+    const stealShieldId = await consumeShieldIfAny(tx, targetTeamId, "孫生媽媽卡", attacker.name, byToken);
+    if (stealShieldId !== null) {
+      await logCardUse(tx, teamId, `孫生媽媽卡 → 隊 #${targetTeamId}（被護盾擋下）`, byToken);
+      await spendFunctionCard(tx, teamId, "孫生媽媽卡");
+      return { ok: true, blocked: true, pick: null, note: "被護盾擋下", undo: { label: "孫生媽媽卡（被護盾擋下）", ledgerIds: [], restoreItemIds: [stealShieldId] } };
+    }
 
     const targetItems = await tx.teamItem.findMany({
       where: { teamId: targetTeamId, ...ACTIVE_ITEM },
@@ -879,6 +962,16 @@ export async function spendFunctionCardManual(params: {
       const target = await tx.team.findUnique({ where: { id: targetTeamId }, select: { name: true } });
       if (!target) throw new Error("找不到目標小隊");
       targetNote = ` → ${target.name}`;
+
+      // 護盾：強力膠卡對目標隊使用時可被擋下（遙控骰子卡作用於自己、無目標，不受此影響）。
+      const atk = await attackerName(tx, teamId);
+      const manualShieldId = await consumeShieldIfAny(tx, targetTeamId, cardType, atk, byToken);
+      if (manualShieldId !== null) {
+        await logCardUse(tx, teamId, `${cardType}${targetNote}（被護盾擋下）`, byToken);
+        await spendFunctionCard(tx, teamId, cardType);
+        return { ok: true, cardType, blocked: true, undo: { label: `${cardType}（被護盾擋下）`, ledgerIds: [], restoreItemIds: [manualShieldId] } };
+      }
+
       await logAttack(tx, targetTeamId, `⚔ 有隊伍對你使用了${cardType}，請聽從關主指示`, byToken);
     }
     await logCardUse(tx, teamId, `${cardType}${targetNote}（人工執行）`, byToken);
@@ -1594,7 +1687,7 @@ export async function reverseLedger(params: { ledgerId: number; byToken?: string
 }
 
 // ── 好運卡 / 厄運卡（含動產效果）────────────────────────────────
-// 好運卡發獎核心（在既有 tx 內執行）：套 GOOD_CARD_BONUS 與 WHEEL_ON_GOOD_CARD，
+// 好運卡發獎核心（在既有 tx 內執行）：套 GOOD_CARD_BONUS，
 // 以光幣入帳並記 ledger。抽出供 applyGoodCard 與任務目標結算共用同一筆交易。
 async function _applyGoodCardTx(
   tx: Tx,
@@ -1602,26 +1695,11 @@ async function _applyGoodCardTx(
 ) {
   const { teamId, baseReward, note, byToken } = params;
   const bonusEffect = await loadActiveEffects(tx, teamId, "GOOD_CARD_BONUS");
-  let afterBonus = applyGoodCardReward(baseReward, bonusEffect.delta);
-
-  // WHEEL_ON_GOOD_CARD：好運卡獎勵 × 輪盤結果
-  const wheelItems = await tx.teamItem.findMany({
-    where: { teamId, ...ACTIVE_ITEM },
-    include: { asset: true },
-  });
-  const wheelOnCardItem = wheelItems.find((i) => i.asset.effectType === "WHEEL_ON_GOOD_CARD");
-  let wheelMult: number | null = null;
-  let wheelUsedIds: number[] = [];
-  if (wheelOnCardItem && afterBonus > 0) {
-    wheelMult = spinWheelCustom();
-    afterBonus = Math.round(afterBonus * wheelMult);
-    wheelUsedIds = [wheelOnCardItem.id];
-  }
+  const afterBonus = applyGoodCardReward(baseReward, bonusEffect.delta);
 
   // AURORA 加成：好運卡/詛咒補償為銀行發放，可直接放大（非隊對隊轉移）
   const finalReward = Math.max(0, await withAuroraBonus(tx, teamId, afterBonus));
-  await decrementUses(tx, [...bonusEffect.usedIds, ...wheelUsedIds]);
-  const noteWithWheel = wheelMult !== null ? `${note}（輪盤 ×${wheelMult}）` : note;
+  await decrementUses(tx, bonusEffect.usedIds);
 
   // 好運卡獎勵一律以光幣發放（卡面金額）。獎勵為 0（失敗且卡面 fail=0）時仍記一筆 0 ledger，
   // 維持「成功/失敗都有紀錄」行為與可撤銷性。
@@ -1629,10 +1707,10 @@ async function _applyGoodCardTx(
   if (finalReward > 0) {
     await tx.team.update({ where: { id: teamId }, data: { coins: { increment: finalReward } } });
   }
-  ledgerIds.push(await logLedger(tx, { teamId, kind: "coins", delta: finalReward, note: noteWithWheel, byToken }));
+  ledgerIds.push(await logLedger(tx, { teamId, kind: "coins", delta: finalReward, note, byToken }));
 
-  const undo: UndoRecipe = { label: noteWithWheel, ledgerIds };
-  return { ok: true as const, baseReward, finalReward, wheelMult, undo };
+  const undo: UndoRecipe = { label: note, ledgerIds };
+  return { ok: true as const, baseReward, finalReward, wheelMult: null, undo };
 }
 
 export async function applyGoodCard(params: {
@@ -2203,12 +2281,13 @@ export async function undoAction(params: {
   properties?: { id: number; ownerTeamId: number | null; level: number;
     cardRegionMult?: number; cardBuildingMult?: number; monopolyBonusMult?: number }[];
   itemIds?: number[];
+  restoreItemIds?: number[];
   lotteryNumberId?: number;
   lotteryPoolRevert?: number;
   byToken?: string;
   isAdmin?: boolean;
 }) {
-  const { ledgerIds, property, properties, itemIds, lotteryNumberId, lotteryPoolRevert, byToken, isAdmin } = params;
+  const { ledgerIds, property, properties, itemIds, restoreItemIds, lotteryNumberId, lotteryPoolRevert, byToken, isAdmin } = params;
   const ids = [...new Set((ledgerIds ?? []).filter((n) => Number.isInteger(n)))];
   if (!ids.length) throw new Error("沒有可撤銷的項目");
 
@@ -2264,6 +2343,17 @@ export async function undoAction(params: {
     const itemsToDelete = [...new Set((itemIds ?? []).filter((n) => Number.isInteger(n)))];
     if (itemsToDelete.length) {
       await tx.teamItem.deleteMany({ where: { id: { in: itemsToDelete } } });
+    }
+
+    // 護盾：撤銷被擋下的攻擊 → 回補該護盾一次使用並重新生效（+1 use、active=true）。
+    const itemsToRestore = [...new Set((restoreItemIds ?? []).filter((n) => Number.isInteger(n)))];
+    for (const id of itemsToRestore) {
+      const item = await tx.teamItem.findUnique({ where: { id } });
+      if (!item) continue;
+      await tx.teamItem.update({
+        where: { id },
+        data: { usesRemaining: (item.usesRemaining ?? 0) + 1, active: true },
+      });
     }
 
     // 大樂透登記：刪除號碼列並扣回獎金池

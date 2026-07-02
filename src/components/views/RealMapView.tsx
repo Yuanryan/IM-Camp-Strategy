@@ -333,8 +333,9 @@ export function RealMapView({
   }, []);
 
   // 換隊時清掉已選的移動道具（避免套用到別隊不存在的道具），關閉落地路由卡（屬上一隊），
-  // 並把流程退回階段 1（重新驅動棋子）。
-  useEffect(() => { setSelectedMoveId(null); setLanded(null); setPassedStartTurn(false); setDrawn(null); setCardResult(null); setResult(null); setActionDone(false); setPhase(1); setFrozenObjectives([]); setCardPanelOpen(false); }, [team]);
+  // 並把流程退回階段 1（重新驅動棋子）。功能卡面板與地圖共用選隊狀態，換隊可能來自面板內，
+  // 故不在此關閉面板（面板自己會依新隊重置手牌）。
+  useEffect(() => { setSelectedMoveId(null); setLanded(null); setPassedStartTurn(false); setDrawn(null); setCardResult(null); setResult(null); setActionDone(false); setPhase(1); setFrozenObjectives([]); }, [team]);
 
   // 分頁操作完成回傳金流 → 評估任務 → 併入階段 2 結算面板，刷新餘額並跳到階段 2，最後清掉來源。
   // 注意：mutate / clearActionResult 不放 deps，避免其 identity 變動重複觸發。
@@ -420,7 +421,8 @@ export function RealMapView({
   // 抽卡結算 hook（與 LuckDraw 同口徑：含動產加成 / 減免、undo、刷新）。
   // 必須在任何提前 return 之前呼叫（Rules of Hooks）；輸入由 snapshot 安全推導（可能尚未載入）。
   const settleTeam = snap?.teams.find((t) => t.id === team);
-  const settler = useCardSettle({ team, curName: settleTeam?.name, items: settleTeam?.items ?? [], onDone: mutate });
+  const settleAuroraMult = settleTeam?.monopolyRegions.includes("AURORA") ? (snap?.settings.auroraMultiplier ?? 1) : 1;
+  const settler = useCardSettle({ team, curName: settleTeam?.name, items: settleTeam?.items ?? [], auroraMult: settleAuroraMult, onDone: mutate });
 
   if (!snap) return <p className="p-6 text-sm text-slate-400">載入中…</p>;
   const teams = snap.teams;
@@ -1460,7 +1462,7 @@ export function RealMapView({
       {/* 功能卡懸浮托盤：從右緣滑出、延伸至棋盤中段，背後棋盤上暗色遮罩（點擊 / Esc 關閉）。
           錨定在本列（rowRef，relative）上，桌機覆蓋約 2/3 寬、手機幾乎全寬，給卡面與選標更寬的呼吸空間。*/}
       <CardTray open={cardPanelOpen} onClose={() => setCardPanelOpen(false)}>
-        <CardUsePanel defaultTeamId={team} onClose={() => setCardPanelOpen(false)} />
+        <CardUsePanel team={team} setTeam={setTeam} onClose={() => setCardPanelOpen(false)} />
       </CardTray>
     </div>
     </div>

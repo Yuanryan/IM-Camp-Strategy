@@ -17,6 +17,7 @@ import { JackpotBallCanvas, type JackpotBallDef } from "./JackpotBallCanvas";
 import { REGIONS, REGION_UI, REGION_MONOPOLY_EFFECT, monopolyEffectText, type MonopolyEffect, type RegionCode } from "@/lib/game";
 import {
   getProjectionLevelTier,
+  getProjectionRankNameScale,
   getProjectionRankTier,
   type ProjectionRankTier,
 } from "@/lib/projection-dashboard";
@@ -55,7 +56,7 @@ export function ProjectionArenaDashboard({
       <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
         <ArenaHeader snap={snap} />
 
-        <main className="grid min-h-0 grid-cols-[23.5rem_minmax(0,1fr)] gap-3">
+        <main className="grid min-h-0 grid-cols-[26rem_minmax(0,1fr)] gap-3">
           <aside className="grid min-h-0 grid-rows-[8.75rem_minmax(0,1fr)] gap-3">
             <JackpotCard
               pool={snap.lottery.pool}
@@ -272,7 +273,10 @@ function ArenaLeaderboard({ ranking }: { ranking: TeamView[] }) {
                   <span className="projection-rank-team-color" aria-hidden="true" />
                   <RankBadge index={index} tier={tier} />
                   {reduceMotion ? (
-                    <span className="projection-rank-name min-w-0 flex-1 truncate font-black">
+                    <span
+                      className="projection-rank-name min-w-0 flex-1 truncate font-black"
+                      style={{ "--rank-name-scale": getProjectionRankNameScale(team.name) } as CSSProperties}
+                    >
                       {team.name}
                     </span>
                   ) : (
@@ -280,6 +284,7 @@ function ArenaLeaderboard({ ranking }: { ranking: TeamView[] }) {
                       <motion.span
                         key={`rank-name-${index}`}
                         className="projection-rank-name min-w-0 flex-1 truncate font-black"
+                        style={{ "--rank-name-scale": getProjectionRankNameScale(team.name) } as CSSProperties}
                         initial={{ opacity: 0, x: -18 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: 10 }}

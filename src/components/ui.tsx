@@ -179,8 +179,13 @@ export function PriceTag({
   return (
     <span className={`num font-bold ${className} ${up ? "text-emerald-400 drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]" : down ? "text-rose-400" : "text-slate-100"}`}>
       {current}
-      {!hideTrendIcon && up && <span className="ml-0.5 text-emerald-400">▲</span>}
-      {!hideTrendIcon && down && <span className="ml-0.5 text-rose-500">▼</span>}
+      {/* 箭頭以 comparisonValue 當 key：現價變動時重新掛載 → CSS 動畫重新播放（往上／往下彈一下）。 */}
+      {!hideTrendIcon && up && (
+        <span key={comparisonValue} className="price-arrow price-arrow-up ml-0.5 inline-block text-emerald-400">▲</span>
+      )}
+      {!hideTrendIcon && down && (
+        <span key={comparisonValue} className="price-arrow price-arrow-down ml-0.5 inline-block text-rose-500">▼</span>
+      )}
     </span>
   );
 }
