@@ -45,6 +45,7 @@ import {
   MOBILE_REWARD_RATES,
   MOBILE_GAMES,
   weightedPick,
+  cardWeight,
   GOOD_LUCK_CARDS,
   TASK_GOOD_CARDS,
   MAX_OPEN_TASKS,
@@ -634,12 +635,12 @@ describe("命運輪盤", () => {
 
 // ── 好運卡「命運眷顧」免費輪盤（freeWheelReward）────────────────
 describe("freeWheelReward（命運眷顧）", () => {
-  it("淨入帳 = stake×mult − stake，夾在 ≥0", () => {
-    expect(freeWheelReward(200, 2)).toBe(200);   // 400 − 200
-    expect(freeWheelReward(200, 10)).toBe(1800); // 2000 − 200
-    expect(freeWheelReward(200, 1)).toBe(0);     // 不賺不賠
-    expect(freeWheelReward(200, 0.5)).toBe(0);   // 少賺，夾到 0（不倒扣）
-    expect(freeWheelReward(200, 0)).toBe(0);     // ×0 也不倒扣
+  it("入帳 = stake×mult，夾在 ≥0（不扣本金）", () => {
+    expect(freeWheelReward(200, 2)).toBe(400);   // 200 × 2
+    expect(freeWheelReward(200, 10)).toBe(2000); // 200 × 10
+    expect(freeWheelReward(200, 1)).toBe(200);   // 200 × 1，×1 照領
+    expect(freeWheelReward(200, 0.5)).toBe(100); // 200 × 0.5
+    expect(freeWheelReward(200, 0)).toBe(0);     // ×0 不入帳
   });
 
   it("任一合法輪盤倍率都不會讓玩家倒扣（白拿只賺不賠）", () => {
@@ -868,6 +869,16 @@ describe("weightedPick", () => {
   it("空陣列回 null；全 0 權重回第一項", () => {
     expect(weightedPick([], () => 0.5)).toBeNull();
     expect(weightedPick([{ value: "x", weight: 0 }], () => 0.5)).toBe("x");
+  });
+});
+
+// ── 卡片抽牌權重 cardWeight ────────────────────────────────────
+describe("cardWeight（卡片抽牌權重）", () => {
+  it("省略 weight＝1；負值夾成 0", () => {
+    expect(cardWeight({})).toBe(1);
+    expect(cardWeight({ weight: 3 })).toBe(3);
+    expect(cardWeight({ weight: 0 })).toBe(0);
+    expect(cardWeight({ weight: -5 })).toBe(0);
   });
 });
 

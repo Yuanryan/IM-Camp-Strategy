@@ -332,13 +332,13 @@ export function spinWheel(): number {
   return 1;
 }
 
-// 好運卡「命運眷顧」免費輪盤的名目投入額：以此為基準乘上輪盤倍率，
-// 取「淨變動但不低於 0」——白拿的好運卡只會賺、不會倒扣（×0／×0.5 只是少賺）。
+// 好運卡「命運眷顧」免費輪盤的名目投入額：以此為基準乘上輪盤倍率。
+// 白拿的好運卡只會賺、不會倒扣（×0 才不入帳）。
 export const FREE_WHEEL_STAKE = 500;
 
-// 名目投入 stake 轉一次輪盤，回傳「淨入帳光幣」（夾在 ≥0）。供 service 與 UI 預覽共用。
+// 名目投入 stake 轉一次輪盤，回傳「入帳光幣」= stake×mult（夾在 ≥0，不扣本金）。供 service 與 UI 預覽共用。
 export function freeWheelReward(stake: number, mult: number): number {
-  return Math.max(0, Math.round(stake * mult) - stake);
+  return Math.max(0, Math.round(stake * mult));
 }
 
 // ── 動產效果系統 ─────────────────────────────────────────────────
@@ -709,6 +709,7 @@ export type GoodCard = {
   targetCount?: number; // 交易 / 拍賣 次數目標；其餘 kind 用 1
   targetRegion?: RegionCode | null; // BUY_LAND 指定區；null = 任一區
   rewardCoins?: number; // 完成獎勵光幣
+  weight?: number; // 抽牌權重（省略＝1）：值越大越常抽到，0 = 不抽
 };
 
 export type BadOutcome = { label: string; deduct: number }; // deduct 為要扣的光幣（正數）
@@ -720,6 +721,7 @@ export type BadCard = {
   criteria?: string;
   outcomes: BadOutcome[];
   game?: string; // 任務需題庫時，對應的 gameName
+  weight?: number; // 抽牌權重（省略＝1）：值越大越常抽到，0 = 不抽
 };
 
 // 好運卡：直接獎勵卡（無任務，關主依說明直接執行）
@@ -800,6 +802,7 @@ export type CurseCard = {
   targetRegion?: RegionCode | null; // BUY_LAND 指定區；null = 任一區
   rewardCoins: number;  // 解咒獎勵光幣
   taskText: string;     // 解咒條件說明
+  weight?: number;      // 抽牌權重（省略＝1）：值越大越常抽到，0 = 不抽
 };
 
 export const CURSE_CARDS: CurseCard[] = [
@@ -830,7 +833,12 @@ export const CURSE_CARDS: CurseCard[] = [
 export function pickCurseCard(openKinds: Set<TaskKind>, rng: () => number = Math.random): CurseCard | null {
   const pool = CURSE_CARDS.filter((c) => !openKinds.has(c.taskKind));
   if (pool.length === 0) return null;
-  return weightedPick(pool.map((value) => ({ value, weight: 1 })), rng);
+  return weightedPick(pool.map((value) => ({ value, weight: cardWeight(value) })), rng);
+}
+
+// 卡片抽牌權重：省略 weight 視為 1；負值夾成 0（不抽）。供好運 / 厄運 / 任務 / 詛咒各池共用。
+export function cardWeight(c: { weight?: number }): number {
+  return Math.max(0, c.weight ?? 1);
 }
 
 // 計算某區獨佔隊伍：需有 ≥1 棟三級 → 最多三級 → 再比總持有數 → 平手則無。
@@ -866,7 +874,7 @@ export function findMonopoly(
 export function pickTaskCard(openKinds: Set<TaskKind>, rng: () => number = Math.random): GoodCard | null {
   const pool = TASK_GOOD_CARDS.filter((c) => c.taskKind && !openKinds.has(c.taskKind));
   if (pool.length === 0) return null;
-  return weightedPick(pool.map((value) => ({ value, weight: 1 })), rng);
+  return weightedPick(pool.map((value) => ({ value, weight: cardWeight(value) })), rng);
 }
 
 // ── 任務目標進度評估（純函式，供 snapshot 顯示與結算判定共用）──

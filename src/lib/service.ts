@@ -305,7 +305,7 @@ export async function applyWheel(params: {
   });
 }
 
-// 好運卡「命運眷顧」免費轉一次輪盤：以 FREE_WHEEL_STAKE 為名目投入，發「淨入帳（夾 ≥0）」。
+// 好運卡「命運眷顧」免費轉一次輪盤：以 FREE_WHEEL_STAKE 為名目投入，發「入帳 = stake×mult（夾 ≥0，不扣本金）」。
 // 不押玩家自己的光幣（白拿的好運卡只會賺、不會倒扣），但仍享 WHEEL_BONUS / WHEEL_NO_ZERO 動產效果。
 export async function applyFreeWheel(params: { teamId: number; byToken?: string }) {
   const { teamId, byToken } = params;
@@ -324,7 +324,7 @@ export async function applyFreeWheel(params: { teamId: number; byToken?: string 
       ? items.filter((i) => i.asset.effectType === "WHEEL_NO_ZERO").map((i) => i.id)
       : [];
 
-    // 名目淨利（夾 ≥0），再套 WHEEL_BONUS 放大（虧損不放大，這裡本就 ≥0）
+    // 入帳 = stake×mult（夾 ≥0，不扣本金），再套 WHEEL_BONUS 放大
     const baseReward = freeWheelReward(FREE_WHEEL_STAKE, mult);
     const bonusEffect = await loadActiveEffects(tx, teamId, "WHEEL_BONUS");
     const reward = applyWheelBonus(baseReward, bonusEffect.delta);

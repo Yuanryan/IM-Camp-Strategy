@@ -15,6 +15,8 @@ import {
   isInstantGood,
   isInstantBad,
   isTaskGood,
+  weightedPick,
+  cardWeight,
   type GoodCard,
   type BadCard,
   type CurseCard,
@@ -23,7 +25,9 @@ import {
 } from "@/lib/game";
 import type { ActiveItemView } from "@/lib/snapshot";
 
-const pick = <T,>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
+// 依卡片 weight 加權抽一張（省略 weight＝1）。池必為非空（呼叫端保證），故非 null。
+const pick = <T extends { weight?: number }>(arr: T[]): T =>
+  weightedPick(arr.map((value) => ({ value, weight: cardWeight(value) }))) as T;
 // 指示型直接獎勵 → 關主該到哪個分頁執行（coins 直接入帳，不在此表；move 由地圖面板就地執行）
 const REWARD_TAB_HINT: Record<string, string> = {
   wheel: "命運輪盤",
@@ -75,11 +79,15 @@ export function useCardSettle({
   team,
   curName,
   items = [],
+  // AURORA 獨佔加成倍率：該隊獨佔 AURORA 時＝settings.auroraMultiplier（如 1.5），否則 1。
+  // 與後端 withAuroraBonus 同口徑，供 goodLabel 預覽把加成顯示在按鈕上（後端仍是真實來源）。
+  auroraMult = 1,
   onDone,
 }: {
   team: number | "";
   curName?: string;
   items?: ActiveItemView[];
+  auroraMult?: number;
   onDone: () => void | Promise<unknown>;
 }) {
   const goodDelta = stackEffects(
@@ -89,9 +97,10 @@ export function useCardSettle({
     items.filter((i) => i.effectType === EffectType.BAD_CARD_REDUCE).map((i) => i.effectValue),
   );
 
-  // 預覽標籤：效果改變數值時，原值刪除線顯示在右側
+  // 預覽標籤：效果改變數值時，原值刪除線顯示在右側。
+  // 口徑對齊後端 _applyGoodCardTx：先套 GOOD_CARD_BONUS 動產加成，再套 AURORA 獨佔 ×auroraMult。
   const goodLabel = (prefix: string, base: number): ReactNode => {
-    const final = applyGoodCardReward(base, goodDelta);
+    const final = Math.max(0, Math.round(applyGoodCardReward(base, goodDelta) * auroraMult));
     if (final === base) return `${prefix}  +${base}`;
     return (
       <>
@@ -133,7 +142,7 @@ export function useCardSettle({
     return { message: `${curName ?? ""} ${note}（無獎勵）`, finalDelta: 0, undo: r.undo };
   };
 
-  return { settle, goodLabel, badLabel };
+  return { settle, goodLabel, badLabel, auroraMult };
 }
 
 type Settler = ReturnType<typeof useCardSettle>;
@@ -210,7 +219,7 @@ export function InstantCardPanel({
   onRouteReward?: (kind: "wheel" | "lottery" | "card") => void;
   onSettled: (result?: { message: string; finalDelta?: number; undo?: UndoRecipe }) => void;
 }) {
-  const { settle, goodLabel, badLabel } = settler;
+  const { settle, goodLabel, badLabel, auroraMult } = settler;
   const mult = event1 ? 2 : 1;
   const lock = team === "" || settled; // 動作鈕鎖定條件
   const wrap = (action: () => Promise<{ message: string; finalDelta?: number; undo?: UndoRecipe }>) => async () => {
@@ -232,6 +241,13 @@ export function InstantCardPanel({
           <span className="chip px-1.5 py-0.5 text-xs">{good.difficulty}</span>
         </div>
         <p className="mb-3 text-sm text-slate-200">{good.rewardText}</p>
+        {/* 獨佔 AURORA 加成徽章：光幣獎勵才適用（金額 ×auroraMult），與後端發放口徑一致。 */}
+        {reward.kind === "coins" && auroraMult > 1 && (
+          <div className="mb-2 inline-flex items-center gap-1 rounded-lg border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-xs font-medium text-amber-200">
+            <span className="font-bold opacity-70">極光金域獨佔</span>
+            <span>光幣 ×{auroraMult}</span>
+          </div>
+        )}
         {reward.kind === "coins" ? (
           <ActionButton
             label={goodLabel("領取", reward.amount)}
@@ -271,15 +287,24 @@ export function InstantCardPanel({
             前往「{FREEBIE_ROUTE_LABEL[reward.kind]}」
           </button>
         ) : reward.kind === "wheel" ? (
-          <ActionButton
-            label="免費轉輪盤"
-            className="w-full btn-amber"
-            disabled={lock}
-            onAction={wrap(async () => {
-              const r = await postJson("/api/map/free-wheel", { teamId: team });
-              return { message: `🎡 輪盤 ×${r.mult} → 🪙 +${r.reward} 光幣`, finalDelta: r.reward as number, undo: r.undo };
-            })}
-          />
+          <>
+            {/* 免費輪盤入帳為銀行發放，享 AURORA 獨佔 ×auroraMult（與後端 free-wheel 口徑一致）。 */}
+            {auroraMult > 1 && (
+              <div className="mb-2 inline-flex items-center gap-1 rounded-lg border border-amber-400/40 bg-amber-400/10 px-2 py-0.5 text-xs font-medium text-amber-200">
+                <span className="font-bold opacity-70">極光金域獨佔</span>
+                <span>光幣 ×{auroraMult}</span>
+              </div>
+            )}
+            <ActionButton
+              label="免費轉輪盤"
+              className="w-full btn-amber"
+              disabled={lock}
+              onAction={wrap(async () => {
+                const r = await postJson("/api/map/free-wheel", { teamId: team });
+                return { message: `🎡 輪盤 ×${r.mult} → 🪙 +${r.reward} 光幣`, finalDelta: r.reward as number, undo: r.undo };
+              })}
+            />
+          </>
         ) : reward.kind === "lottery" ? (
           <FreeLotteryAction team={team} lock={lock} onSettled={onSettled} />
         ) : reward.kind === "card" ? (
@@ -423,6 +448,7 @@ export function LuckDraw({
   event1,
   items = [],
   openTasks = [],
+  auroraMult = 1,
   onDone,
 }: {
   team: number | "";
@@ -430,10 +456,11 @@ export function LuckDraw({
   event1: boolean;
   items?: ActiveItemView[];
   openTasks?: { taskKind: TaskKind }[]; // 該隊進行中的任務（抽好運卡時排除同種、達上限不抽任務）
+  auroraMult?: number; // 該隊獨佔 AURORA 時的光幣加成倍率（供好運卡預覽顯示加成）
   onDone: () => void | Promise<unknown>;
 }) {
   const [drawn, setDrawn] = useState<DrawnCard | null>(null);
-  const settler = useCardSettle({ team, curName, items, onDone });
+  const settler = useCardSettle({ team, curName, items, auroraMult, onDone });
   const clear = () => setDrawn(null);
   const openArg = { kinds: new Set(openTasks.map((o) => o.taskKind)), count: openTasks.length };
 

@@ -421,7 +421,8 @@ export function RealMapView({
   // 抽卡結算 hook（與 LuckDraw 同口徑：含動產加成 / 減免、undo、刷新）。
   // 必須在任何提前 return 之前呼叫（Rules of Hooks）；輸入由 snapshot 安全推導（可能尚未載入）。
   const settleTeam = snap?.teams.find((t) => t.id === team);
-  const settler = useCardSettle({ team, curName: settleTeam?.name, items: settleTeam?.items ?? [], onDone: mutate });
+  const settleAuroraMult = settleTeam?.monopolyRegions.includes("AURORA") ? (snap?.settings.auroraMultiplier ?? 1) : 1;
+  const settler = useCardSettle({ team, curName: settleTeam?.name, items: settleTeam?.items ?? [], auroraMult: settleAuroraMult, onDone: mutate });
 
   if (!snap) return <p className="p-6 text-sm text-slate-400">載入中…</p>;
   const teams = snap.teams;
